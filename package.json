@@ -1,0 +1,24 @@
+{
+  "name": "ltl-taisan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hệ thống quản lý tài sản & kho thiết bị — Learn to Leap",
+  "engines": { "node": ">=20" },
+  "workspaces": ["shared", "api", "web"],
+  "scripts": {
+    "build": "npm run build:shared && npm run build:api && npm run build:web",
+    "build:shared": "npm -w @ltl/taisan-shared run build",
+    "build:api": "npm -w @ltl/taisan-api run build",
+    "build:web": "npm run build:shared && npm -w @ltl/taisan-web run build",
+    "typecheck": "npm run build:shared && npm -w @ltl/taisan-api run typecheck && npm -w @ltl/taisan-web run typecheck",
+    "dev:api": "npm -w @ltl/taisan-api run dev",
+    "dev:web": "npm -w @ltl/taisan-web run dev",
+    "prisma:validate": "npm -w @ltl/taisan-api run prisma:validate",
+    "prisma:generate": "npm -w @ltl/taisan-api run prisma:generate",
+    "migrate:deploy": "npm -w @ltl/taisan-api run migrate:deploy",
+    "seed": "npm -w @ltl/taisan-api run seed"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

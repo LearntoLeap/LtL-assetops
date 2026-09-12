@@ -1,0 +1,26 @@
+# Phụ thuộc
+node_modules/
+
+# Kết quả build
+api/dist/
+web/dist/
+web/.vite/
+shared/dist/
+*.tsbuildinfo
+
+# Biến môi trường — KHÔNG BAO GIỜ commit
+.env
+.env.*
+!.env.example
+
+# Ảnh người dùng tải lên (lưu trên ổ đĩa VPS)
+api/uploads/
+
+# Nhật ký pm2
+api/logs/
+
+# Nhật ký & tạm
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

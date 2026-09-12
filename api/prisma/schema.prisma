@@ -1,0 +1,761 @@
+// ---------------------------------------------------------------------------
+// LtL Quản lý Tài sản — Prisma schema
+//
+// Quy ước:
+//   - Tên bảng / cột: tiếng Anh (snake_case trong CSDL qua @@map / @map).
+//   - Dữ liệu người dùng nhập: tiếng Việt có dấu (utf8mb4).
+//   - Giá trị enum lưu dạng ASCII (TAI_KHO, DA_PHAN_BO…); nhãn tiếng Việt để
+//     hiển thị nằm ở package @ltl/taisan-shared (nhan.ts) — tránh ký tự đặc
+//     biệt trong enum CSDL, và đổi nhãn không cần migration.
+//
+// Chuyển sang PostgreSQL: chỉ sửa `provider` + DATABASE_URL bên dưới.
+//   Không dùng tính năng riêng của MySQL. Các kiểu đã chọn đều song hành:
+//   Decimal→numeric, Json→jsonb, @db.Text→text, BigInt→bigint.
+//   Mọi VarChar có index đều ≤191 ký tự (giới hạn index utf8mb4 của MySQL).
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql" // đổi thành "postgresql" là xong — xem README
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// ENUM
+// ===========================================================================
+
+/// 5 vai trò — mọi kiểm tra quyền đặt ở middleware + service phía server.
+enum UserRole {
+  ADMIN
+  VAN_HANH
+  KHO
+  NHAN_SU
+  TRUONG
+}
+
+enum LocationType {
+  KHO_VAN_PHONG
+  DIEM_TRUONG
+  DOI_TAC_MUON
+  KHO_SU_KIEN
+}
+
+/// DON_VI  = quản lý theo từng đơn vị (robot, laptop — mỗi cái một mã).
+/// SO_LUONG = quản lý theo số lượng (ấn phẩm, phụ kiện — một mã, nhiều cái).
+enum TrackingType {
+  DON_VI
+  SO_LUONG
+}
+
+enum AssetOrigin {
+  NHAP_TU_IPP
+  LTL_MUA
+  LTL_MUON_DOI_TAC
+  KHAC
+}
+
+enum AssetPurpose {
+  XHH
+  SU_KIEN
+  CO_DINH_TAI_KHO
+  CHO_MUON
+}
+
+enum AssetCondition {
+  TOT
+  DANG_SU_DUNG
+  CAN_BAO_TRI
+  HONG
+  DANG_BAO_HANH
+  MAT
+}
+
+enum AllocationStatus {
+  TAI_KHO
+  DA_PHAN_BO
+  DANG_VAN_CHUYEN
+  CHO_MUON
+  DANG_PHUC_VU_SU_KIEN
+}
+
+enum RequestType {
+  XUAT_KHO
+  NHAP_KHO
+  PHAN_BO_VE_TRUONG
+  LUAN_CHUYEN_TRUONG
+  CHO_MUON
+  TRA_VE_KHO
+  BAO_HONG
+}
+
+enum RequestStatus {
+  BAN_NHAP
+  CHO_DUYET
+  DA_DUYET
+  TU_CHOI
+  DA_XUAT
+  DA_HOAN_TAT
+}
+
+enum MovementType {
+  NHAP_BAN_DAU
+  XUAT_KHO
+  NHAP_KHO
+  PHAN_BO
+  LUAN_CHUYEN
+  CHO_MUON
+  TRA_VE_KHO
+  DIEU_CHINH_KIEM_KE
+}
+
+/// Phân loại ảnh — thay cho việc gắn cột ảnh cứng vào movements.
+/// "Ảnh lúc xuất" = photo(kind: ANH_XUAT, movementId); "ảnh lúc nhận" = ANH_NHAN.
+enum PhotoKind {
+  HIEN_TRANG
+  ANH_XUAT
+  ANH_NHAN
+  BAO_HONG
+  KIEM_KE
+  BBBG
+  KIOSK_BACKGROUND
+}
+
+enum HandoverStatus {
+  BAN_NHAP
+  CHO_XAC_NHAN
+  DA_XAC_NHAN
+  TU_CHOI
+}
+
+enum InventoryCountStatus {
+  BAN_NHAP
+  DANG_KIEM
+  CHO_CHOT
+  DA_CHOT
+  HUY
+}
+
+enum AlertType {
+  TINH_TRANG_THAY_DOI
+  QUA_HAN_TRA
+  CHENH_LECH_KIEM_KE
+  BAO_HONG
+  DANG_NHAP_NGOAI_VUNG
+}
+
+enum AlertSeverity {
+  THAP
+  TRUNG_BINH
+  CAO
+}
+
+// ===========================================================================
+// NGƯỜI DÙNG & PHIÊN
+// ===========================================================================
+
+/// Tài khoản. KHÔNG có API tự đăng ký — chỉ ADMIN tạo trong trang quản trị.
+model User {
+  id           String   @id @default(cuid()) @db.VarChar(30)
+  email        String   @unique @db.VarChar(191)
+  passwordHash String   @map("password_hash") @db.VarChar(191)
+  fullName     String   @map("full_name") @db.VarChar(191)
+  phone        String?  @db.VarChar(32)
+  role         UserRole
+  /// Phòng ban / đơn vị: Chuyên môn, Event, Kinh doanh…
+  department   String?  @db.VarChar(191)
+  /// Đơn vị gắn với tài khoản: KHO → kho được phép đăng nhập (khoá GPS);
+  /// TRUONG → điểm trường mà tài khoản chỉ được xem dữ liệu của nó.
+  locationId   String?  @map("location_id") @db.VarChar(30)
+  isLocked     Boolean  @default(false) @map("is_locked")
+  /// Bắt buộc đổi mật khẩu ở lần đăng nhập đầu (ADMIN đặt mật khẩu tạm).
+  mustChangePassword Boolean @default(true) @map("must_change_password")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdById  String?  @map("created_by_id") @db.VarChar(30)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  location  Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdUsers          User[]               @relation("UserCreatedBy")
+  refreshTokens         RefreshToken[]
+  createdAssets         Asset[]              @relation("AssetCreatedBy")
+  heldAssets            Asset[]              @relation("AssetHolder")
+  createdRequests       Request[]            @relation("RequestCreatedBy")
+  approvedRequests      Request[]            @relation("RequestApprovedBy")
+  performedMovements    Movement[]
+  uploadedPhotos        Photo[]
+  auditLogs             AuditLog[]
+  confirmedHandovers    HandoverNote[]       @relation("HandoverConfirmedBy")
+  createdHandovers      HandoverNote[]       @relation("HandoverCreatedBy")
+  createdCounts         InventoryCount[]     @relation("CountCreatedBy")
+  closedCounts          InventoryCount[]     @relation("CountClosedBy")
+  countedItems          InventoryCountItem[]
+  issuedOverrideCodes   GpsOverrideCode[]    @relation("OverrideIssuedBy")
+  targetedOverrideCodes GpsOverrideCode[]    @relation("OverrideIssuedFor")
+  usedOverrideCodes     GpsOverrideCode[]    @relation("OverrideUsedBy")
+  kioskSetting          KioskSetting?
+  resolvedAlerts        Alert[]              @relation("AlertResolvedBy")
+
+  @@index([role])
+  @@index([locationId])
+  @@map("users")
+}
+
+/// Refresh token lưu dạng hash để thu hồi được khi khoá tài khoản / đăng xuất.
+model RefreshToken {
+  id        String    @id @default(cuid()) @db.VarChar(30)
+  userId    String    @map("user_id") @db.VarChar(30)
+  tokenHash String    @unique @map("token_hash") @db.VarChar(191)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  ip        String?   @db.VarChar(64)
+  userAgent String?   @map("user_agent") @db.VarChar(191)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("refresh_tokens")
+}
+
+/// Mã vượt quyền GPS dùng MỘT LẦN do ADMIN cấp (GPS trong nhà hay lệch).
+/// Lưu hash — mã gốc chỉ hiện một lần lúc cấp.
+model GpsOverrideCode {
+  id            String    @id @default(cuid()) @db.VarChar(30)
+  codeHash      String    @unique @map("code_hash") @db.VarChar(191)
+  /// 4 ký tự đầu của mã, để ADMIN đối chiếu trong danh sách.
+  codePrefix    String    @map("code_prefix") @db.VarChar(8)
+  locationId    String    @map("location_id") @db.VarChar(30)
+  issuedById    String    @map("issued_by_id") @db.VarChar(30)
+  issuedForId   String?   @map("issued_for_id") @db.VarChar(30)
+  reason        String?   @db.VarChar(255)
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  usedById      String?   @map("used_by_id") @db.VarChar(30)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  location  Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  issuedBy  User     @relation("OverrideIssuedBy", fields: [issuedById], references: [id])
+  issuedFor User?    @relation("OverrideIssuedFor", fields: [issuedForId], references: [id], onDelete: SetNull)
+  usedBy    User?    @relation("OverrideUsedBy", fields: [usedById], references: [id], onDelete: SetNull)
+
+  @@index([locationId, expiresAt])
+  @@map("gps_override_codes")
+}
+
+/// Ảnh nền + tuỳ chọn màn hình KIOSK, lưu theo từng tài khoản.
+model KioskSetting {
+  id            String   @id @default(cuid()) @db.VarChar(30)
+  userId        String   @unique @map("user_id") @db.VarChar(30)
+  /// Khoá ảnh nền có sẵn trong bộ mặc định (vd "xanh-mach-dien").
+  backgroundKey String?  @map("background_key") @db.VarChar(64)
+  /// Hoặc ảnh do người dùng tải lên.
+  backgroundPhotoId String? @map("background_photo_id") @db.VarChar(30)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  backgroundPhoto Photo? @relation(fields: [backgroundPhotoId], references: [id], onDelete: SetNull)
+
+  @@map("kiosk_settings")
+}
+
+// ===========================================================================
+// DANH MỤC
+// ===========================================================================
+
+/// Dòng giải pháp: uKit, UGOT, Stick'Em, Alpha Mini, Yanshee, Weeemake…
+model ProductLine {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  code      String   @unique @db.VarChar(64)
+  name      String   @db.VarChar(191)
+  note      String?  @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  assets Asset[]
+
+  @@map("product_lines")
+}
+
+/// Loại tài sản: Robot, Máy tính/Laptop, Tablet, Kính VR, Sa bàn, Ấn phẩm in…
+model AssetCategory {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  code      String   @unique @db.VarChar(64)
+  name      String   @db.VarChar(191)
+  /// Kiểu quản lý mặc định khi tạo tài sản thuộc loại này (có thể ghi đè).
+  defaultTrackingType TrackingType @default(DON_VI) @map("default_tracking_type")
+  note      String?  @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  assets Asset[]
+
+  @@map("asset_categories")
+}
+
+/// Điểm lưu trữ: kho văn phòng (có GPS), điểm trường, đối tác mượn, kho sự kiện.
+model Location {
+  id      String       @id @default(cuid()) @db.VarChar(30)
+  code    String       @unique @db.VarChar(64)
+  name    String       @db.VarChar(191)
+  type    LocationType
+  address String?      @db.Text
+  /// Người phụ trách tại điểm (điểm trường / đối tác).
+  contactName  String? @map("contact_name") @db.VarChar(191)
+  contactPhone String? @map("contact_phone") @db.VarChar(32)
+  /// Toạ độ + bán kính cho phép — dùng cho khoá đăng nhập vai trò KHO.
+  latitude   Decimal? @db.Decimal(10, 7)
+  longitude  Decimal? @db.Decimal(10, 7)
+  gpsRadiusM Int?     @map("gps_radius_m")
+  note       String?  @db.Text
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  users            User[]
+  assets           Asset[]           @relation("AssetCurrentLocation")
+  movementsFrom    Movement[]        @relation("MovementFrom")
+  movementsTo      Movement[]        @relation("MovementTo")
+  requestsFrom     Request[]         @relation("RequestFrom")
+  requestsTo       Request[]         @relation("RequestTo")
+  handoverNotes    HandoverNote[]
+  inventoryCounts  InventoryCount[]
+  gpsOverrideCodes GpsOverrideCode[]
+
+  @@index([type])
+  @@map("locations")
+}
+
+// ===========================================================================
+// TÀI SẢN
+// ===========================================================================
+
+/// Thiết bị / vật tư. Mỗi bản ghi có MÃ THIẾT BỊ duy nhất — mọi giao dịch
+/// tham chiếu theo `code`, không nhập tên tự do.
+///
+/// LƯU Ý VỀ TỒN KHO (nguyên tắc bất biến #5): bảng này KHÔNG có cột số tồn.
+/// Tồn theo từng địa điểm luôn suy ra từ `movements` (xem src/lib/stock.ts).
+/// Các cột `currentLocationId` / `condition` / `allocationStatus` /
+/// `holderUserId` / `dueReturnAt` là hình chiếu trạng thái, chỉ được ghi trong
+/// CÙNG transaction với movement sinh ra chúng.
+model Asset {
+  id             String           @id @default(cuid()) @db.VarChar(30)
+  code           String           @unique @db.VarChar(64)
+  name           String           @db.VarChar(191)
+  categoryId     String           @map("category_id") @db.VarChar(30)
+  productLineId  String?          @map("product_line_id") @db.VarChar(30)
+  /// Serial của nhà sản xuất.
+  serialNumber   String?          @map("serial_number") @db.VarChar(191)
+  origin         AssetOrigin
+  originNote     String?          @map("origin_note") @db.VarChar(255)
+  receivedDate   DateTime?        @map("received_date")
+  /// Giá trị (VND).
+  value          Decimal?         @db.Decimal(15, 2)
+  purpose        AssetPurpose
+  trackingType   TrackingType     @map("tracking_type")
+  currentLocationId String?       @map("current_location_id") @db.VarChar(30)
+  condition      AssetCondition   @default(TOT)
+  allocationStatus AllocationStatus @default(TAI_KHO) @map("allocation_status")
+  /// Người đang giữ (thiết bị cho nhân sự mượn); null nếu đang ở một địa điểm.
+  holderUserId   String?          @map("holder_user_id") @db.VarChar(30)
+  /// Hạn phải trả của lần mượn đang mở — dùng cho cảnh báo quá hạn.
+  dueReturnAt    DateTime?        @map("due_return_at")
+  /// Ghi chú chi tiết theo bộ (thành phần, phụ kiện kèm theo…).
+  note           String?          @db.Text
+  isActive       Boolean          @default(true) @map("is_active")
+  createdById    String?          @map("created_by_id") @db.VarChar(30)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  category        AssetCategory @relation(fields: [categoryId], references: [id])
+  productLine     ProductLine?  @relation(fields: [productLineId], references: [id], onDelete: SetNull)
+  currentLocation Location?     @relation("AssetCurrentLocation", fields: [currentLocationId], references: [id], onDelete: SetNull)
+  holder          User?         @relation("AssetHolder", fields: [holderUserId], references: [id], onDelete: SetNull)
+  createdBy       User?         @relation("AssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  movements     Movement[]
+  requestItems  RequestItem[]
+  photos        Photo[]
+  handoverItems HandoverNoteItem[]
+  countItems    InventoryCountItem[]
+  alerts        Alert[]
+
+  @@index([categoryId])
+  @@index([productLineId])
+  @@index([currentLocationId])
+  @@index([allocationStatus])
+  @@index([condition])
+  @@index([purpose])
+  @@index([holderUserId])
+  @@index([dueReturnAt])
+  @@map("assets")
+}
+
+// ===========================================================================
+// YÊU CẦU — DUYỆT
+// ===========================================================================
+
+/// Yêu cầu. Không ai được lấy thiết bị ra khỏi kho nếu chưa có yêu cầu
+/// ở trạng thái DA_DUYET (nguyên tắc bất biến #2).
+model Request {
+  id             String        @id @default(cuid()) @db.VarChar(30)
+  /// Số yêu cầu tự sinh, vd YC-2026-0001.
+  code           String        @unique @db.VarChar(64)
+  type           RequestType
+  status         RequestStatus @default(BAN_NHAP)
+  createdById    String        @map("created_by_id") @db.VarChar(30)
+  reason         String        @db.Text
+  fromLocationId String?       @map("from_location_id") @db.VarChar(30)
+  toLocationId   String?       @map("to_location_id") @db.VarChar(30)
+  /// Nơi đến ghi tự do khi chưa có trong danh mục địa điểm (vd sự kiện lẻ).
+  destinationNote String?      @map("destination_note") @db.VarChar(255)
+  /// Thời gian dự kiến trả.
+  expectedReturnAt DateTime?   @map("expected_return_at")
+  submittedAt    DateTime?     @map("submitted_at")
+  approvedById   String?       @map("approved_by_id") @db.VarChar(30)
+  approvedAt     DateTime?     @map("approved_at")
+  rejectionNote  String?       @map("rejection_note") @db.Text
+  issuedAt       DateTime?     @map("issued_at")
+  completedAt    DateTime?     @map("completed_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  createdBy    User      @relation("RequestCreatedBy", fields: [createdById], references: [id])
+  approvedBy   User?     @relation("RequestApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  fromLocation Location? @relation("RequestFrom", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocation   Location? @relation("RequestTo", fields: [toLocationId], references: [id], onDelete: SetNull)
+
+  items         RequestItem[]
+  movements     Movement[]
+  photos        Photo[]
+  handoverNotes HandoverNote[]
+  alerts        Alert[]
+
+  @@index([status, createdAt])
+  @@index([createdById, status])
+  @@index([type, status])
+  @@index([expectedReturnAt])
+  @@map("requests")
+}
+
+/// Dòng thiết bị trong một yêu cầu — tham chiếu theo FK tới assets (theo mã).
+model RequestItem {
+  id        String  @id @default(cuid()) @db.VarChar(30)
+  requestId String  @map("request_id") @db.VarChar(30)
+  assetId   String  @map("asset_id") @db.VarChar(30)
+  /// Số lượng xin (tài sản DON_VI luôn = 1).
+  quantity  Int     @default(1)
+  note      String? @db.VarChar(255)
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  asset   Asset   @relation(fields: [assetId], references: [id])
+
+  @@unique([requestId, assetId])
+  @@index([assetId])
+  @@map("request_items")
+}
+
+// ===========================================================================
+// DI CHUYỂN THỰC TẾ — NGUỒN SỰ THẬT CỦA TỒN KHO
+// ===========================================================================
+
+/// Nhật ký di chuyển thực tế. Đây là bảng DUY NHẤT quyết định tồn kho:
+///   tồn(asset, location) = Σ quantity(đến location) − Σ quantity(rời location)
+/// `fromLocationId` = null nghĩa là từ ngoài hệ thống (nhập ban đầu / mua mới);
+/// `toLocationId` = null nghĩa là ra khỏi hệ thống (thanh lý / mất).
+model Movement {
+  id             String       @id @default(cuid()) @db.VarChar(30)
+  assetId        String       @map("asset_id") @db.VarChar(30)
+  type           MovementType
+  fromLocationId String?      @map("from_location_id") @db.VarChar(30)
+  toLocationId   String?      @map("to_location_id") @db.VarChar(30)
+  requestId      String?      @map("request_id") @db.VarChar(30)
+  /// Số lượng di chuyển (tài sản DON_VI luôn = 1). Luôn > 0.
+  quantity       Int          @default(1)
+  conditionBefore AssetCondition? @map("condition_before")
+  conditionAfter  AssetCondition? @map("condition_after")
+  performedById  String       @map("performed_by_id") @db.VarChar(30)
+  performedAt    DateTime     @default(now()) @map("performed_at")
+  note           String?      @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  asset        Asset     @relation(fields: [assetId], references: [id])
+  fromLocation Location? @relation("MovementFrom", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocation   Location? @relation("MovementTo", fields: [toLocationId], references: [id], onDelete: SetNull)
+  request      Request?  @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  performedBy  User      @relation(fields: [performedById], references: [id])
+
+  /// Ảnh lúc xuất = photos(kind: ANH_XUAT); ảnh lúc nhận = photos(kind: ANH_NHAN).
+  photos Photo[]
+
+  @@index([assetId, performedAt])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@index([requestId])
+  @@index([performedAt])
+  @@map("movements")
+}
+
+// ===========================================================================
+// ẢNH
+// ===========================================================================
+
+/// Ảnh lưu trên ổ đĩa VPS (api/uploads/<năm>/<tháng>/…), truy cập qua API có
+/// xác thực. Một ảnh gắn với asset và/hoặc request/movement/phiếu kiểm kê.
+model Photo {
+  id        String    @id @default(cuid()) @db.VarChar(30)
+  kind      PhotoKind
+  /// Đường dẫn tương đối so với UPLOAD_DIR, vd "2026/09/abc123.webp".
+  filePath  String    @map("file_path") @db.VarChar(255)
+  fileName  String    @map("file_name") @db.VarChar(191)
+  mimeType  String    @map("mime_type") @db.VarChar(64)
+  byteSize  Int       @map("byte_size")
+  width     Int?
+  height    Int?
+  /// Toạ độ lúc chụp (nếu thiết bị cho phép) — phục vụ đối chiếu hiện trường.
+  latitude  Decimal?  @db.Decimal(10, 7)
+  longitude Decimal?  @db.Decimal(10, 7)
+  /// SHA-256 của file, để nhận diện ảnh trùng.
+  checksum  String?   @db.VarChar(64)
+
+  assetId    String? @map("asset_id") @db.VarChar(30)
+  requestId  String? @map("request_id") @db.VarChar(30)
+  movementId String? @map("movement_id") @db.VarChar(30)
+  countItemId String? @map("count_item_id") @db.VarChar(30)
+
+  uploadedById String   @map("uploaded_by_id") @db.VarChar(30)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  asset      Asset?              @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  request    Request?            @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  movement   Movement?           @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  countItem  InventoryCountItem? @relation(fields: [countItemId], references: [id], onDelete: Cascade)
+  uploadedBy User                @relation(fields: [uploadedById], references: [id])
+
+  kioskSettings KioskSetting[]
+
+  @@index([assetId, createdAt])
+  @@index([requestId])
+  @@index([movementId, kind])
+  @@index([countItemId])
+  @@index([kind])
+  @@map("photos")
+}
+
+// ===========================================================================
+// BIÊN BẢN BÀN GIAO (BBBG)
+// ===========================================================================
+
+/// Biên bản bàn giao. Các cột *Snapshot của dòng thiết bị được cố định lúc lập
+/// biên bản — biên bản là chứng từ, không được đổi theo dữ liệu tài sản sau này.
+model HandoverNote {
+  id        String         @id @default(cuid()) @db.VarChar(30)
+  /// Số biên bản tự sinh, vd BBBG-2026-0001.
+  code      String         @unique @db.VarChar(64)
+  requestId String?        @map("request_id") @db.VarChar(30)
+  status    HandoverStatus @default(BAN_NHAP)
+
+  /// Bên giao.
+  giverName  String  @map("giver_name") @db.VarChar(191)
+  giverTitle String? @map("giver_title") @db.VarChar(191)
+  giverOrg   String  @map("giver_org") @db.VarChar(191)
+
+  /// Bên nhận (trường / đối tác).
+  receiverLocationId String? @map("receiver_location_id") @db.VarChar(30)
+  receiverOrg        String  @map("receiver_org") @db.VarChar(191)
+  receiverName       String  @map("receiver_name") @db.VarChar(191)
+  receiverTitle      String? @map("receiver_title") @db.VarChar(191)
+  receiverPhone      String? @map("receiver_phone") @db.VarChar(32)
+
+  issuedDate  DateTime  @map("issued_date")
+  /// Nội dung cam kết in trên biên bản (sửa được theo từng lần bàn giao).
+  commitment  String?   @db.Text
+  note        String?   @db.Text
+  createdById String    @map("created_by_id") @db.VarChar(30)
+  confirmedById String? @map("confirmed_by_id") @db.VarChar(30)
+  confirmedAt DateTime? @map("confirmed_at")
+  rejectionNote String? @map("rejection_note") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  request          Request?  @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  receiverLocation Location? @relation(fields: [receiverLocationId], references: [id], onDelete: SetNull)
+  createdBy        User      @relation("HandoverCreatedBy", fields: [createdById], references: [id])
+  confirmedBy      User?     @relation("HandoverConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  items HandoverNoteItem[]
+
+  @@index([status])
+  @@index([receiverLocationId])
+  @@index([requestId])
+  @@map("handover_notes")
+}
+
+model HandoverNoteItem {
+  id             String @id @default(cuid()) @db.VarChar(30)
+  handoverNoteId String @map("handover_note_id") @db.VarChar(30)
+  assetId        String @map("asset_id") @db.VarChar(30)
+  /// Ảnh chụp dữ liệu tại thời điểm lập biên bản (chứng từ bất biến).
+  assetCodeSnapshot String @map("asset_code_snapshot") @db.VarChar(64)
+  assetNameSnapshot String @map("asset_name_snapshot") @db.VarChar(191)
+  quantity          Int    @default(1)
+  conditionSnapshot AssetCondition @map("condition_snapshot")
+  note              String? @db.VarChar(255)
+  sortOrder         Int     @default(0) @map("sort_order")
+
+  handoverNote HandoverNote @relation(fields: [handoverNoteId], references: [id], onDelete: Cascade)
+  asset        Asset        @relation(fields: [assetId], references: [id])
+
+  @@unique([handoverNoteId, assetId])
+  @@index([assetId])
+  @@map("handover_note_items")
+}
+
+// ===========================================================================
+// KIỂM KÊ
+// ===========================================================================
+
+model InventoryCount {
+  id         String               @id @default(cuid()) @db.VarChar(30)
+  /// Số phiếu tự sinh, vd KK-2026-0001.
+  code       String               @unique @db.VarChar(64)
+  name       String               @db.VarChar(191)
+  locationId String               @map("location_id") @db.VarChar(30)
+  status     InventoryCountStatus @default(BAN_NHAP)
+  createdById String              @map("created_by_id") @db.VarChar(30)
+  startedAt  DateTime?            @map("started_at")
+  closedAt   DateTime?            @map("closed_at")
+  closedById String?              @map("closed_by_id") @db.VarChar(30)
+  note       String?              @db.Text
+  createdAt  DateTime             @default(now()) @map("created_at")
+  updatedAt  DateTime             @updatedAt @map("updated_at")
+
+  location  Location @relation(fields: [locationId], references: [id])
+  createdBy User     @relation("CountCreatedBy", fields: [createdById], references: [id])
+  closedBy  User?    @relation("CountClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  items InventoryCountItem[]
+
+  @@index([locationId, status])
+  @@index([status])
+  @@map("inventory_counts")
+}
+
+/// Dòng kiểm kê. `systemQuantity` là số liệu hệ thống CHỐT tại thời điểm mở
+/// phiếu (chứng cứ, không đổi). Chênh lệch = countedQuantity − systemQuantity,
+/// tính khi đọc — không lưu cột dẫn xuất.
+model InventoryCountItem {
+  id               String  @id @default(cuid()) @db.VarChar(30)
+  inventoryCountId String  @map("inventory_count_id") @db.VarChar(30)
+  assetId          String  @map("asset_id") @db.VarChar(30)
+  systemQuantity   Int     @map("system_quantity")
+  systemCondition  AssetCondition @map("system_condition")
+  countedQuantity  Int?    @map("counted_quantity")
+  countedCondition AssetCondition? @map("counted_condition")
+  countedById      String? @map("counted_by_id") @db.VarChar(30)
+  countedAt        DateTime? @map("counted_at")
+  note             String? @db.Text
+  /// Đã điều chỉnh tồn theo kết quả kiểm kê lúc ADMIN chốt phiếu.
+  adjustedAt       DateTime? @map("adjusted_at")
+
+  inventoryCount InventoryCount @relation(fields: [inventoryCountId], references: [id], onDelete: Cascade)
+  asset          Asset          @relation(fields: [assetId], references: [id])
+  countedBy      User?          @relation(fields: [countedById], references: [id], onDelete: SetNull)
+
+  photos Photo[]
+
+  @@unique([inventoryCountId, assetId])
+  @@index([assetId])
+  @@map("inventory_count_items")
+}
+
+// ===========================================================================
+// CẢNH BÁO
+// ===========================================================================
+
+/// Cảnh báo cho ADMIN/VAN_HANH: tình trạng khi trả khác lúc xuất, quá hạn trả,
+/// chênh lệch kiểm kê, báo hỏng, đăng nhập KHO ngoài vùng GPS.
+model Alert {
+  id        String        @id @default(cuid()) @db.VarChar(30)
+  type      AlertType
+  severity  AlertSeverity @default(TRUNG_BINH)
+  title     String        @db.VarChar(191)
+  message   String        @db.Text
+  assetId   String?       @map("asset_id") @db.VarChar(30)
+  requestId String?       @map("request_id") @db.VarChar(30)
+  /// Thực thể liên quan khác (inventory_count, handover_note…).
+  entityType String?      @map("entity_type") @db.VarChar(64)
+  entityId   String?      @map("entity_id") @db.VarChar(30)
+  resolvedAt DateTime?    @map("resolved_at")
+  resolvedById String?    @map("resolved_by_id") @db.VarChar(30)
+  resolutionNote String?  @map("resolution_note") @db.Text
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  asset      Asset?   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  request    Request? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  resolvedBy User?    @relation("AlertResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([resolvedAt, createdAt])
+  @@index([type])
+  @@index([assetId])
+  @@map("alerts")
+}
+
+// ===========================================================================
+// SỐ CHỨNG TỪ & NHẬT KÝ BẤT BIẾN
+// ===========================================================================
+
+/// Bộ đếm số chứng từ theo tiền tố + năm (BBBG-2026-0001, YC-2026-0001…).
+/// Cấp số trong transaction để hai người bấm cùng lúc không ra số trùng.
+model DocumentSequence {
+  id         String @id @default(cuid()) @db.VarChar(30)
+  prefix     String @db.VarChar(16)
+  year       Int
+  lastNumber Int    @default(0) @map("last_number")
+
+  @@unique([prefix, year])
+  @@map("document_sequences")
+}
+
+/// Nhật ký thao tác BẤT BIẾN — chỉ ghi thêm. Không có API sửa/xoá bảng này.
+/// `beforeValue`/`afterValue` trả lời "từ đâu → đến đâu"; `photoIds` trả lời
+/// "ảnh nào"; `latitude`/`longitude` dùng cho log đăng nhập của vai trò KHO.
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  /// null khi do hệ thống tự sinh (job quá hạn…).
+  actorUserId String?  @map("actor_user_id") @db.VarChar(30)
+  /// Chụp lại danh tính lúc thao tác, để log còn đọc được nếu tài khoản bị xoá.
+  actorEmail  String?  @map("actor_email") @db.VarChar(191)
+  actorRole   UserRole? @map("actor_role")
+  /// Vd "asset.update", "request.approve", "auth.login", "count.close".
+  action      String   @db.VarChar(96)
+  entityType  String   @map("entity_type") @db.VarChar(64)
+  entityId    String?  @map("entity_id") @db.VarChar(64)
+  beforeValue Json?    @map("before_value")
+  afterValue  Json?    @map("after_value")
+  photoIds    Json?    @map("photo_ids")
+  ip          String?  @db.VarChar(64)
+  userAgent   String?  @map("user_agent") @db.VarChar(191)
+  latitude    Decimal? @db.Decimal(10, 7)
+  longitude   Decimal? @db.Decimal(10, 7)
+  /// Khoảng cách tới kho (mét) khi đăng nhập vai trò KHO.
+  distanceM   Int?     @map("distance_m")
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
