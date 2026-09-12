@@ -44,6 +44,14 @@
     --o-nhap: 214 25% 88%;
     --vong-focus: 217 91% 48%;
 
+    /* Biến "-dam" dùng cho CHỮ đặt trên nền pha loãng (viên thuốc, khối cảnh
+       báo). Biến không có "-dam" là màu nền đặc, đi cùng "--chu-tren-*". */
+    --chinh-dam: 217 91% 38%;
+    --nhan-manh-dam: 192 88% 26%;
+    --thanh-cong-dam: 152 69% 26%;
+    --canh-bao-dam: 26 90% 32%;
+    --nguy-hiem-dam: 0 74% 39%;
+
     --bo-goc: 0.75rem;
   }
 
@@ -81,6 +89,13 @@
     --vien: 217 30% 22%;
     --o-nhap: 217 30% 22%;
     --vong-focus: 213 94% 62%;
+
+    /* Chế độ tối: chữ trên nền pha loãng phải SÁNG hơn, không dùng màu tối. */
+    --chinh-dam: 213 94% 72%;
+    --nhan-manh-dam: 187 90% 66%;
+    --thanh-cong-dam: 152 62% 60%;
+    --canh-bao-dam: 36 94% 64%;
+    --nguy-hiem-dam: 0 84% 70%;
   }
 
   * {

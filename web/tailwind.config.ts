@@ -24,6 +24,7 @@ export default {
         primary: {
           DEFAULT: 'hsl(var(--chinh))',
           foreground: 'hsl(var(--chu-tren-chinh))',
+          dam: 'hsl(var(--chinh-dam))',
         },
         secondary: {
           DEFAULT: 'hsl(var(--phu))',
@@ -36,18 +37,22 @@ export default {
         accent: {
           DEFAULT: 'hsl(var(--nhan-manh))',
           foreground: 'hsl(var(--chu-tren-nhan-manh))',
+          dam: 'hsl(var(--nhan-manh-dam))',
         },
         destructive: {
           DEFAULT: 'hsl(var(--nguy-hiem))',
           foreground: 'hsl(var(--chu-tren-nguy-hiem))',
+          dam: 'hsl(var(--nguy-hiem-dam))',
         },
         success: {
           DEFAULT: 'hsl(var(--thanh-cong))',
           foreground: 'hsl(var(--chu-tren-thanh-cong))',
+          dam: 'hsl(var(--thanh-cong-dam))',
         },
         warning: {
           DEFAULT: 'hsl(var(--canh-bao))',
           foreground: 'hsl(var(--chu-tren-canh-bao))',
+          dam: 'hsl(var(--canh-bao-dam))',
         },
         card: {
           DEFAULT: 'hsl(var(--the))',

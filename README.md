@@ -25,7 +25,7 @@ npm workspaces: chỉ cần `npm install` một lần ở `taisan/` là đủ ch
 | GĐ | Nội dung | Trạng thái |
 |---|---|---|
 | 1 | Monorepo, lược đồ Prisma đầy đủ, migration, dữ liệu mẫu, README | ✅ Xong |
-| 2 | Auth JWT, phân quyền middleware, quản lý người dùng, khoá GPS vai trò KHO | ⏳ Chưa |
+| 2 | Auth JWT, phân quyền middleware, quản lý người dùng, khoá GPS vai trò KHO | ✅ Xong |
 | 3 | CRUD thiết bị/địa điểm, import–export Excel, sinh & quét QR | ⏳ Chưa |
 | 4 | Yêu cầu → duyệt → xuất/nhập kho, upload ảnh, movements, audit log, Socket.IO | ⏳ Chưa |
 | 5 | BBBG (sinh, in, PDF, xác nhận), kiểm kê, báo hỏng | ⏳ Chưa |
@@ -102,6 +102,11 @@ Kiểm tra nhanh:
 curl http://localhost:3001/api/health       # API còn sống
 curl http://localhost:3001/api/health/db    # có nối được CSDL chưa (503 nếu chưa)
 ```
+
+> **Định vị cần HTTPS.** `navigator.geolocation` của trình duyệt chỉ chạy trên
+> HTTPS hoặc `localhost`. Chạy local thì dùng đúng `http://localhost:5173`
+> (không phải IP LAN), còn khi deploy thật thì web **buộc phải có HTTPS**, nếu
+> không tài khoản kho sẽ không lấy được vị trí để đăng nhập.
 
 ### 5. Tài khoản mẫu
 
@@ -216,7 +221,20 @@ proxy_read_timeout 300s;
 
 API đã bật `trust proxy`, nên `X-Forwarded-For` được dùng để lấy IP thật.
 
-### 7. Web
+### 7. Cấu hình khoá vị trí cho tài khoản kho (bắt buộc)
+
+Đăng nhập bằng tài khoản `ADMIN` → **Khoá vị trí kho** → chọn kho → bấm
+*Lấy toạ độ máy này* ngay tại kho (hoặc nhập tay toạ độ) → đặt bán kính → **Lưu**.
+
+Kho **chưa có toạ độ thì tài khoản kho của nó không đăng nhập được** — chặn chủ
+động để không ai lọt qua khi thiếu cấu hình. Dữ liệu mẫu có toạ độ giả, phải
+cấu hình lại theo kho thật.
+
+GPS trong nhà thường lệch 50–200m; bán kính mặc định 150m. Khi nhân viên kho
+không vào được vì GPS lệch, ADMIN cấp **mã vượt quyền dùng một lần** ở cùng
+trang đó — mã chỉ hiện một lần, hệ thống chỉ lưu bản băm.
+
+### 8. Web
 
 **Cách A — Vercel.** Trong Vercel: *Root Directory* = `taisan`, *Build Command* =
 `npm run build:web`, *Output Directory* = `web/dist`. Biến môi trường:
@@ -231,7 +249,7 @@ location / {
 }
 ```
 
-### 8. Sau khi deploy, kiểm tra
+### 9. Sau khi deploy, kiểm tra
 
 ```bash
 curl https://api.tenmiencuaban.vn/api/health
@@ -241,6 +259,77 @@ curl https://api.tenmiencuaban.vn/api/health/db     # phải trả ok:true
 Vào `CORS_ORIGINS` trong `api/.env` thêm tên miền web thật, rồi `pm2 restart ltl-taisan-api`.
 
 ---
+
+## Xác thực & phân quyền (giai đoạn 2)
+
+### Endpoint
+
+| Method | Đường dẫn | Ai gọi được |
+|---|---|---|
+| POST | `/api/auth/dang-nhap` | công khai (vai trò KHO phải gửi kèm `viTri`) |
+| POST | `/api/auth/lam-moi` | công khai (cần refresh token còn hiệu lực) |
+| POST | `/api/auth/dang-xuat` | đã đăng nhập |
+| GET | `/api/auth/toi` | đã đăng nhập |
+| POST | `/api/auth/doi-mat-khau` | đã đăng nhập |
+| GET | `/api/nguoi-dung` | `ADMIN`, `VAN_HANH` |
+| POST | `/api/nguoi-dung` | **chỉ `ADMIN`** |
+| PATCH | `/api/nguoi-dung/:id` | `ADMIN`, `VAN_HANH` (không chạm tài khoản ADMIN) |
+| POST | `/api/nguoi-dung/:id/khoa` | `ADMIN`, `VAN_HANH` (không chạm tài khoản ADMIN) |
+| POST | `/api/nguoi-dung/:id/dat-lai-mat-khau` | `ADMIN`, `VAN_HANH` (không chạm tài khoản ADMIN) |
+| DELETE | `/api/nguoi-dung/:id` | **chỉ `ADMIN`**, và chỉ khi chưa có dữ liệu lịch sử |
+| GET | `/api/dia-diem` | đã đăng nhập — **lọc theo phạm vi vai trò** |
+| PATCH | `/api/dia-diem/:id/gps` | **chỉ `ADMIN`** |
+| POST/GET/DELETE | `/api/vuot-quyen-gps` | **chỉ `ADMIN`** |
+
+**Không có `POST /api/auth/dang-ky`.** Không có endpoint nào tự tạo tài khoản.
+
+### Phạm vi dữ liệu — kiểm ở server
+
+`api/src/lib/pham-vi.ts` dựng điều kiện `where` theo vai trò; mọi truy vấn danh
+sách đều đi qua nó, nên **gọi thẳng API cũng không lấy được dữ liệu ngoài phạm vi**:
+
+| Vai trò | Thấy gì |
+|---|---|
+| `ADMIN`, `VAN_HANH`, `KHO` | toàn bộ kho (KHO cần tra cứu mọi mã tại quầy) |
+| `TRUONG` | chỉ điểm trường của mình |
+| `NHAN_SU` | chỉ thiết bị mình đang giữ / yêu cầu mình tạo |
+
+### Những điều đã chốt ở tầng xác thực
+
+- **Quyền đọc lại từ CSDL mỗi lượt gọi API.** ADMIN khoá tài khoản hay đổi vai
+  trò thì có hiệu lực **ngay**, không phải chờ access token hết hạn.
+- **Refresh token luân chuyển.** Mỗi lần làm mới sẽ thu hồi token cũ và cấp token
+  mới. Dùng lại một token đã thu hồi ⇒ coi là **dấu hiệu bị đánh cắp**, hệ thống
+  thu hồi toàn bộ phiên của tài khoản đó.
+- **Đổi mật khẩu / đặt lại mật khẩu / khoá tài khoản** đều thu hồi mọi phiên đang mở.
+- **Access token và refresh token dùng hai khoá bí mật khác nhau**, nên không thể
+  dùng token này thay token kia.
+- **Không tiết lộ email có tồn tại**: email sai và mật khẩu sai trả về cùng mã lỗi,
+  cùng thông điệp.
+- **Chặn dò mật khẩu**: 10 lần sai trong 15 phút cho mỗi cặp (email, IP) → HTTP 429.
+  Bộ đếm nằm trong bộ nhớ tiến trình — đúng với `exec_mode: fork` + `instances: 1`
+  của pm2. **Nếu sau này chạy nhiều tiến trình thì phải chuyển sang Redis.**
+- **Tài khoản mới và tài khoản vừa được đặt lại mật khẩu** bị chặn khỏi mọi endpoint
+  nghiệp vụ cho tới khi tự đổi mật khẩu (`/api/auth/toi` và đổi mật khẩu vẫn gọi được).
+- **Vai trò buộc phải khớp điểm lưu trữ**: `KHO` phải gắn điểm kho, `TRUONG` phải
+  gắn điểm trường — gắn sai thì phạm vi dữ liệu sẽ sai theo, nên server từ chối.
+- **Không xoá được quản trị viên hoạt động cuối cùng**, và `VAN_HANH` không thao
+  tác được trên tài khoản `ADMIN`.
+
+### Token lưu ở đâu — và đánh đổi
+
+Access token (15 phút) và refresh token (30 ngày) trả về trong thân JSON, web lưu
+ở `localStorage`.
+
+Chọn cách này vì web deploy trên Vercel còn API trên VPS — **hai tên miền khác
+nhau**, cookie `httpOnly` cross-site cần `SameSite=None` + `Secure` và thường
+bị trình duyệt chặn. Đánh đổi: lỗ XSS trên web có thể lấy được token. Đã giảm
+thiệt hại bằng access token ngắn hạn, refresh token luân chuyển có phát hiện
+đánh cắp, và thu hồi phiên ngay khi khoá tài khoản.
+
+**Nếu sau này web được đặt cùng tên miền gốc với API** (ví dụ `taisan.tenmien.vn`
+và `api.tenmien.vn`) thì nên chuyển refresh token sang cookie `httpOnly` với
+`Domain=.tenmien.vn` — an toàn hơn. Nói một tiếng là chuyển.
 
 ## Lược đồ dữ liệu
 

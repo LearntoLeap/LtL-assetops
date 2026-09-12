@@ -2,6 +2,15 @@ import { dungApp } from './app.js';
 import { env } from './env.js';
 import { prisma } from './prisma.js';
 import { log, moTaLoi } from './lib/ghi-log.js';
+import { kiemTraCauHinhKhoa } from './lib/jwt.js';
+
+// Thiếu khoá JWT thì dừng ngay lúc khởi động, đừng để tới lúc ai đó đăng nhập.
+try {
+  kiemTraCauHinhKhoa();
+} catch (loi) {
+  log.error('Cấu hình JWT không hợp lệ — dừng khởi động', moTaLoi(loi));
+  process.exit(1);
+}
 
 const app = dungApp();
 const server = app.listen(env.PORT, () => {

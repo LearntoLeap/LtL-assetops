@@ -3,6 +3,10 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './env.js';
 import { healthRouter } from './modules/health/health.routes.js';
+import { authRouter } from './modules/auth/auth.routes.js';
+import { nguoiDungRouter } from './modules/nguoi-dung/nguoi-dung.routes.js';
+import { diaDiemRouter } from './modules/dia-diem/dia-diem.routes.js';
+import { vuotQuyenGpsRouter } from './modules/vuot-quyen-gps/vuot-quyen-gps.routes.js';
 import { khongTimThayRoute, xuLyLoi } from './middleware/loi.js';
 
 export function dungApp(): Express {
@@ -10,6 +14,8 @@ export function dungApp(): Express {
 
   app.set('trust proxy', 1); // aaPanel reverse proxy đứng trước
   app.disable('x-powered-by');
+  // Không tiết lộ ETag của phản hồi JSON có dữ liệu nhạy cảm
+  app.set('etag', false);
 
   app.use(
     helmet({
@@ -36,6 +42,10 @@ export function dungApp(): Express {
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
   app.use('/api', healthRouter);
+  app.use('/api/auth', authRouter);
+  app.use('/api/nguoi-dung', nguoiDungRouter);
+  app.use('/api/dia-diem', diaDiemRouter);
+  app.use('/api/vuot-quyen-gps', vuotQuyenGpsRouter);
 
   app.use(khongTimThayRoute);
   app.use(xuLyLoi);

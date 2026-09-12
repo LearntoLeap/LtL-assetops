@@ -15,8 +15,15 @@ const luocDo = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET phải dài ít nhất 32 ký tự').optional(),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET phải dài ít nhất 32 ký tự').optional(),
-  JWT_ACCESS_TTL: z.string().default('15m'),
-  JWT_REFRESH_TTL: z.string().default('30d'),
+  // Định dạng của jsonwebtoken: số giây, hoặc số kèm đơn vị (15m, 12h, 30d…).
+  JWT_ACCESS_TTL: z
+    .string()
+    .regex(/^\d+(ms|s|m|h|d|w|y)?$/, 'JWT_ACCESS_TTL phải dạng 900, 15m, 12h, 30d…')
+    .default('15m'),
+  JWT_REFRESH_TTL: z
+    .string()
+    .regex(/^\d+(ms|s|m|h|d|w|y)?$/, 'JWT_REFRESH_TTL phải dạng 900, 15m, 12h, 30d…')
+    .default('30d'),
 
   UPLOAD_DIR: z.string().default('./uploads'),
   UPLOAD_MAX_BYTES: soNguyenDuong(10 * 1024 * 1024),
