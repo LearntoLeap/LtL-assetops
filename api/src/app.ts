@@ -10,6 +10,9 @@ import { vuotQuyenGpsRouter } from './modules/vuot-quyen-gps/vuot-quyen-gps.rout
 import { danhMucRouter } from './modules/danh-muc/danh-muc.routes.js';
 import { thietBiRouter } from './modules/thiet-bi/thiet-bi.routes.js';
 import { nhapXuatRouter } from './modules/nhap-xuat/nhap-xuat.routes.js';
+import { anhRouter } from './modules/anh/anh.routes.js';
+import { yeuCauRouter } from './modules/yeu-cau/yeu-cau.routes.js';
+import { nhatKyRouter } from './modules/nhat-ky/nhat-ky.routes.js';
 import { khongTimThayRoute, xuLyLoi } from './middleware/loi.js';
 
 export function dungApp(): Express {
@@ -52,6 +55,9 @@ export function dungApp(): Express {
   app.use('/api/danh-muc', danhMucRouter);
   app.use('/api/thiet-bi', thietBiRouter);
   app.use('/api/nhap-xuat', nhapXuatRouter);
+  app.use('/api/anh', anhRouter);
+  app.use('/api/yeu-cau', yeuCauRouter);
+  app.use('/api/nhat-ky', nhatKyRouter);
 
   app.use(khongTimThayRoute);
   app.use(xuLyLoi);

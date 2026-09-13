@@ -44,6 +44,19 @@ thietBiRouter.get(
   }),
 );
 
+/**
+ * Tra cứu rút gọn theo mã — dùng khi LẬP YÊU CẦU: người lập phải gõ được mã
+ * thiết bị mình muốn mượn, dù thiết bị đó chưa thuộc phạm vi dữ liệu của họ.
+ * Chỉ trả thông tin nhận dạng, không trả giá trị/tồn kho/lịch sử.
+ */
+thietBiRouter.get(
+  '/tra-cuu/:code',
+  batAsync(async (req, res) => {
+    const code = maThietBi.parse(req.params['code']);
+    res.json({ ok: true, thietBi: await dv.traCuuNhanh(code) });
+  }),
+);
+
 thietBiRouter.get(
   '/:id',
   batAsync(async (req, res) => {

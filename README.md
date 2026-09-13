@@ -27,7 +27,7 @@ npm workspaces: chỉ cần `npm install` một lần ở `taisan/` là đủ ch
 | 1 | Monorepo, lược đồ Prisma đầy đủ, migration, dữ liệu mẫu, README | ✅ Xong |
 | 2 | Auth JWT, phân quyền middleware, quản lý người dùng, khoá GPS vai trò KHO | ✅ Xong |
 | 3 | CRUD thiết bị/địa điểm, import–export Excel, sinh & quét QR | ✅ Xong |
-| 4 | Yêu cầu → duyệt → xuất/nhập kho, upload ảnh, movements, audit log, Socket.IO | ⏳ Chưa |
+| 4 | Yêu cầu → duyệt → xuất/nhập kho, upload ảnh, movements, audit log, Socket.IO | ✅ Xong |
 | 5 | BBBG (sinh, in, PDF, xác nhận), kiểm kê, báo hỏng | ⏳ Chưa |
 | 6 | Giao diện KIOSK, màn hình Tablet, dashboard, hoàn thiện UI | ⏳ Chưa |
 
@@ -406,6 +406,114 @@ phân biệt rõ:
 - khi **sửa**: chuỗi rỗng = "xoá giá trị", còn bỏ hẳn trường mới là "giữ nguyên".
 
 Nhờ vậy xoá được số điện thoại nhập nhầm, thay vì bấm lưu mà không có gì xảy ra.
+
+## Luồng yêu cầu, xuất/nhập kho và ảnh (giai đoạn 4)
+
+### Vòng đời một yêu cầu
+
+```
+Nháp ──gửi duyệt──► Chờ duyệt ──duyệt──► Đã duyệt ──xuất/nhập kho──► Đã hoàn tất
+                        │                                │
+                        └──từ chối──► Từ chối             └─(phân bổ/luân chuyển)─► Đã xuất
+                                                              (chờ bên nhận xác nhận — GĐ5)
+```
+
+### Ba chốt chặn khi hoàn tất xuất/nhập kho
+
+Cả ba đều nằm ở **service phía server**, không phải ở giao diện:
+
+1. **Phải đã duyệt.** Yêu cầu chưa ở trạng thái `DA_DUYET` thì API trả 422
+   `CHUA_DUOC_DUYET` — không thứ gì rời kho (nguyên tắc bất biến #2).
+2. **Phải có ảnh chụp thực tế.** Mỗi dòng thiết bị bắt buộc ít nhất một ảnh, đúng
+   loại (`ANH_XUAT` khi xuất, `ANH_NHAN` khi nhận), và **chưa dùng cho lần
+   xuất/nhập nào khác** — không tái sử dụng ảnh cũ (nguyên tắc bất biến #3).
+3. **Mã quét phải khớp.** Mã đọc từ nhãn (quét QR hoặc gõ tay) phải trùng mã
+   thiết bị trong yêu cầu, nếu không API trả 422 `MA_KHONG_KHOP` — chặn cầm
+   nhầm thiết bị.
+
+Màn hình kho khoá nút *Hoàn tất* cho tới khi mọi dòng đủ **mã + ảnh**, nhưng đó
+chỉ là tiện lợi: gọi thẳng API vẫn bị chặn y hệt.
+
+### Endpoint
+
+| Method | Đường dẫn | Ai gọi được |
+|---|---|---|
+| POST/GET | `/api/yeu-cau` | mọi vai trò (danh sách lọc theo phạm vi) |
+| GET/PATCH/DELETE | `/api/yeu-cau/:id` | xem theo phạm vi; sửa/xoá chỉ khi còn Nháp |
+| POST | `/api/yeu-cau/:id/gui-duyet` | người tạo (hoặc `ADMIN`) |
+| POST | `/api/yeu-cau/:id/duyet` · `/tu-choi` | `ADMIN`, `VAN_HANH` — **không ai tự duyệt yêu cầu của mình** |
+| POST | `/api/yeu-cau/:id/xuat-kho` · `/nhap-kho` | `ADMIN`, `VAN_HANH`, `KHO` |
+| POST | `/api/anh` | đã đăng nhập (nén về WebP ≤1600px) |
+| GET | `/api/anh/:id` | đã đăng nhập, **lọc theo phạm vi dữ liệu** |
+| GET | `/api/nhat-ky` · `/nhat-ky/canh-bao` | `ADMIN`, `VAN_HANH` — **chỉ đọc** |
+| POST | `/api/nhat-ky/canh-bao/:id/xu-ly` | `ADMIN`, `VAN_HANH` |
+| GET | `/api/thiet-bi/tra-cuu/:code` | đã đăng nhập — tra cứu rút gọn để lập yêu cầu |
+
+### Vì sao có `/tra-cuu/:code` riêng
+
+Nhân sự phòng ban muốn **mượn** một thiết bị thì phải nhập được mã của nó, mà
+thiết bị đó dĩ nhiên chưa thuộc phạm vi dữ liệu của họ. Endpoint này trả vừa đủ
+để biết gõ đúng mã (tên, loại, tình trạng, đang ở đâu) — **không** trả giá trị,
+tồn kho hay lịch sử, và **không** cho duyệt danh sách toàn kho.
+
+### Thiết bị đi đâu sau khi xuất
+
+| Loại yêu cầu | Movement | Vị trí thiết bị | Trạng thái phân bổ |
+|---|---|---|---|
+| Xuất kho | kho → điểm đến | đổi sang điểm đến | suy từ loại điểm đến |
+| Cho mượn (đối tác) | kho → điểm đối tác | đổi sang điểm đối tác | Cho mượn |
+| **Cho mượn (nhân sự)** | kho → `NULL` | **rời điểm lưu trữ**, gắn người giữ | Cho mượn |
+| Phân bổ về trường | **chưa ghi** | giữ nguyên | Đang vận chuyển |
+| Luân chuyển trường ↔ trường | **chưa ghi** | giữ nguyên | Đang vận chuyển |
+| Nhập kho / Trả về kho | vị trí cũ → kho | đổi về kho | Tại kho |
+
+Cho **nhân sự** mượn cũng ghi movement với `to_location_id = NULL`: thiết bị vẫn
+là của công ty nhưng **đã rời mạng lưới điểm lưu trữ** — nó nằm trong tay một
+người. Nhờ vậy tồn kho tại kho giảm đúng, và phiếu kiểm kê tại kho không đi tìm
+một thiết bị đang ở nhà ai đó. Cột `holder_user_id` cho biết đang ở chỗ ai; lúc
+trả, movement `NULL → kho` khôi phục tồn.
+
+Phân bổ và luân chuyển **chưa ghi movement lúc xuất** (luồng C): hàng còn trên
+đường, quyền sở hữu chỉ đổi khi bên nhận xác nhận biên bản bàn giao — làm ở GĐ5.
+
+### Ảnh
+
+- Nén về WebP, cạnh dài nhất `UPLOAD_MAX_EDGE` (mặc định 1600px), xoay theo EXIF.
+  Ảnh điện thoại 4–8MB thường còn vài trăm KB mà vẫn **đọc rõ mã trên nhãn** —
+  điểm mấu chốt, vì ảnh là bằng chứng.
+- Lưu ở `api/uploads/<năm>/<tháng>/`, tên file ngẫu nhiên, **ngoài thư mục web
+  tĩnh**. Chỉ đọc được qua `GET /api/anh/:id` có xác thực và lọc theo phạm vi.
+- Web tải ảnh về dạng **blob kèm header Authorization** rồi mới gắn vào `<img>`.
+  Cố tình không nhét token vào query string — nginx/aaPanel ghi nguyên URL vào
+  access log, token sẽ nằm lù lù trong file log.
+
+### Realtime (Socket.IO)
+
+Dùng **chung cổng** với API nên aaPanel chỉ phải reverse proxy một cổng (nhớ các
+dòng `proxy_set_header Upgrade` ở mục reverse proxy phía trên).
+
+Client gửi access token lúc bắt tay; server xác thực, đọc lại vai trò từ CSDL rồi
+xếp vào phòng theo vai trò. Server **chỉ phát tín hiệu** (id, mã, trạng thái),
+không phát dữ liệu nghiệp vụ — màn hình nhận tín hiệu thì gọi lại API để lấy dữ
+liệu đã lọc theo phạm vi. Nhờ vậy realtime không trở thành đường rò dữ liệu.
+
+> `exec_mode: fork` + `instances: 1` trong `ecosystem.config.cjs` là **bắt buộc**
+> với Socket.IO: chạy nhiều tiến trình thì sự kiện phát ở tiến trình này không
+> tới được client đang nối vào tiến trình kia (cần Redis adapter).
+
+### Cảnh báo tự sinh
+
+| Khi nào | Loại cảnh báo |
+|---|---|
+| Tình trạng lúc trả khác lúc xuất | `TINH_TRANG_THAY_DOI` (mức Cao nếu Hỏng/Mất) |
+| Tài khoản kho đăng nhập ngoài bán kính GPS | `DANG_NHAP_NGOAI_VUNG` |
+
+### Tối ưu giao diện
+
+Các màn hình được **tách gói theo route** (`React.lazy`): mở trang đăng nhập chỉ
+tải phần đăng nhập, không kéo theo thư viện QR, ảnh và realtime. Gói khởi động
+giảm từ ~470KB xuống ~274KB (89KB sau nén); riêng bộ giải mã QR 135KB chỉ tải khi
+vào màn hình có quét mã.
 
 ## Lược đồ dữ liệu
 

@@ -13,6 +13,8 @@ import {
 } from 'react';
 import type { VaiTro } from '@ltl/taisan-shared';
 import { datXuLyMatPhien, goiApi, kho, LoiApi } from '@/lib/api';
+import { xoaCacheAnh } from '@/lib/anh';
+import { dongSocket } from '@/hooks/useRealtime';
 import type { ViTri } from '@/lib/vi-tri';
 
 export interface NguoiDung {
@@ -115,6 +117,8 @@ export function CungCapAuth({ children }: { children: ReactNode }) {
       if (!(loi instanceof LoiApi)) throw loi;
     } finally {
       kho.xoa();
+      xoaCacheAnh();
+      dongSocket();
       datNguoiDung(null);
     }
   }, []);

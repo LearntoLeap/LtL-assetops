@@ -1,6 +1,19 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Boxes, LayoutGrid, LogOut, MapPin, Menu, Package, ShieldCheck, Upload, Users, X } from 'lucide-react';
+import {
+  Boxes,
+  ClipboardList,
+  LayoutGrid,
+  LogOut,
+  MapPin,
+  Menu,
+  Package,
+  ScrollText,
+  ShieldCheck,
+  Upload,
+  Users,
+  X,
+} from 'lucide-react';
 import { NHAN_VAI_TRO } from '@ltl/taisan-shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,9 +32,11 @@ interface MucMenu {
 const MENU: readonly MucMenu[] = [
   { duongDan: '/', nhan: 'Tổng quan', icon: Boxes },
   { duongDan: '/thiet-bi', nhan: 'Thiết bị', icon: Package },
+  { duongDan: '/yeu-cau', nhan: 'Yêu cầu', icon: ClipboardList },
   { duongDan: '/dia-diem', nhan: 'Điểm lưu trữ', icon: MapPin },
   { duongDan: '/danh-muc', nhan: 'Danh mục', icon: LayoutGrid, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/nhap-lieu', nhan: 'Nhập hàng loạt', icon: Upload, vaiTro: VAI_TRO_NHAP_LIEU },
+  { duongDan: '/nhat-ky', nhan: 'Nhật ký', icon: ScrollText, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/nguoi-dung', nhan: 'Tài khoản', icon: Users, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/khoa-vi-tri', nhan: 'Khoá vị trí kho', icon: MapPin, vaiTro: ['ADMIN'] },
   { duongDan: '/doi-mat-khau', nhan: 'Đổi mật khẩu', icon: ShieldCheck },

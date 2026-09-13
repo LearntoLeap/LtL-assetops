@@ -180,7 +180,10 @@ export function ThietBiChiTiet() {
               <Muc nhan="Giá trị">{tienVN(t.value)} đ</Muc>
               <Muc nhan="Mục đích sử dụng">{NHAN_MUC_DICH_SU_DUNG[t.purpose]}</Muc>
               <Muc nhan="Kiểu quản lý">{NHAN_KIEU_QUAN_LY[t.trackingType]}</Muc>
-              <Muc nhan="Vị trí hiện tại">{t.currentLocation?.name ?? '—'}</Muc>
+              <Muc nhan="Vị trí hiện tại">
+                {t.currentLocation?.name ??
+                  (t.holder ? `Đang do ${t.holder.fullName} giữ` : '—')}
+              </Muc>
               <Muc nhan="Tình trạng">
                 <Badge variant={MAU_TINH_TRANG[t.condition]}>{NHAN_TINH_TRANG[t.condition]}</Badge>
               </Muc>
@@ -213,10 +216,20 @@ export function ThietBiChiTiet() {
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-semibold tabular-nums">{duLieu.tonKho.tongTon}</p>
-              <p className="mb-3 text-sm text-muted-foreground">đơn vị còn trong hệ thống</p>
+              <p className="mb-3 text-sm text-muted-foreground">
+                đơn vị đang nằm tại các điểm lưu trữ
+              </p>
+              {t.holder ? (
+                <Alert variant="info" className="mb-3">
+                  Thiết bị đã rời điểm lưu trữ và đang do <strong>{t.holder.fullName}</strong> giữ,
+                  nên không tính vào tồn của điểm nào. Khi trả về kho, tồn sẽ được khôi phục.
+                </Alert>
+              ) : null}
               <ul className="space-y-1 text-sm">
                 {duLieu.tonKho.theoDiaDiem.length === 0 ? (
-                  <li className="text-muted-foreground">Không còn tồn ở điểm nào.</li>
+                  <li className="text-muted-foreground">
+                    {t.holder ? 'Đang trong tay người giữ.' : 'Không còn tồn ở điểm nào.'}
+                  </li>
                 ) : (
                   duLieu.tonKho.theoDiaDiem.map((d) => (
                     <li key={d.locationId} className="flex justify-between gap-3 border-b py-1">

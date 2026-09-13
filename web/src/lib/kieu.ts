@@ -1,6 +1,9 @@
 /** Kiểu dữ liệu API dùng chung cho các trang. */
 import type {
   KieuQuanLy,
+  LoaiCanhBao,
+  MucDoCanhBao,
+  TrangThaiYeuCau,
   LoaiDiChuyen,
   LoaiDiemLuuTru,
   LoaiYeuCau,
@@ -120,4 +123,75 @@ export interface ChiTietThietBi {
     theoDiaDiem: Array<{ locationId: string; tenDiaDiem: string; ton: number }>;
   };
   lichSu: DongLichSu[];
+}
+
+export interface DongYeuCau {
+  id: string;
+  quantity: number;
+  note: string | null;
+  asset: {
+    id: string;
+    code: string;
+    name: string;
+    trackingType: KieuQuanLy;
+    condition: TinhTrang;
+    allocationStatus: TrangThaiPhanBo;
+    currentLocation: { id: string; name: string } | null;
+  };
+}
+
+export interface YeuCau {
+  id: string;
+  code: string;
+  type: LoaiYeuCau;
+  status: TrangThaiYeuCau;
+  reason: string;
+  destinationNote: string | null;
+  expectedReturnAt: string | null;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  rejectionNote: string | null;
+  issuedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: { id: string; fullName: string; email: string; role: VaiTro; department: string | null };
+  approvedBy: { id: string; fullName: string } | null;
+  fromLocation: { id: string; code: string; name: string; type: LoaiDiemLuuTru } | null;
+  toLocation: { id: string; code: string; name: string; type: LoaiDiemLuuTru } | null;
+  items: DongYeuCau[];
+}
+
+export interface CanhBao {
+  id: string;
+  type: LoaiCanhBao;
+  severity: MucDoCanhBao;
+  title: string;
+  message: string;
+  entityType: string | null;
+  entityId: string | null;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
+  createdAt: string;
+  asset: { id: string; code: string; name: string } | null;
+  request: { id: string; code: string } | null;
+  resolvedBy: { id: string; fullName: string } | null;
+}
+
+export interface DongNhatKy {
+  id: string;
+  actorEmail: string | null;
+  actorRole: VaiTro | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  beforeValue: unknown;
+  afterValue: unknown;
+  photoIds: unknown;
+  ip: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distanceM: number | null;
+  note: string | null;
+  createdAt: string;
 }

@@ -319,7 +319,7 @@ export function ThietBiList() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">{t.category.name}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {t.currentLocation?.name ?? '—'}
+                        {t.currentLocation?.name ?? (t.holder ? 'Ngoài điểm lưu trữ' : '—')}
                         {t.holder ? (
                           <span className="block text-xs">Giữ: {t.holder.fullName}</span>
                         ) : null}

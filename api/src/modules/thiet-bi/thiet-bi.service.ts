@@ -166,6 +166,35 @@ export async function timTheoMa(nguoiDung: NguoiDungDaXacThuc, code: string) {
   return xemMot(nguoiDung, thietBi.id);
 }
 
+/**
+ * Tra cứu RÚT GỌN theo mã — mọi vai trò đã đăng nhập đều gọi được.
+ *
+ * Vì sao không dùng phạm vi như `timTheoMa`: nhân sự phòng ban muốn MƯỢN một
+ * thiết bị thì bắt buộc phải nhập được mã của nó, mà thiết bị đó dĩ nhiên chưa
+ * thuộc phạm vi của họ. Endpoint này chỉ trả đủ thông tin để người lập yêu cầu
+ * biết mình gõ đúng mã (tên, loại, tình trạng, đang ở đâu) — KHÔNG trả giá trị,
+ * tồn kho hay lịch sử, và KHÔNG cho duyệt danh sách toàn kho.
+ */
+export async function traCuuNhanh(code: string) {
+  const chuanHoa = code.trim().toUpperCase();
+  const thietBi = await prisma.asset.findUnique({
+    where: { code: chuanHoa },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      trackingType: true,
+      condition: true,
+      allocationStatus: true,
+      isActive: true,
+      category: { select: { name: true } },
+      currentLocation: { select: { name: true } },
+    },
+  });
+  if (!thietBi) throw loi404(`Không có thiết bị nào mang mã ${chuanHoa}.`);
+  return thietBi;
+}
+
 export async function tao(
   duLieu: DuLieuTaoThietBi,
   actor: NguoiThaoTac,
