@@ -3,8 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "description": "Hệ thống quản lý tài sản & kho thiết bị — Learn to Leap",
-  "engines": { "node": ">=20" },
-  "workspaces": ["shared", "api", "web"],
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "shared",
+    "api",
+    "web"
+  ],
   "scripts": {
     "build": "npm run build:shared && npm run build:api && npm run build:web",
     "build:shared": "npm -w @ltl/taisan-shared run build",
@@ -16,7 +22,8 @@
     "prisma:validate": "npm -w @ltl/taisan-api run prisma:validate",
     "prisma:generate": "npm -w @ltl/taisan-api run prisma:generate",
     "migrate:deploy": "npm -w @ltl/taisan-api run migrate:deploy",
-    "seed": "npm -w @ltl/taisan-api run seed"
+    "seed": "npm -w @ltl/taisan-api run seed",
+    "vercel-build": "npm run build:web"
   },
   "devDependencies": {
     "typescript": "^5.7.3"
