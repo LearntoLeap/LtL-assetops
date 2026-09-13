@@ -28,7 +28,7 @@ npm workspaces: chỉ cần `npm install` một lần ở `taisan/` là đủ ch
 | 2 | Auth JWT, phân quyền middleware, quản lý người dùng, khoá GPS vai trò KHO | ✅ Xong |
 | 3 | CRUD thiết bị/địa điểm, import–export Excel, sinh & quét QR | ✅ Xong |
 | 4 | Yêu cầu → duyệt → xuất/nhập kho, upload ảnh, movements, audit log, Socket.IO | ✅ Xong |
-| 5 | BBBG (sinh, in, PDF, xác nhận), kiểm kê, báo hỏng | ⏳ Chưa |
+| 5 | BBBG (sinh, in A4/PDF, xác nhận), kiểm kê, báo hỏng | ✅ Xong |
 | 6 | Giao diện KIOSK, màn hình Tablet, dashboard, hoàn thiện UI | ⏳ Chưa |
 
 ---
@@ -507,6 +507,9 @@ liệu đã lọc theo phạm vi. Nhờ vậy realtime không trở thành đư�
 |---|---|
 | Tình trạng lúc trả khác lúc xuất | `TINH_TRANG_THAY_DOI` (mức Cao nếu Hỏng/Mất) |
 | Tài khoản kho đăng nhập ngoài bán kính GPS | `DANG_NHAP_NGOAI_VUNG` |
+| Chốt phiếu kiểm kê có mã lệch | `CHENH_LECH_KIEM_KE` |
+| Tạo phiếu báo hỏng | `BAO_HONG` (mức Cao nếu đề xuất Hỏng/Mất) |
+| Bên nhận từ chối biên bản bàn giao | `BAO_HONG` cho nhóm duyệt |
 
 ### Tối ưu giao diện
 
@@ -514,6 +517,106 @@ Các màn hình được **tách gói theo route** (`React.lazy`): mở trang đ
 tải phần đăng nhập, không kéo theo thư viện QR, ảnh và realtime. Gói khởi động
 giảm từ ~470KB xuống ~274KB (89KB sau nén); riêng bộ giải mã QR 135KB chỉ tải khi
 vào màn hình có quét mã.
+
+## Biên bản bàn giao, kiểm kê và báo hỏng (giai đoạn 5)
+
+### Vì sao biên bản là một bước riêng, không gộp vào lúc xuất kho
+
+Luân chuyển và phân bổ về trường đi qua **hai mốc tách rời**:
+
+| Mốc | Ai làm | Thiết bị lúc đó |
+|---|---|---|
+| Xuất kho (GĐ 4) | Kho — quét mã + chụp ảnh | `DANG_VAN_CHUYEN`, **vị trí chưa đổi** |
+| Bên nhận xác nhận biên bản | Tài khoản của đúng đơn vị nhận | Movement mới, **vị trí đổi sang nơi nhận** |
+
+Hàng đã rời kho nhưng chưa ai ở đầu nhận ký nhận thì chưa thuộc về ai — trong
+thời gian đó tồn kho vẫn đứng tên đơn vị gửi. Đây là lý do `xacNhan()` mới là nơi
+ghi `movement` và cập nhật `current_location_id`, không phải lúc xuất kho. Xác
+nhận xong thì yêu cầu tự chuyển `DA_HOAN_TAT`.
+
+Bên nhận **từ chối** thì biên bản sang `TU_CHOI`, không sinh movement, hàng vẫn
+thuộc bên giao, và hệ thống tạo cảnh báo cho nhóm duyệt. Yêu cầu đó lập được biên
+bản mới (kiểm trùng chỉ tính biên bản chưa bị từ chối).
+
+### Ai bấm được gì
+
+| Thao tác | Vai trò | Chốt ở server |
+|---|---|---|
+| Lập / sửa / gửi xác nhận biên bản | ADMIN, VAN_HANH, KHO | `yeuCauVaiTro` |
+| Xác nhận / từ chối biên bản | Tài khoản thuộc **đúng điểm nhận** (ADMIN, VAN_HANH xác nhận hộ được) | So `locationId` với `receiverLocationId` trong service |
+| Mở đợt kiểm kê, chốt phiếu, huỷ đợt | ADMIN, VAN_HANH | `yeuCauNguoiDuyet` |
+| Ghi kết quả thực đếm | ADMIN, VAN_HANH, KHO | `yeuCauVaiTro` |
+| Báo hỏng | Mọi vai trò, trong phạm vi thiết bị của mình | `dieuKienTaiSan` |
+| Xử lý / đóng phiếu báo hỏng | ADMIN, VAN_HANH | `yeuCauNguoiDuyet` |
+
+Điểm trường chỉ thấy biên bản gửi cho mình hoặc do mình lập; phiếu kiểm kê chỉ
+thấy của địa điểm mình.
+
+### Endpoint
+
+| Method | Đường dẫn | Việc |
+|---|---|---|
+| GET | `/api/bbbg` | Danh sách (lọc trạng thái, nơi nhận, từ khoá) |
+| GET | `/api/bbbg/:id` | Chi tiết |
+| POST | `/api/bbbg` | Lập từ một yêu cầu đã xuất kho |
+| PATCH | `/api/bbbg/:id` | Sửa nội dung khi còn là bản nháp |
+| POST | `/api/bbbg/:id/gui-xac-nhan` | Nháp → Chờ bên nhận xác nhận |
+| POST | `/api/bbbg/:id/xac-nhan` | **Bên nhận** ký nhận → đổi vị trí thiết bị |
+| POST | `/api/bbbg/:id/tu-choi` | Bên nhận từ chối, kèm lý do |
+| GET | `/api/kiem-ke` · `/api/kiem-ke/:id` | Danh sách / chi tiết kèm báo cáo chênh lệch |
+| POST | `/api/kiem-ke` | Mở đợt — chụp lại tồn kho của địa điểm |
+| POST | `/api/kiem-ke/:id/muc/:itemId` | Ghi thực đếm một dòng (kèm ảnh) |
+| POST | `/api/kiem-ke/:id/gui-chot` · `/chot` · `/huy` | Gửi chốt / chốt & điều chỉnh / huỷ |
+| GET | `/api/kiem-ke/:id/bao-cao.xlsx` | Xuất Excel báo cáo chênh lệch |
+| GET | `/api/bao-hong` · `/api/bao-hong/:id` | Danh sách (đang mở / đã đóng) · chi tiết |
+| POST | `/api/bao-hong` | Tạo phiếu — **bắt buộc ≥ 1 ảnh** loại `BAO_HONG` |
+| POST | `/api/bao-hong/:id/xu-ly` | Kết luận tình trạng, đóng phiếu |
+| GET | `/api/dia-diem/noi-den` | Danh sách nơi đến (chỉ mã/tên) — xem bên dưới |
+
+### Vì sao có `/api/dia-diem/noi-den` riêng
+
+`/api/dia-diem` lọc theo phạm vi vai trò: điểm trường chỉ thấy trường mình. Nhưng
+luân chuyển giữa hai trường bắt buộc trường A **chọn được trường B** làm nơi đến.
+Nên có một endpoint riêng trả **đúng bốn trường** `id`, `code`, `name`, `type` của
+mọi điểm đang hoạt động, cho mọi tài khoản đã đăng nhập — không trả địa chỉ, người
+liên hệ, toạ độ hay bán kính GPS. Cùng lý do như `/api/thiet-bi/tra-cuu/:code`:
+để **lập được** phiếu thì phải nhìn thấy mã, còn **xem dữ liệu** thì vẫn phải qua
+danh sách đã lọc phạm vi.
+
+### Bản in A4
+
+`/bbbg/:id/in` nằm **ngoài bố cục ứng dụng** (không có header, menu, footer) nên
+bản in không dính giao diện. Trang luôn là chữ đen trên giấy trắng dù người dùng
+đang bật chế độ tối, theo đúng thể thức văn bản: quốc hiệu – tiêu ngữ, tên biên
+bản, số biên bản, mục I bên giao, mục II bên nhận, bảng thiết bị có dòng tổng
+cộng, cam kết, chỗ ký hai bên.
+
+Xuất PDF dùng **hộp thoại in của trình duyệt** (chọn máy in “Lưu thành PDF”):
+`@page { size: A4 }` đã đặt sẵn, nên không cần thêm thư viện sinh PDF vào gói web.
+
+### Kiểm kê: chênh lệch tính khi đọc, điều chỉnh ghi bằng movement
+
+Mở đợt kiểm kê là **chụp lại** tồn kho và tình trạng của từng mã tại địa điểm
+(`system_quantity`, `system_condition`). Người đi kiểm nhập số thực đếm, tình trạng
+thực tế, ảnh và ghi chú.
+
+Cột chênh lệch **không tồn tại trong CSDL** — server tính khi đọc
+(`dungDongBaoCao`). Lúc chốt, mỗi mã lệch sinh một movement
+`DIEU_CHINH_KIEM_KE` (thiếu thì `from_location_id`, thừa thì `to_location_id`), mọi
+điều chỉnh vào `audit_logs`, và hệ thống tạo một cảnh báo `CHENH_LECH_KIEM_KE`.
+Tồn kho vẫn luôn suy ra từ `movements` — không có chỗ nào sửa tay con số tồn.
+
+Phiếu loại trừ thiết bị đang có `holder_user_id` (nhân sự đang giữ) hoặc đang
+`DANG_VAN_CHUYEN`: hai loại này không có mặt ở địa điểm để đếm. Mỗi địa điểm chỉ
+có một đợt chưa chốt tại một thời điểm.
+
+### Báo hỏng dùng lại bảng `requests`
+
+`type = BAO_HONG`, vào thẳng `CHO_DUYET` (không qua bản nháp) và **bắt buộc có ảnh**
+— không có ảnh thì không biết hỏng thế nào, nên API trả 400 ngay ở tầng lược đồ.
+Phiếu tự sinh cảnh báo `BAO_HONG` cho nhóm duyệt (mức Cao nếu người báo đánh giá là
+Hỏng/Mất). Khi xử lý, kết luận được ghi vào `audit_logs` và vào `resolution_note` của
+cảnh báo, đồng thời cập nhật `assets.condition`.
 
 ## Lược đồ dữ liệu
 

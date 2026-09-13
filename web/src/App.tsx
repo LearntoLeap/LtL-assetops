@@ -28,6 +28,15 @@ const YeuCauChiTiet = lazy(() => import('@/features/yeu-cau/YeuCauChiTiet').then
 const FormYeuCau = lazy(() => import('@/features/yeu-cau/FormYeuCau').then((m) => ({ default: m.FormYeuCau })));
 const ManHinhKho = lazy(() => import('@/features/kho/ManHinhKho').then((m) => ({ default: m.ManHinhKho })));
 const NhatKyHome = lazy(() => import('@/features/nhat-ky/NhatKyHome').then((m) => ({ default: m.NhatKyHome })));
+const BienBanList = lazy(() => import('@/features/bbbg/BienBanList').then((m) => ({ default: m.BienBanList })));
+const BienBanChiTiet = lazy(() => import('@/features/bbbg/BienBanChiTiet').then((m) => ({ default: m.BienBanChiTiet })));
+const FormBienBan = lazy(() => import('@/features/bbbg/FormBienBan').then((m) => ({ default: m.FormBienBan })));
+const InBienBan = lazy(() => import('@/features/bbbg/InBienBan').then((m) => ({ default: m.InBienBan })));
+const KiemKeList = lazy(() => import('@/features/kiem-ke/KiemKeList').then((m) => ({ default: m.KiemKeList })));
+const KiemKeChiTiet = lazy(() => import('@/features/kiem-ke/KiemKeChiTiet').then((m) => ({ default: m.KiemKeChiTiet })));
+const BaoHongList = lazy(() => import('@/features/bao-hong/BaoHongList').then((m) => ({ default: m.BaoHongList })));
+const BaoHongChiTiet = lazy(() => import('@/features/bao-hong/BaoHongChiTiet').then((m) => ({ default: m.BaoHongChiTiet })));
+const FormBaoHong = lazy(() => import('@/features/bao-hong/FormBaoHong').then((m) => ({ default: m.FormBaoHong })));
 
 function DangTai({ chu = 'Đang tải…' }: { chu?: string }) {
   return (
@@ -77,6 +86,16 @@ export default function App() {
             <ChuaDangNhap>
               <DangNhap />
             </ChuaDangNhap>
+          }
+        />
+
+        {/* Bản in A4 nằm ngoài bố cục ứng dụng để không in kèm header và menu. */}
+        <Route
+          path="/bbbg/:id/in"
+          element={
+            <CanDangNhap>
+              <InBienBan />
+            </CanDangNhap>
           }
         />
 
@@ -138,6 +157,27 @@ export default function App() {
               </CanDangNhap>
             }
           />
+
+          {/* Biên bản bàn giao — bên nhận phải xác nhận thì vị trí mới đổi */}
+          <Route path="bbbg" element={<BienBanList />} />
+          <Route
+            path="bbbg/moi"
+            element={
+              <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+                <FormBienBan />
+              </CanDangNhap>
+            }
+          />
+          <Route path="bbbg/:id" element={<BienBanChiTiet />} />
+
+          {/* Kiểm kê — mở đợt và chốt là việc của nhóm quản lý, server kiểm lại */}
+          <Route path="kiem-ke" element={<KiemKeList />} />
+          <Route path="kiem-ke/:id" element={<KiemKeChiTiet />} />
+
+          {/* Báo hỏng — mọi vai trò báo được thiết bị trong phạm vi của mình */}
+          <Route path="bao-hong" element={<BaoHongList />} />
+          <Route path="bao-hong/moi" element={<FormBaoHong />} />
+          <Route path="bao-hong/:id" element={<BaoHongChiTiet />} />
 
           <Route path="dia-diem" element={<DiaDiemList />} />
           <Route

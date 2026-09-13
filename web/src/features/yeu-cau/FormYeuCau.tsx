@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { NutQuetQR } from '@/components/QuetQR';
 import { goiApi, LoiApi } from '@/lib/api';
-import type { DiaDiem, ThietBi, TrangDuLieu, YeuCau } from '@/lib/kieu';
+import type { NoiDen, ThietBi, TrangDuLieu, YeuCau } from '@/lib/kieu';
 
 /** Loại yêu cầu bắt buộc chọn nơi đến trong danh mục — khớp kiểm tra ở server. */
 const CAN_NOI_DEN: ReadonlySet<LoaiYeuCau> = new Set<LoaiYeuCau>([
@@ -35,14 +35,16 @@ export function FormYeuCau() {
   const [destinationNote, datDestinationNote] = useState('');
   const [expectedReturnAt, datExpectedReturnAt] = useState('');
   const [muc, datMuc] = useState<DongMuc[]>([{ code: '', quantity: '1' }]);
-  const [diaDiem, datDiaDiem] = useState<DiaDiem[]>([]);
+  const [diaDiem, datDiaDiem] = useState<NoiDen[]>([]);
   const [loi, datLoi] = useState<string | null>(null);
   const [dangGui, datDangGui] = useState(false);
 
   useEffect(() => {
     async function tai(): Promise<void> {
       try {
-        const kq = await goiApi<TrangDuLieu<DiaDiem>>('/api/dia-diem?chiHoatDong=true');
+        // Danh sách NƠI ĐẾN (chỉ mã/tên) chứ không phải danh sách đã lọc phạm vi:
+        // luân chuyển giữa các trường thì trường A phải chọn được trường B.
+        const kq = await goiApi<TrangDuLieu<NoiDen>>('/api/dia-diem/noi-den?chiHoatDong=true');
         datDiaDiem(kq.muc);
       } catch {
         // Thiếu danh mục điểm thì vẫn tạo được yêu cầu không cần nơi đến.

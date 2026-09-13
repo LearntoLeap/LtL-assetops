@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
+  FileSignature,
   PackageCheck,
   PackageOpen,
   Send,
@@ -127,6 +128,9 @@ export function YeuCauChiTiet() {
   const duocDuyet = yeuCau.status === 'CHO_DUYET' && laNguoiDuyet && !laNguoiTao;
   const duocXuat = yeuCau.status === 'DA_DUYET' && laKho && LOAI_XUAT.has(yeuCau.type);
   const duocNhap = yeuCau.status === 'DA_DUYET' && laKho && LOAI_NHAP.has(yeuCau.type);
+  // Biên bản bàn giao chỉ lập được sau khi hàng đã ra khỏi kho.
+  const duocLapBienBan =
+    laKho && (yeuCau.status === 'DA_XUAT' || yeuCau.status === 'DA_HOAN_TAT');
 
   return (
     <div className="space-y-4">
@@ -203,6 +207,14 @@ export function YeuCauChiTiet() {
               <Link to={`/kho/nhap/${yeuCau.id}`}>
                 <PackageCheck aria-hidden />
                 Nhập kho
+              </Link>
+            </Button>
+          ) : null}
+          {duocLapBienBan ? (
+            <Button variant="outline" asChild>
+              <Link to={`/bbbg/moi?yeuCau=${yeuCau.id}`}>
+                <FileSignature aria-hidden />
+                Lập biên bản bàn giao
               </Link>
             </Button>
           ) : null}

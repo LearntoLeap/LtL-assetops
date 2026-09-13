@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Boxes,
+  ClipboardCheck,
   ClipboardList,
+  FileSignature,
   LayoutGrid,
   LogOut,
   MapPin,
@@ -10,6 +12,7 @@ import {
   Package,
   ScrollText,
   ShieldCheck,
+  TriangleAlert,
   Upload,
   Users,
   X,
@@ -33,6 +36,9 @@ const MENU: readonly MucMenu[] = [
   { duongDan: '/', nhan: 'Tổng quan', icon: Boxes },
   { duongDan: '/thiet-bi', nhan: 'Thiết bị', icon: Package },
   { duongDan: '/yeu-cau', nhan: 'Yêu cầu', icon: ClipboardList },
+  { duongDan: '/bbbg', nhan: 'Biên bản bàn giao', icon: FileSignature },
+  { duongDan: '/bao-hong', nhan: 'Báo hỏng', icon: TriangleAlert },
+  { duongDan: '/kiem-ke', nhan: 'Kiểm kê', icon: ClipboardCheck, vaiTro: VAI_TRO_NHAP_LIEU },
   { duongDan: '/dia-diem', nhan: 'Điểm lưu trữ', icon: MapPin },
   { duongDan: '/danh-muc', nhan: 'Danh mục', icon: LayoutGrid, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/nhap-lieu', nhan: 'Nhập hàng loạt', icon: Upload, vaiTro: VAI_TRO_NHAP_LIEU },

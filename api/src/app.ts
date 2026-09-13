@@ -13,6 +13,9 @@ import { nhapXuatRouter } from './modules/nhap-xuat/nhap-xuat.routes.js';
 import { anhRouter } from './modules/anh/anh.routes.js';
 import { yeuCauRouter } from './modules/yeu-cau/yeu-cau.routes.js';
 import { nhatKyRouter } from './modules/nhat-ky/nhat-ky.routes.js';
+import { bbbgRouter } from './modules/bbbg/bbbg.routes.js';
+import { kiemKeRouter } from './modules/kiem-ke/kiem-ke.routes.js';
+import { baoHongRouter } from './modules/bao-hong/bao-hong.routes.js';
 import { khongTimThayRoute, xuLyLoi } from './middleware/loi.js';
 
 export function dungApp(): Express {
@@ -58,6 +61,9 @@ export function dungApp(): Express {
   app.use('/api/anh', anhRouter);
   app.use('/api/yeu-cau', yeuCauRouter);
   app.use('/api/nhat-ky', nhatKyRouter);
+  app.use('/api/bbbg', bbbgRouter);
+  app.use('/api/kiem-ke', kiemKeRouter);
+  app.use('/api/bao-hong', baoHongRouter);
 
   app.use(khongTimThayRoute);
   app.use(xuLyLoi);

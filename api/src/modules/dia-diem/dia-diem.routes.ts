@@ -82,6 +82,30 @@ diaDiemRouter.get(
   }),
 );
 
+/**
+ * DANH SÁCH NƠI ĐẾN — chỉ thông tin nhận dạng, mở cho mọi tài khoản đã đăng nhập.
+ *
+ * Cần cho luồng luân chuyển giữa các trường: trường A phải chọn được trường B
+ * làm nơi đến, dù trường B không nằm trong phạm vi dữ liệu của trường A. Không
+ * trả địa chỉ, người liên hệ, toạ độ hay bán kính GPS — muốn xem những thứ đó
+ * thì vẫn phải qua danh sách đã lọc phạm vi ở trên.
+ */
+diaDiemRouter.get(
+  '/noi-den',
+  batAsync(async (req, res) => {
+    const loc = luocDoLoc.parse(req.query);
+    const muc = await prisma.location.findMany({
+      where: {
+        ...(loc.type ? { type: loc.type } : {}),
+        ...(loc.chiHoatDong === 'true' ? { isActive: true } : {}),
+      },
+      select: { id: true, code: true, name: true, type: true },
+      orderBy: [{ type: 'asc' }, { name: 'asc' }],
+    });
+    res.json({ ok: true, muc, tong: muc.length });
+  }),
+);
+
 const luocDoGps = z
   .object({
     latitude: z.coerce.number().min(-90).max(90).nullable(),
