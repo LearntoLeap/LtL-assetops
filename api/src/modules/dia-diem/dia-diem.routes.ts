@@ -10,14 +10,21 @@ import { LOAI_DIEM_LUU_TRU } from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
 import { batAsync } from '../../lib/bat-async.js';
 import { boiCanh, ghiAudit } from '../../lib/audit.js';
-import { loi404 } from '../../lib/loi-http.js';
+import { loi404, loi409 } from '../../lib/loi-http.js';
 import { dieuKienDiaDiem } from '../../lib/pham-vi.js';
 import { toaDoHopLe } from '../../lib/khoang-cach.js';
+import {
+  chuoiSua,
+  chuoiTuyChon,
+  soDienThoaiSua,
+  soDienThoaiTuyChon,
+} from '../../lib/luoc-do-chung.js';
 import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
   yeuCauAdmin,
   yeuCauDangNhap,
+  yeuCauVaiTro,
 } from '../../middleware/xac-thuc.js';
 
 export const diaDiemRouter = Router();
@@ -143,5 +150,202 @@ diaDiemRouter.patch(
         longitude: sau.longitude === null ? null : Number(sau.longitude),
       },
     });
+  }),
+);
+
+// ===========================================================================
+// CRUD điểm lưu trữ (giai đoạn 3)
+// ===========================================================================
+
+const chiSuaDuoc = yeuCauVaiTro('ADMIN', 'VAN_HANH');
+
+const maDiaDiem = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .min(2, 'Mã điểm phải có ít nhất 2 ký tự.')
+  .max(64)
+  .regex(/^[A-Z0-9][A-Z0-9._-]*$/, 'Mã chỉ gồm chữ in hoa, số và các dấu . _ -');
+
+const luocDoTaoDiaDiem = z.object({
+  code: maDiaDiem,
+  name: z.string().trim().min(2, 'Tên điểm phải có ít nhất 2 ký tự.').max(191),
+  type: z.enum(LOAI_DIEM_LUU_TRU),
+  address: chuoiTuyChon(2000),
+  contactName: chuoiTuyChon(191),
+  contactPhone: soDienThoaiTuyChon,
+  note: chuoiTuyChon(2000),
+  isActive: z.boolean().default(true),
+});
+
+/** Bỏ trường = giữ nguyên; gửi chuỗi rỗng = xoá giá trị đó. */
+const luocDoSuaDiaDiem = z
+  .object({
+    name: z.string().trim().min(2, 'Tên điểm phải có ít nhất 2 ký tự.').max(191).optional(),
+    type: z.enum(LOAI_DIEM_LUU_TRU).optional(),
+    address: chuoiSua(2000),
+    contactName: chuoiSua(191),
+    contactPhone: soDienThoaiSua,
+    note: chuoiSua(2000),
+    isActive: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Không có trường nào để cập nhật.' });
+
+function donDiaDiem<T extends { latitude: unknown; longitude: unknown }>(d: T) {
+  return {
+    ...d,
+    latitude: d.latitude === null ? null : Number(d.latitude),
+    longitude: d.longitude === null ? null : Number(d.longitude),
+  };
+}
+
+diaDiemRouter.get(
+  '/:id',
+  batAsync(async (req, res) => {
+    const nguoiDung = nguoiDungHienTai(req);
+    // Vẫn chặn theo phạm vi: TRUONG không xem được điểm của trường khác.
+    const diaDiem = await prisma.location.findFirst({
+      where: { id: String(req.params['id']), ...dieuKienDiaDiem(nguoiDung) },
+      select: CHON,
+    });
+    if (!diaDiem) throw loi404('Không tìm thấy điểm lưu trữ, hoặc ngoài phạm vi của bạn.');
+    res.json({ ok: true, diaDiem: donDiaDiem(diaDiem) });
+  }),
+);
+
+diaDiemRouter.post(
+  '/',
+  chiSuaDuoc,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const duLieu = luocDoTaoDiaDiem.parse(req.body);
+    const daCo = await prisma.location.findUnique({
+      where: { code: duLieu.code },
+      select: { id: true },
+    });
+    if (daCo) throw loi409(`Mã điểm ${duLieu.code} đã tồn tại.`, { truong: 'code' });
+
+    const diaDiem = await prisma.location.create({
+      data: {
+        code: duLieu.code,
+        name: duLieu.name,
+        type: duLieu.type,
+        address: duLieu.address || null,
+        contactName: duLieu.contactName || null,
+        contactPhone: duLieu.contactPhone || null,
+        note: duLieu.note || null,
+        isActive: duLieu.isActive,
+      },
+      select: CHON,
+    });
+
+    await ghiAudit({
+      actor,
+      action: 'location.create',
+      entityType: 'location',
+      entityId: diaDiem.id,
+      afterValue: { code: diaDiem.code, name: diaDiem.name, type: diaDiem.type },
+      ...boiCanh(req),
+    });
+    res.status(201).json({ ok: true, diaDiem: donDiaDiem(diaDiem) });
+  }),
+);
+
+diaDiemRouter.patch(
+  '/:id',
+  chiSuaDuoc,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const id = String(req.params['id']);
+    const duLieu = luocDoSuaDiaDiem.parse(req.body);
+    const truoc = await prisma.location.findUnique({ where: { id }, select: CHON });
+    if (!truoc) throw loi404('Không tìm thấy điểm lưu trữ.');
+
+    // Đổi loại điểm có thể làm tài khoản KHO/TRUONG đang gắn vào đó sai phạm vi.
+    if (duLieu.type && duLieu.type !== truoc.type) {
+      const soTaiKhoan = await prisma.user.count({
+        where: { locationId: id, role: { in: ['KHO', 'TRUONG'] } },
+      });
+      if (soTaiKhoan > 0) {
+        throw loi409(
+          `Có ${soTaiKhoan} tài khoản Kho/Điểm trường đang gắn với điểm này nên không đổi được loại điểm. Hãy chuyển các tài khoản đó sang điểm khác trước.`,
+          { soTaiKhoan },
+        );
+      }
+    }
+
+    const sau = await prisma.location.update({
+      where: { id },
+      data: {
+        ...(duLieu.name === undefined ? {} : { name: duLieu.name }),
+        ...(duLieu.type === undefined ? {} : { type: duLieu.type }),
+        ...(duLieu.address === undefined ? {} : { address: duLieu.address }),
+        ...(duLieu.contactName === undefined ? {} : { contactName: duLieu.contactName }),
+        ...(duLieu.contactPhone === undefined ? {} : { contactPhone: duLieu.contactPhone }),
+        ...(duLieu.note === undefined ? {} : { note: duLieu.note }),
+        ...(duLieu.isActive === undefined ? {} : { isActive: duLieu.isActive }),
+      },
+      select: CHON,
+    });
+
+    await ghiAudit({
+      actor,
+      action: 'location.update',
+      entityType: 'location',
+      entityId: id,
+      beforeValue: { name: truoc.name, type: truoc.type, isActive: truoc.isActive },
+      afterValue: { name: sau.name, type: sau.type, isActive: sau.isActive },
+      ...boiCanh(req),
+    });
+    res.json({ ok: true, diaDiem: donDiaDiem(sau) });
+  }),
+);
+
+/** Xoá điểm: chỉ ADMIN, và chỉ khi không còn gì tham chiếu tới nó. */
+diaDiemRouter.delete(
+  '/:id',
+  yeuCauAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const id = String(req.params['id']);
+    const truoc = await prisma.location.findUnique({
+      where: { id },
+      select: { id: true, code: true, name: true },
+    });
+    if (!truoc) throw loi404('Không tìm thấy điểm lưu trữ.');
+
+    const [thietBi, diChuyen, taiKhoan, yeuCau, bbbg, kiemKe] = await Promise.all([
+      prisma.asset.count({ where: { currentLocationId: id } }),
+      prisma.movement.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
+      prisma.user.count({ where: { locationId: id } }),
+      prisma.request.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
+      prisma.handoverNote.count({ where: { receiverLocationId: id } }),
+      prisma.inventoryCount.count({ where: { locationId: id } }),
+    ]);
+    const rangBuoc = { thietBi, diChuyen, taiKhoan, yeuCau, bienBan: bbbg, kiemKe };
+    const tong = Object.values(rangBuoc).reduce((s, n) => s + n, 0);
+
+    if (tong > 0) {
+      throw loi409(
+        'Điểm này đang được tham chiếu nên không xoá được. Hãy đặt Ngừng dùng thay vì xoá.',
+        rangBuoc,
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await ghiAudit(
+        {
+          actor,
+          action: 'location.delete',
+          entityType: 'location',
+          entityId: id,
+          beforeValue: { code: truoc.code, name: truoc.name },
+          ...boiCanh(req),
+        },
+        tx,
+      );
+      await tx.location.delete({ where: { id } });
+    });
+    res.json({ ok: true, thongDiep: 'Đã xoá điểm lưu trữ.' });
   }),
 );

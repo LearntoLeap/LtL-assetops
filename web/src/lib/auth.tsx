@@ -139,3 +139,6 @@ export function useAuth(): GiaTriAuth {
 
 /** Vai trò được vào trang quản lý tài khoản (server vẫn kiểm lại). */
 export const VAI_TRO_QUAN_LY: readonly VaiTro[] = ['ADMIN', 'VAN_HANH'];
+
+/** Vai trò được nhập liệu thiết bị: gồm cả KHO — máy đặt tại kho là nơi nhập. */
+export const VAI_TRO_NHAP_LIEU: readonly VaiTro[] = ['ADMIN', 'VAN_HANH', 'KHO'];

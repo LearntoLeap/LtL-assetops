@@ -130,3 +130,105 @@
     color: transparent;
   }
 }
+
+/* ===========================================================================
+ * IN NHÃN QR (khổ A4, nhiều nhãn một trang)
+ * Kích thước nhãn truyền qua biến CSS từ React (--nhan-rong, --nhan-cao…).
+ * =========================================================================== */
+.trang-in {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--nhan-rong, 50mm));
+  gap: 2mm;
+  align-content: start;
+}
+
+.nhan-qr {
+  display: flex;
+  align-items: center;
+  gap: 1.5mm;
+  width: var(--nhan-rong, 50mm);
+  height: var(--nhan-cao, 30mm);
+  padding: 1.5mm;
+  border: 0.2mm solid #94a3b8;
+  border-radius: 1mm;
+  background: #fff;
+  color: #0f172a;
+  overflow: hidden;
+  break-inside: avoid;
+}
+
+.nhan-qr-anh {
+  width: var(--qr-co, 21mm);
+  height: var(--qr-co, 21mm);
+  flex: none;
+  image-rendering: pixelated; /* giữ cạnh ô QR sắc nét khi in */
+}
+
+.nhan-qr-chu {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5mm;
+  line-height: 1.15;
+}
+
+.nhan-qr-ma {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--nhan-chu, 7.5pt);
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.nhan-qr-ten {
+  font-size: calc(var(--nhan-chu, 7.5pt) * 0.85);
+  color: #334155;
+  /* Cắt tên dài còn 2 dòng để nhãn không bị tràn */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  /* Nền trắng khi in, không kéo theo nền xám của giao diện. */
+  html,
+  body {
+    background: #fff;
+  }
+
+  /* Chỉ in vùng nhãn: giấu toàn bộ khung ứng dụng và khối điều khiển. */
+  body * {
+    visibility: hidden;
+  }
+
+  .trang-in,
+  .trang-in * {
+    visibility: visible;
+  }
+
+  .trang-in {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 194mm; /* A4 rộng 210mm trừ lề 2×8mm */
+  }
+
+  .khong-in,
+  header,
+  footer {
+    display: none !important;
+  }
+
+  .nhan-qr {
+    border-color: #64748b;
+    /* Ép in đúng màu nền trắng dù trình duyệt bật tiết kiệm mực */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

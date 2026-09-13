@@ -7,6 +7,9 @@ import { authRouter } from './modules/auth/auth.routes.js';
 import { nguoiDungRouter } from './modules/nguoi-dung/nguoi-dung.routes.js';
 import { diaDiemRouter } from './modules/dia-diem/dia-diem.routes.js';
 import { vuotQuyenGpsRouter } from './modules/vuot-quyen-gps/vuot-quyen-gps.routes.js';
+import { danhMucRouter } from './modules/danh-muc/danh-muc.routes.js';
+import { thietBiRouter } from './modules/thiet-bi/thiet-bi.routes.js';
+import { nhapXuatRouter } from './modules/nhap-xuat/nhap-xuat.routes.js';
 import { khongTimThayRoute, xuLyLoi } from './middleware/loi.js';
 
 export function dungApp(): Express {
@@ -46,6 +49,9 @@ export function dungApp(): Express {
   app.use('/api/nguoi-dung', nguoiDungRouter);
   app.use('/api/dia-diem', diaDiemRouter);
   app.use('/api/vuot-quyen-gps', vuotQuyenGpsRouter);
+  app.use('/api/danh-muc', danhMucRouter);
+  app.use('/api/thiet-bi', thietBiRouter);
+  app.use('/api/nhap-xuat', nhapXuatRouter);
 
   app.use(khongTimThayRoute);
   app.use(xuLyLoi);

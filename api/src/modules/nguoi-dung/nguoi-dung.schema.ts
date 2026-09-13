@@ -1,21 +1,21 @@
 import { z } from 'zod';
 import { VAI_TRO } from '@ltl/taisan-shared';
+import {
+  chuoiSua,
+  chuoiTuyChon,
+  soDienThoaiSua,
+  soDienThoaiTuyChon,
+} from '../../lib/luoc-do-chung.js';
 
 const vaiTro = z.enum(VAI_TRO);
-
-const soDienThoai = z
-  .string()
-  .trim()
-  .regex(/^[0-9+\s.-]{8,20}$/, 'Số điện thoại không hợp lệ.')
-  .optional();
 
 export const luocDoTaoNguoiDung = z.object({
   email: z.string().trim().toLowerCase().email('Email không đúng định dạng.').max(191),
   matKhau: z.string().min(1, 'Chưa nhập mật khẩu khởi tạo.'),
   fullName: z.string().trim().min(2, 'Họ tên phải có ít nhất 2 ký tự.').max(191),
   role: vaiTro,
-  phone: soDienThoai,
-  department: z.string().trim().max(191).optional(),
+  phone: soDienThoaiTuyChon,
+  department: chuoiTuyChon(191),
   /** Bắt buộc với vai trò KHO và TRUONG. */
   locationId: z.string().trim().max(30).optional(),
   /** Mặc định true: người dùng phải đổi mật khẩu ở lần đăng nhập đầu. */
@@ -23,15 +23,15 @@ export const luocDoTaoNguoiDung = z.object({
 });
 export type DuLieuTaoNguoiDung = z.infer<typeof luocDoTaoNguoiDung>;
 
+/** Bỏ trường = giữ nguyên; gửi chuỗi rỗng = xoá giá trị đó. */
 export const luocDoSuaNguoiDung = z
   .object({
-    fullName: z.string().trim().min(2).max(191).optional(),
+    fullName: z.string().trim().min(2, 'Họ tên phải có ít nhất 2 ký tự.').max(191).optional(),
     role: vaiTro.optional(),
-    phone: soDienThoai.or(z.literal('')),
-    department: z.string().trim().max(191).or(z.literal('')).optional(),
-    locationId: z.string().trim().max(30).or(z.literal('')).optional(),
+    phone: soDienThoaiSua,
+    department: chuoiSua(191),
+    locationId: chuoiSua(30),
   })
-  .partial()
   .refine((v) => Object.keys(v).length > 0, { message: 'Không có trường nào để cập nhật.' });
 export type DuLieuSuaNguoiDung = z.infer<typeof luocDoSuaNguoiDung>;
 

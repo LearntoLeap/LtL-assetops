@@ -9,7 +9,14 @@ import { DoiMatKhau } from '@/features/auth/DoiMatKhau';
 import { QuanLyNguoiDung } from '@/features/nguoi-dung/QuanLyNguoiDung';
 import { KhoaViTri } from '@/features/gps/KhoaViTri';
 import { TongQuan } from '@/features/tong-quan/TongQuan';
-import { useAuth, VAI_TRO_QUAN_LY } from '@/lib/auth';
+import { ThietBiList } from '@/features/thiet-bi/ThietBiList';
+import { ThietBiChiTiet } from '@/features/thiet-bi/ThietBiChiTiet';
+import { FormThietBi } from '@/features/thiet-bi/FormThietBi';
+import { DiaDiemList } from '@/features/dia-diem/DiaDiemList';
+import { DanhMucHome } from '@/features/danh-muc/DanhMucHome';
+import { NhapLieuHangLoat } from '@/features/nhap-xuat/NhapLieuHangLoat';
+import { InNhanQR } from '@/features/qr/InNhanQR';
+import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
 
 function DangTaiToanTrang() {
   return (
@@ -70,6 +77,52 @@ export default function App() {
       >
         <Route index element={<TongQuan />} />
         <Route path="doi-mat-khau" element={<DoiMatKhau />} />
+
+        {/* Thiết bị — mọi vai trò xem được, phạm vi do server lọc */}
+        <Route path="thiet-bi" element={<ThietBiList />} />
+        <Route
+          path="thiet-bi/moi"
+          element={
+            <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+              <FormThietBi />
+            </CanDangNhap>
+          }
+        />
+        <Route
+          path="thiet-bi/in-nhan"
+          element={
+            <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+              <InNhanQR />
+            </CanDangNhap>
+          }
+        />
+        <Route path="thiet-bi/:id" element={<ThietBiChiTiet />} />
+        <Route
+          path="thiet-bi/:id/sua"
+          element={
+            <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+              <FormThietBi />
+            </CanDangNhap>
+          }
+        />
+
+        <Route path="dia-diem" element={<DiaDiemList />} />
+        <Route
+          path="danh-muc"
+          element={
+            <CanDangNhap vaiTro={VAI_TRO_QUAN_LY}>
+              <DanhMucHome />
+            </CanDangNhap>
+          }
+        />
+        <Route
+          path="nhap-lieu"
+          element={
+            <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+              <NhapLieuHangLoat />
+            </CanDangNhap>
+          }
+        />
         <Route
           path="nguoi-dung"
           element={

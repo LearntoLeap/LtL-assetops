@@ -181,13 +181,8 @@ export async function sua(
   const roleMoi = duLieu.role ?? truoc.role;
   chanVanHanhSuaAdmin(actor.role, roleMoi);
 
-  // Chuỗi rỗng nghĩa là "xoá giá trị"; undefined nghĩa là "giữ nguyên".
-  const locationId =
-    duLieu.locationId === undefined
-      ? truoc.locationId
-      : duLieu.locationId.trim() === ''
-        ? null
-        : duLieu.locationId.trim();
+  // Lược đồ đã chuẩn hoá: undefined = giữ nguyên, null = bỏ gán điểm.
+  const locationId = duLieu.locationId === undefined ? truoc.locationId : duLieu.locationId;
   await kiemDiemLuuTru(roleMoi, locationId);
 
   if (truoc.role === 'ADMIN' && roleMoi !== 'ADMIN') {
@@ -199,8 +194,8 @@ export async function sua(
     data: {
       ...(duLieu.fullName === undefined ? {} : { fullName: duLieu.fullName }),
       ...(duLieu.role === undefined ? {} : { role: duLieu.role }),
-      ...(duLieu.phone === undefined ? {} : { phone: duLieu.phone.trim() || null }),
-      ...(duLieu.department === undefined ? {} : { department: duLieu.department.trim() || null }),
+      ...(duLieu.phone === undefined ? {} : { phone: duLieu.phone }),
+      ...(duLieu.department === undefined ? {} : { department: duLieu.department }),
       ...(duLieu.locationId === undefined ? {} : { locationId }),
     },
     select: CHON_HO_SO,

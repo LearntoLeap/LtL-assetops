@@ -1,5 +1,15 @@
 /** Kiểu dữ liệu API dùng chung cho các trang. */
-import type { LoaiDiemLuuTru, VaiTro } from '@ltl/taisan-shared';
+import type {
+  KieuQuanLy,
+  LoaiDiChuyen,
+  LoaiDiemLuuTru,
+  LoaiYeuCau,
+  MucDichSuDung,
+  NguonGoc,
+  TinhTrang,
+  TrangThaiPhanBo,
+  VaiTro,
+} from '@ltl/taisan-shared';
 
 export interface DiaDiem {
   id: string;
@@ -51,4 +61,63 @@ export interface TrangDuLieu<T> {
   tong: number;
   trang?: number;
   moiTrang?: number;
+}
+
+export interface DanhMuc {
+  id: string;
+  code: string;
+  name: string;
+  note: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  defaultTrackingType?: KieuQuanLy;
+  _count?: { assets: number };
+}
+
+export interface ThietBi {
+  id: string;
+  code: string;
+  name: string;
+  serialNumber: string | null;
+  origin: NguonGoc;
+  originNote: string | null;
+  receivedDate: string | null;
+  value: number | null;
+  purpose: MucDichSuDung;
+  trackingType: KieuQuanLy;
+  condition: TinhTrang;
+  allocationStatus: TrangThaiPhanBo;
+  dueReturnAt: string | null;
+  note: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  category: { id: string; code: string; name: string };
+  productLine: { id: string; code: string; name: string } | null;
+  currentLocation: { id: string; code: string; name: string; type: LoaiDiemLuuTru } | null;
+  holder: { id: string; fullName: string; email: string } | null;
+}
+
+export interface DongLichSu {
+  id: string;
+  type: LoaiDiChuyen;
+  quantity: number;
+  conditionBefore: TinhTrang | null;
+  conditionAfter: TinhTrang | null;
+  performedAt: string;
+  note: string | null;
+  fromLocation: { id: string; name: string } | null;
+  toLocation: { id: string; name: string } | null;
+  performedBy: { id: string; fullName: string } | null;
+  request: { id: string; code: string; type: LoaiYeuCau } | null;
+}
+
+export interface ChiTietThietBi {
+  ok: true;
+  thietBi: ThietBi;
+  tonKho: {
+    tongTon: number;
+    theoDiaDiem: Array<{ locationId: string; tenDiaDiem: string; ton: number }>;
+  };
+  lichSu: DongLichSu[];
 }

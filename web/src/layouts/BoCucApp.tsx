@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Boxes, LogOut, MapPin, Menu, ShieldCheck, Users, X } from 'lucide-react';
+import { Boxes, LayoutGrid, LogOut, MapPin, Menu, Package, ShieldCheck, Upload, Users, X } from 'lucide-react';
 import { NHAN_VAI_TRO } from '@ltl/taisan-shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NutDoiGiaoDien } from '@/components/NutDoiGiaoDien';
 import { cn } from '@/lib/utils';
-import { useAuth, VAI_TRO_QUAN_LY } from '@/lib/auth';
+import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
 
 interface MucMenu {
   duongDan: string;
@@ -18,6 +18,10 @@ interface MucMenu {
 
 const MENU: readonly MucMenu[] = [
   { duongDan: '/', nhan: 'Tổng quan', icon: Boxes },
+  { duongDan: '/thiet-bi', nhan: 'Thiết bị', icon: Package },
+  { duongDan: '/dia-diem', nhan: 'Điểm lưu trữ', icon: MapPin },
+  { duongDan: '/danh-muc', nhan: 'Danh mục', icon: LayoutGrid, vaiTro: VAI_TRO_QUAN_LY },
+  { duongDan: '/nhap-lieu', nhan: 'Nhập hàng loạt', icon: Upload, vaiTro: VAI_TRO_NHAP_LIEU },
   { duongDan: '/nguoi-dung', nhan: 'Tài khoản', icon: Users, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/khoa-vi-tri', nhan: 'Khoá vị trí kho', icon: MapPin, vaiTro: ['ADMIN'] },
   { duongDan: '/doi-mat-khau', nhan: 'Đổi mật khẩu', icon: ShieldCheck },
@@ -51,7 +55,10 @@ export function BoCucApp() {
             </span>
           </Link>
 
-          <nav className="ml-4 hidden items-center gap-1 md:flex" aria-label="Điều hướng chính">
+          <nav
+            className="ml-2 hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto lg:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            aria-label="Điều hướng chính"
+          >
             {mucHienThi.map((m) => (
               <NavLink
                 key={m.duongDan}
@@ -59,7 +66,7 @@ export function BoCucApp() {
                 end={m.duongDan === '/'}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
                     isActive
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
@@ -75,8 +82,10 @@ export function BoCucApp() {
           <div className="ml-auto flex items-center gap-2">
             {nguoiDung ? (
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-medium leading-tight">{nguoiDung.fullName}</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="whitespace-nowrap text-sm font-medium leading-tight">
+                  {nguoiDung.fullName}
+                </p>
+                <p className="whitespace-nowrap text-xs text-muted-foreground">
                   {NHAN_VAI_TRO[nguoiDung.role]}
                   {nguoiDung.tenDiaDiem ? ` · ${nguoiDung.tenDiaDiem}` : ''}
                 </p>
@@ -95,7 +104,7 @@ export function BoCucApp() {
             <Button
               variant="outline"
               size="icon"
-              className="md:hidden"
+              className="lg:hidden"
               onClick={() => datMoMenu((m) => !m)}
               aria-label={moMenu ? 'Đóng menu' : 'Mở menu'}
               aria-expanded={moMenu}
@@ -106,7 +115,7 @@ export function BoCucApp() {
         </div>
 
         <nav
-          className={cn('container pb-3 md:hidden', moMenu ? 'block' : 'hidden')}
+          className={cn('container pb-3 lg:hidden', moMenu ? 'block' : 'hidden')}
           aria-label="Điều hướng (màn hình nhỏ)"
         >
           <div className="flex flex-col gap-1">

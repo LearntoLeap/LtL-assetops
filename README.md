@@ -26,7 +26,7 @@ npm workspaces: chỉ cần `npm install` một lần ở `taisan/` là đủ ch
 |---|---|---|
 | 1 | Monorepo, lược đồ Prisma đầy đủ, migration, dữ liệu mẫu, README | ✅ Xong |
 | 2 | Auth JWT, phân quyền middleware, quản lý người dùng, khoá GPS vai trò KHO | ✅ Xong |
-| 3 | CRUD thiết bị/địa điểm, import–export Excel, sinh & quét QR | ⏳ Chưa |
+| 3 | CRUD thiết bị/địa điểm, import–export Excel, sinh & quét QR | ✅ Xong |
 | 4 | Yêu cầu → duyệt → xuất/nhập kho, upload ảnh, movements, audit log, Socket.IO | ⏳ Chưa |
 | 5 | BBBG (sinh, in, PDF, xác nhận), kiểm kê, báo hỏng | ⏳ Chưa |
 | 6 | Giao diện KIOSK, màn hình Tablet, dashboard, hoàn thiện UI | ⏳ Chưa |
@@ -330,6 +330,82 @@ thiệt hại bằng access token ngắn hạn, refresh token luân chuyển có
 **Nếu sau này web được đặt cùng tên miền gốc với API** (ví dụ `taisan.tenmien.vn`
 và `api.tenmien.vn`) thì nên chuyển refresh token sang cookie `httpOnly` với
 `Domain=.tenmien.vn` — an toàn hơn. Nói một tiếng là chuyển.
+
+## Thiết bị, nhập/xuất Excel và QR (giai đoạn 3)
+
+### Endpoint
+
+| Method | Đường dẫn | Ai gọi được |
+|---|---|---|
+| GET | `/api/thiet-bi` | đã đăng nhập — **lọc theo phạm vi vai trò** |
+| GET | `/api/thiet-bi/ma/:code` | đã đăng nhập — tra cứu theo MÃ (dùng cho quét QR) |
+| GET | `/api/thiet-bi/:id` | đã đăng nhập — kèm tồn kho suy ra + nhật ký di chuyển |
+| POST | `/api/thiet-bi` | `ADMIN`, `VAN_HANH`, `KHO` |
+| PATCH | `/api/thiet-bi/:id` | `ADMIN`, `VAN_HANH`, `KHO` — **chỉ trường mô tả** |
+| DELETE | `/api/thiet-bi/:id` | **chỉ `ADMIN`**, và chỉ khi chưa phát sinh nghiệp vụ |
+| GET/POST/PATCH/DELETE | `/api/dia-diem` | đọc: đã đăng nhập; ghi: `ADMIN`/`VAN_HANH`; xoá: `ADMIN` |
+| GET/POST/PATCH/DELETE | `/api/danh-muc/loai-tai-san` · `/api/danh-muc/dong-giai-phap` | đọc: đã đăng nhập; ghi: `ADMIN`/`VAN_HANH`; xoá: `ADMIN` |
+| GET | `/api/nhap-xuat/mau/thiet-bi` · `/mau/dia-diem` | `ADMIN`, `VAN_HANH`, `KHO` |
+| POST | `/api/nhap-xuat/xem-truoc/thiet-bi` · `/xem-truoc/dia-diem` | `ADMIN`, `VAN_HANH`, `KHO` |
+| POST | `/api/nhap-xuat/ghi/thiet-bi` · `/ghi/dia-diem` | `ADMIN`, `VAN_HANH`, `KHO` |
+| GET | `/api/nhap-xuat/xuat/thiet-bi` · `/xuat/dia-diem` | `ADMIN`, `VAN_HANH`, `KHO` |
+
+### Sửa thiết bị KHÔNG đổi được vị trí và trạng thái
+
+`PATCH /api/thiet-bi/:id` cố tình chỉ nhận các trường mô tả (tên, loại, dòng,
+serial, nguồn gốc, giá trị, mục đích, ghi chú, ngừng theo dõi). Ba trường
+`currentLocationId`, `condition`, `allocationStatus` **không sửa trực tiếp được** —
+chúng chỉ đổi qua luồng yêu cầu đã duyệt (giai đoạn 4) hoặc điều chỉnh sau kiểm
+kê (giai đoạn 5). Nếu cho sửa thẳng ở đây thì bất kỳ ai có quyền nhập liệu cũng
+lách được nguyên tắc "không ai lấy thiết bị ra khỏi kho khi chưa được duyệt".
+
+Tạo thiết bị — dù bằng form hay nhập hàng loạt — đều **sinh kèm một movement
+`NHAP_BAN_DAU`** trong cùng transaction, nên tồn kho luôn suy ra được từ gốc.
+
+### Nhập liệu hàng loạt: xem trước rồi mới ghi
+
+Hai bước tách rời, và **ghi là tất cả hoặc không gì cả**:
+
+1. `xem-truoc` đọc file, soát từng dòng, trả về danh sách lỗi `{dòng, cột, thông điệp}`.
+   Bước này **không ghi gì** vào CSDL.
+2. `ghi` soát lại từ đầu (dữ liệu có thể đã đổi giữa hai lần bấm) rồi chạy trong
+   MỘT transaction. Còn một lỗi là **không dòng nào được ghi**, kể cả những dòng đúng.
+
+Một dòng có **bất kỳ lỗi nào** đều không được coi là hợp lệ, nên `số dòng hợp lệ`
+cộng `số dòng lỗi` luôn bằng tổng số dòng — không có dòng vừa báo lỗi vừa được ghi.
+
+Mã trùng bị chặn ở cả hai hướng: trùng trong **chính file** (báo rõ trùng với dòng nào)
+và trùng với **dữ liệu đã có** trong hệ thống.
+
+File mẫu có sẵn sheet **Hướng dẫn** liệt kê mã loại tài sản, mã dòng giải pháp,
+mã điểm lưu trữ hiện có và các giá trị hợp lệ cho từng cột chọn — người điền
+không phải đoán.
+
+Cột enum trong file nhận **nhãn tiếng Việt** ("Nhập từ IPP", "Tốt", "Theo số lượng")
+và cũng nhận mã ASCII; so khớp bỏ dấu và không phân biệt hoa thường.
+
+### Nhãn QR
+
+Nội dung mã QR là **đúng mã thiết bị**, không nhúng URL — nhãn dán lên thiết bị
+không chết khi đổi tên miền, và quét bằng app nào cũng ra mã.
+
+Sinh QR chạy ngay trên trình duyệt (thư viện `qrcode`), nên in vài trăm nhãn cũng
+không gọi server lần nào. Trang in có 3 cỡ nhãn (38×25, 50×30, 70×40mm), đặt được
+số bản mỗi mã, và dùng `@media print` để chỉ in vùng nhãn trên khổ A4.
+
+Quét QR bằng camera ưu tiên **BarcodeDetector** của trình duyệt (Chrome/Edge và
+Chrome Android — đúng loại máy kiosk và tablet tại kho), tự rơi sang **jsQR** khi
+trình duyệt không hỗ trợ (Safari/iOS). Camera chỉ chạy trên HTTPS hoặc `localhost`.
+
+### Ô trống trong biểu mẫu
+
+Biểu mẫu HTML gửi ô trống thành chuỗi rỗng chứ không bỏ trường đi, nên lược đồ
+phân biệt rõ:
+
+- khi **tạo mới**: chuỗi rỗng = "không điền";
+- khi **sửa**: chuỗi rỗng = "xoá giá trị", còn bỏ hẳn trường mới là "giữ nguyên".
+
+Nhờ vậy xoá được số điện thoại nhập nhầm, thay vì bấm lưu mà không có gì xảy ra.
 
 ## Lược đồ dữ liệu
 
