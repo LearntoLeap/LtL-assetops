@@ -9,9 +9,11 @@ import {
   LogOut,
   MapPin,
   Menu,
+  MoreHorizontal,
   Package,
   ScrollText,
   ShieldCheck,
+  Tablet,
   TriangleAlert,
   Upload,
   Users,
@@ -32,13 +34,25 @@ interface MucMenu {
   vaiTro?: readonly string[];
 }
 
+/** Việc làm hằng ngày — nằm thẳng trên thanh điều hướng. */
 const MENU: readonly MucMenu[] = [
   { duongDan: '/', nhan: 'Tổng quan', icon: Boxes },
   { duongDan: '/thiet-bi', nhan: 'Thiết bị', icon: Package },
   { duongDan: '/yeu-cau', nhan: 'Yêu cầu', icon: ClipboardList },
-  { duongDan: '/bbbg', nhan: 'Biên bản bàn giao', icon: FileSignature },
+  { duongDan: '/bbbg', nhan: 'Biên bản', icon: FileSignature },
   { duongDan: '/bao-hong', nhan: 'Báo hỏng', icon: TriangleAlert },
   { duongDan: '/kiem-ke', nhan: 'Kiểm kê', icon: ClipboardCheck, vaiTro: VAI_TRO_NHAP_LIEU },
+  { duongDan: '/tablet-kho', nhan: 'Cố định tại kho', icon: Tablet, vaiTro: VAI_TRO_NHAP_LIEU },
+];
+
+/**
+ * Việc thiết lập, thỉnh thoảng mới dùng — gom vào nút "Thêm".
+ *
+ * Đủ chức năng cho cả sáu giai đoạn thì thanh ngang không còn chỗ: quản trị có
+ * tới mười bốn mục, mục cuối bị đẩy khuất mà không có dấu hiệu gì báo là cuộn
+ * được. Tách làm hai nhóm vẫn giữ nguyên đường dẫn và quyền của từng mục.
+ */
+const MENU_THEM: readonly MucMenu[] = [
   { duongDan: '/dia-diem', nhan: 'Điểm lưu trữ', icon: MapPin },
   { duongDan: '/danh-muc', nhan: 'Danh mục', icon: LayoutGrid, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/nhap-lieu', nhan: 'Nhập hàng loạt', icon: Upload, vaiTro: VAI_TRO_NHAP_LIEU },
@@ -52,10 +66,12 @@ export function BoCucApp() {
   const { nguoiDung, dangXuat } = useAuth();
   const dieuHuong = useNavigate();
   const [moMenu, datMoMenu] = useState(false);
+  const [moThem, datMoThem] = useState(false);
 
-  const mucHienThi = MENU.filter(
-    (m) => !m.vaiTro || (nguoiDung && m.vaiTro.includes(nguoiDung.role)),
-  );
+  const hopVaiTro = (m: MucMenu): boolean =>
+    !m.vaiTro || Boolean(nguoiDung && m.vaiTro.includes(nguoiDung.role));
+  const mucHienThi = MENU.filter(hopVaiTro);
+  const mucThem = MENU_THEM.filter(hopVaiTro);
 
   async function thoat(): Promise<void> {
     await dangXuat();
@@ -98,6 +114,56 @@ export function BoCucApp() {
                 {m.nhan}
               </NavLink>
             ))}
+
+            {mucThem.length > 0 ? (
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => datMoThem((t) => !t)}
+                  aria-expanded={moThem}
+                  aria-haspopup="true"
+                  className={cn(
+                    'flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
+                    moThem
+                      ? 'bg-secondary text-foreground'
+                      : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                  )}
+                >
+                  <MoreHorizontal className="size-4" aria-hidden />
+                  Thêm
+                </button>
+                {moThem ? (
+                  <>
+                    <button
+                      type="button"
+                      className="fixed inset-0 z-30 cursor-default"
+                      aria-label="Đóng bảng điều hướng phụ"
+                      onClick={() => datMoThem(false)}
+                    />
+                    <div className="absolute right-0 z-40 mt-1 w-56 rounded-lg border bg-popover p-1 shadow-lg">
+                      {mucThem.map((m) => (
+                        <NavLink
+                          key={m.duongDan}
+                          to={m.duongDan}
+                          onClick={() => datMoThem(false)}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium',
+                              isActive
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                            )
+                          }
+                        >
+                          <m.icon className="size-4" aria-hidden />
+                          {m.nhan}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
@@ -140,7 +206,7 @@ export function BoCucApp() {
           aria-label="Điều hướng (màn hình nhỏ)"
         >
           <div className="flex flex-col gap-1">
-            {mucHienThi.map((m) => (
+            {[...mucHienThi, ...mucThem].map((m) => (
               <NavLink
                 key={m.duongDan}
                 to={m.duongDan}

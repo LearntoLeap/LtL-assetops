@@ -25,9 +25,23 @@ export interface ChupAnhProps {
   assetId?: string;
   moTa?: string;
   toiDa?: number;
+  /**
+   * Mặc định là bắt buộc, vì phần lớn nơi dùng component này là bằng chứng
+   * xuất/nhập kho và báo hỏng. Đặt `false` ở nơi ảnh chỉ là tuỳ chọn (ảnh nền
+   * màn hình kho) để không doạ người dùng bằng dòng cảnh báo đỏ.
+   */
+  batBuoc?: boolean;
 }
 
-export function ChupAnh({ kind, anh, onDoiAnh, assetId, moTa, toiDa = 5 }: ChupAnhProps) {
+export function ChupAnh({
+  kind,
+  anh,
+  onDoiAnh,
+  assetId,
+  moTa,
+  toiDa = 5,
+  batBuoc = true,
+}: ChupAnhProps) {
   const oFile = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -200,9 +214,9 @@ export function ChupAnh({ kind, anh, onDoiAnh, assetId, moTa, toiDa = 5 }: ChupA
             </li>
           ))}
         </ul>
-      ) : (
+      ) : batBuoc ? (
         <p className="text-sm text-warning-dam">Chưa có ảnh — bắt buộc phải có ít nhất một ảnh.</p>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -53,6 +53,13 @@
     --nguy-hiem-dam: 0 74% 39%;
 
     --bo-goc: 0.75rem;
+
+    /* Màu cho biểu đồ. Hai màu chuỗi dữ liệu lấy từ bảng màu đã kiểm định
+       (dải sáng/tối riêng, không phải đảo màu tự động): chênh lệch ΔE dưới mù
+       màu đỏ–lục đạt 24.7 ở nền sáng và 26.8 ở nền tối, tương phản với nền thẻ
+       đều ≥ 3:1. Lưới và chữ trục dùng lại token sẵn có của giao diện. */
+    --viz-chuoi-1: #2a78d6;
+    --viz-chuoi-2: #eb6834;
   }
 
   .dark {
@@ -96,6 +103,10 @@
     --thanh-cong-dam: 152 62% 60%;
     --canh-bao-dam: 36 94% 64%;
     --nguy-hiem-dam: 0 84% 70%;
+
+    /* Bước màu chọn riêng cho nền tối, không phải đảo màu của nền sáng. */
+    --viz-chuoi-1: #3987e5;
+    --viz-chuoi-2: #d95926;
   }
 
   * {

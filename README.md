@@ -29,7 +29,7 @@ npm workspaces: chỉ cần `npm install` một lần ở `taisan/` là đủ ch
 | 3 | CRUD thiết bị/địa điểm, import–export Excel, sinh & quét QR | ✅ Xong |
 | 4 | Yêu cầu → duyệt → xuất/nhập kho, upload ảnh, movements, audit log, Socket.IO | ✅ Xong |
 | 5 | BBBG (sinh, in A4/PDF, xác nhận), kiểm kê, báo hỏng | ✅ Xong |
-| 6 | Giao diện KIOSK, màn hình Tablet, dashboard, hoàn thiện UI | ⏳ Chưa |
+| 6 | Giao diện KIOSK, màn hình Tablet, dashboard, hoàn thiện UI | ✅ Xong |
 
 ---
 
@@ -617,6 +617,95 @@ có một đợt chưa chốt tại một thời điểm.
 Phiếu tự sinh cảnh báo `BAO_HONG` cho nhóm duyệt (mức Cao nếu người báo đánh giá là
 Hỏng/Mất). Khi xử lý, kết luận được ghi vào `audit_logs` và vào `resolution_note` của
 cảnh báo, đồng thời cập nhật `assets.condition`.
+
+## Màn hình kho, màn hình tablet và dashboard (giai đoạn 6)
+
+### Endpoint
+
+| Method | Đường dẫn | Việc |
+|---|---|---|
+| GET | `/api/bao-cao/dashboard?soNgay=30` | Toàn bộ số liệu dashboard trong một lượt gọi |
+| GET | `/api/kiosk/thong-ke` | Dải thống kê cho màn hình kho |
+| GET | `/api/kiosk/cho-xu-ly` | Yêu cầu và biên bản đang chờ, cho danh sách tự cuộn |
+| GET | `/api/kiosk/tablet` | Thiết bị nhóm "Cố định tại kho" kèm người giữ và lần mượn gần nhất |
+| GET · PUT | `/api/kiosk/cai-dat` | Ảnh nền màn hình kho, lưu theo tài khoản |
+
+Tất cả đều lọc theo phạm vi vai trò ở server. Dashboard **không** giới hạn vai
+trò: điểm trường mở trang chủ vẫn thấy số liệu — của riêng trường mình.
+
+### Lọc phạm vi phải chặn cả THIẾT BỊ lẫn ĐỊA ĐIỂM
+
+Một mã quản lý theo số lượng (vở bài tập, pin sạc) có thể vừa nằm ở kho vừa nằm
+ở trường. Nếu chỉ lọc theo thiết bị, tài khoản trường sẽ thấy số tồn của chính mã
+đó **ở kho của LtL** — đúng thiết bị trong phạm vi, nhưng sai địa điểm. Vì vậy
+`tonTrongPhamVi()` giao cả hai điều kiện: `dieuKienTaiSan` và `dieuKienDiaDiem`.
+
+### Màn hình KIOSK tại kho (`/kiosk`)
+
+Nằm **ngoài bố cục ứng dụng** để dùng hết màn hình, không có thanh menu chen
+ngang. Gồm: đồng hồ số lớn + thứ ngày tháng tiếng Việt chạy theo giây; dải thống
+kê (tại kho / ở trường / đang cho mượn / quá hạn trả / hỏng – mất / chờ xuất);
+lưới sáu ô chạm cỡ lớn (xuất kho, nhập kho, kiểm kê, báo hỏng, tra cứu, in biên
+bản) cộng ô quét mã QR tra nhanh ngay tại chỗ; danh sách việc đang chờ **tự
+cuộn vòng**, rê chuột hoặc bấm là dừng.
+
+Vài điểm đáng lưu ý khi đọc mã nguồn:
+
+- **Chống ngủ màn hình** dùng Wake Lock API, xin lại khoá mỗi lần tab quay về
+  (trình duyệt nhả khoá khi tab chạy nền). Trình duyệt không hỗ trợ thì bỏ qua
+  chứ không báo lỗi — màn hình vẫn dùng bình thường.
+- **Vùng chạm**: ô chức năng cao ≥ 96px, nút và ô nhập ≥ 48px (lớp `min-h-cham`).
+- **Bảng màu tối cục bộ**: thẻ gốc của trang mang class `dark`, nên các nút dùng
+  chung (nút quét QR chẳng hạn) có tương phản đúng, kể cả khi phần quản trị đang
+  để giao diện sáng.
+- **Ảnh nền lưu theo tài khoản** trong `kiosk_settings`: chọn một trong bốn mẫu
+  có sẵn, hoặc tải ảnh riêng của kho lên. Hai nguồn loại trừ nhau — chọn cái này
+  thì xoá cái kia, để không phải đoán cái nào thắng. Mẫu có sẵn vẽ bằng CSS
+  gradient, không kèm tệp ảnh nào.
+- **Khoá theo vị trí GPS** đã chặn từ lúc đăng nhập (giai đoạn 2), nên trang này
+  không kiểm lại: vào được tới đây nghĩa là đã qua chốt vị trí.
+
+### Màn hình tablet tại kho (`/tablet-kho`)
+
+Danh sách riêng cho nhóm mục đích sử dụng **"Cố định tại kho"** — dựng thành thẻ
+thay vì bảng cuộn ngang, mỗi thẻ trả lời ba câu người ở kho hay hỏi: máy nào,
+tình trạng thế nào, ai đang giữ; kèm ba bút toán mượn/trả gần nhất.
+
+### Dashboard (`/`)
+
+Thay cho trang tổng quan tạm của giai đoạn 2. Gồm dải chỉ số, biểu đồ lưu chuyển
+kho theo ngày, ba biểu đồ phân bổ (theo loại thiết bị, theo dòng giải pháp, theo
+điểm lưu trữ), danh sách quá hạn trả, danh sách thiết bị hỏng – mất – cần bảo
+trì, và khối kiểm kê gần nhất. Nhận tín hiệu Socket.IO thì tự tải lại số.
+
+### Biểu đồ: vẽ tay, không thêm thư viện
+
+Hai dạng biểu đồ đều vẽ bằng HTML và SVG thuần (`web/src/components/bieu-do/`),
+không kéo thêm thư viện nào vào gói web. Các quyết định phía sau:
+
+- **Thanh ngang cho hạng mục không có thứ tự** (loại thiết bị, dòng giải pháp,
+  điểm lưu trữ): mọi thanh **cùng một màu**. Tô đậm dần theo giá trị là mã hoá
+  hai lần đúng cái mà độ dài thanh đã nói. Một chuỗi dữ liệu thì không cần khung
+  chú giải — tiêu đề thẻ đã nói rõ.
+- **Cột hai phía đường gốc cho lưu chuyển kho**: hàng vào vẽ lên, hàng ra vẽ
+  xuống, đọc một lần là thấy chiều lưu chuyển. Hai chuỗi nên **luôn có chú giải**;
+  nhãn số chỉ đặt ở ngày cao nhất mỗi chiều, còn lại đọc qua mốc trục, tooltip và
+  bảng số.
+- **Mọi biểu đồ đều có nút "Xem dạng bảng"** — giá trị không bao giờ chỉ đọc được
+  bằng màu hay bằng cách rê chuột.
+- **Hai màu chuỗi dữ liệu** (`--viz-chuoi-1`, `--viz-chuoi-2` trong `index.css`)
+  có bước màu riêng cho nền sáng và nền tối, không phải đảo màu tự động. Đã đo:
+  khác biệt dưới mù màu đỏ–lục ΔE 24,7 (nền sáng) và 26,8 (nền tối) — ngưỡng an
+  toàn là 8; tương phản với nền thẻ đều ≥ 3:1. Mốc trục luôn là **số nguyên** vì
+  đây là số đếm thiết bị.
+
+### Thanh điều hướng: bảy mục việc + nút "Thêm"
+
+Đủ chức năng cho cả sáu giai đoạn thì quản trị có tới mười bốn mục, mục cuối bị
+đẩy khuất mà không có dấu hiệu gì báo là cuộn được. Nay bảy mục việc hằng ngày
+nằm thẳng trên thanh, các mục thiết lập (điểm lưu trữ, danh mục, nhập hàng loạt,
+nhật ký, tài khoản, khoá vị trí kho, đổi mật khẩu) gom vào nút **Thêm**. Đường dẫn
+và quyền của từng mục giữ nguyên; menu màn hình nhỏ vẫn liệt kê đủ cả hai nhóm.
 
 ## Lược đồ dữ liệu
 

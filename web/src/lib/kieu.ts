@@ -1,5 +1,6 @@
 /** Kiểu dữ liệu API dùng chung cho các trang. */
 import type {
+  AnhNenKiosk,
   KieuQuanLy,
   LoaiAnh,
   LoaiCanhBao,
@@ -336,4 +337,116 @@ export interface PhieuBaoHong {
     };
   }>;
   photos: Array<{ id: string; kind: LoaiAnh; createdAt: string }>;
+}
+
+/* ──────────── GĐ6: dashboard, kiosk, màn hình tablet ──────────── */
+
+export interface SoLieuNhanh {
+  soMa: number;
+  donViTaiKho: number;
+  donViOTruong: number;
+  maChoMuon: number;
+  maQuaHan: number;
+  maHong: number;
+  maCanBaoTri: number;
+  yeuCauChoDuyet: number;
+  yeuCauChoXuat: number;
+  bienBanChoXacNhan: number;
+}
+
+export interface DongDem {
+  ma: string;
+  nhan: string;
+  so: number;
+}
+
+export interface DongRaVao {
+  ngay: string;
+  vao: number;
+  ra: number;
+}
+
+export interface DuLieuDashboard {
+  ok: true;
+  soLieu: SoLieuNhanh;
+  theoLoai: DongDem[];
+  theoDongGiaiPhap: DongDem[];
+  theoDiaDiem: DongDem[];
+  raVao: DongRaVao[];
+  quaHan: Array<{
+    id: string;
+    code: string;
+    name: string;
+    dueReturnAt: string;
+    soNgayQuaHan: number;
+    noiDat: string | null;
+    nguoiGiu: string | null;
+  }>;
+  thietBiHong: Array<{
+    id: string;
+    code: string;
+    name: string;
+    condition: TinhTrang;
+    noiDat: string | null;
+  }>;
+  kiemKeGanNhat: {
+    id: string;
+    code: string;
+    name: string;
+    diaDiem: string;
+    closedAt: string | null;
+    soMaLech: number;
+    tongThieu: number;
+    tongThua: number;
+  } | null;
+}
+
+export interface CaiDatKiosk {
+  backgroundKey: AnhNenKiosk | null;
+  backgroundPhotoId: string | null;
+  updatedAt: string | null;
+}
+
+export interface ViecChoXuLy {
+  ok: true;
+  yeuCau: Array<{
+    id: string;
+    code: string;
+    type: LoaiYeuCau;
+    status: TrangThaiYeuCau;
+    createdAt: string;
+    createdBy: { fullName: string };
+    toLocation: { name: string } | null;
+    _count: { items: number };
+  }>;
+  bienBan: Array<{
+    id: string;
+    code: string;
+    createdAt: string;
+    receiverOrg: string;
+    receiverLocation: { name: string } | null;
+    _count: { items: number };
+  }>;
+}
+
+/** Thiết bị nhóm "Cố định tại kho" cho màn hình tablet, kèm lần mượn gần nhất. */
+export interface TabletTaiKho {
+  id: string;
+  code: string;
+  name: string;
+  serialNumber: string | null;
+  condition: TinhTrang;
+  allocationStatus: TrangThaiPhanBo;
+  dueReturnAt: string | null;
+  category: { name: string };
+  currentLocation: { id: string; name: string } | null;
+  holder: { id: string; fullName: string; department: string | null } | null;
+  movements: Array<{
+    id: string;
+    type: LoaiDiChuyen;
+    performedAt: string;
+    note: string | null;
+    performedBy: { fullName: string } | null;
+    request: { id: string; code: string; createdBy: { fullName: string } } | null;
+  }>;
 }

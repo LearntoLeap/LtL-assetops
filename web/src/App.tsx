@@ -37,6 +37,8 @@ const KiemKeChiTiet = lazy(() => import('@/features/kiem-ke/KiemKeChiTiet').then
 const BaoHongList = lazy(() => import('@/features/bao-hong/BaoHongList').then((m) => ({ default: m.BaoHongList })));
 const BaoHongChiTiet = lazy(() => import('@/features/bao-hong/BaoHongChiTiet').then((m) => ({ default: m.BaoHongChiTiet })));
 const FormBaoHong = lazy(() => import('@/features/bao-hong/FormBaoHong').then((m) => ({ default: m.FormBaoHong })));
+const ManHinhKiosk = lazy(() => import('@/features/kiosk/ManHinhKiosk').then((m) => ({ default: m.ManHinhKiosk })));
+const TabletTaiKho = lazy(() => import('@/features/kiosk/TabletTaiKho').then((m) => ({ default: m.TabletTaiKho })));
 
 function DangTai({ chu = 'Đang tải…' }: { chu?: string }) {
   return (
@@ -86,6 +88,16 @@ export default function App() {
             <ChuaDangNhap>
               <DangNhap />
             </ChuaDangNhap>
+          }
+        />
+
+        {/* Màn hình kho dùng hết màn hình, không có thanh menu chen ngang. */}
+        <Route
+          path="/kiosk"
+          element={
+            <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+              <ManHinhKiosk />
+            </CanDangNhap>
           }
         />
 
@@ -169,6 +181,16 @@ export default function App() {
             }
           />
           <Route path="bbbg/:id" element={<BienBanChiTiet />} />
+
+          {/* Thiết bị cố định tại kho — màn hình riêng cho tablet đặt ở kho */}
+          <Route
+            path="tablet-kho"
+            element={
+              <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+                <TabletTaiKho />
+              </CanDangNhap>
+            }
+          />
 
           {/* Kiểm kê — mở đợt và chốt là việc của nhóm quản lý, server kiểm lại */}
           <Route path="kiem-ke" element={<KiemKeList />} />

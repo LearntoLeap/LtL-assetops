@@ -13,6 +13,7 @@ import {
   MUC_DO_CANH_BAO,
   NGUON_GOC,
   TINH_TRANG,
+  ANH_NEN_KIOSK,
   TRANG_THAI_BBBG,
   TRANG_THAI_KIEM_KE,
   TRANG_THAI_PHAN_BO,
@@ -28,6 +29,7 @@ import {
   type MucDoCanhBao,
   type NguonGoc,
   type TinhTrang,
+  type AnhNenKiosk,
   type TrangThaiBBBG,
   type TrangThaiKiemKe,
   type TrangThaiPhanBo,
@@ -126,6 +128,13 @@ export const NHAN_LOAI_ANH = {
   KIOSK_BACKGROUND: 'Ảnh nền màn hình kho',
 } satisfies Record<LoaiAnh, string>;
 
+export const NHAN_ANH_NEN_KIOSK = {
+  XANH_MACH_DIEN: 'Mạch điện xanh',
+  XANH_CYAN: 'Xanh dương – cyan',
+  DEM_KHO: 'Đêm trong kho',
+  TOI_GIAN: 'Tối giản',
+} satisfies Record<AnhNenKiosk, string>;
+
 export const NHAN_TRANG_THAI_BBBG = {
   BAN_NHAP: 'Nháp',
   CHO_XAC_NHAN: 'Chờ bên nhận xác nhận',
@@ -164,6 +173,7 @@ function danhSach<T extends string>(
 }
 
 export const DS_VAI_TRO = danhSach(VAI_TRO, NHAN_VAI_TRO);
+export const DS_ANH_NEN_KIOSK = danhSach(ANH_NEN_KIOSK, NHAN_ANH_NEN_KIOSK);
 export const DS_LOAI_DIEM_LUU_TRU = danhSach(LOAI_DIEM_LUU_TRU, NHAN_LOAI_DIEM_LUU_TRU);
 export const DS_KIEU_QUAN_LY = danhSach(KIEU_QUAN_LY, NHAN_KIEU_QUAN_LY);
 export const DS_NGUON_GOC = danhSach(NGUON_GOC, NHAN_NGUON_GOC);

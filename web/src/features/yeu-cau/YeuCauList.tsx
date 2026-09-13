@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, RefreshCw, Search, Wifi, WifiOff } from 'lucide-react';
 import {
   DS_LOAI_YEU_CAU,
@@ -30,14 +30,16 @@ import { MAU_TRANG_THAI } from './tien-ich';
 const MOI_TRANG = 25;
 
 export function YeuCauList() {
+  // Mở từ dashboard hoặc màn hình kho thì lọc sẵn theo ?status= và ?type=.
+  const [thamSo] = useSearchParams();
   const [muc, datMuc] = useState<YeuCau[]>([]);
   const [tong, datTong] = useState(0);
   const [trang, datTrang] = useState(1);
   const [dangTai, datDangTai] = useState(true);
   const [loi, datLoi] = useState<string | null>(null);
   const [tuKhoa, datTuKhoa] = useState('');
-  const [locLoai, datLocLoai] = useState('');
-  const [locTrangThai, datLocTrangThai] = useState('');
+  const [locLoai, datLocLoai] = useState(thamSo.get('type') ?? '');
+  const [locTrangThai, datLocTrangThai] = useState(thamSo.get('status') ?? '');
   const [cuaToi, datCuaToi] = useState(false);
 
   const tai = useCallback(async () => {

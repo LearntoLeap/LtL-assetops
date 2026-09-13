@@ -114,3 +114,19 @@ export type LoaiCanhBao = (typeof LOAI_CANH_BAO)[number];
 
 export const MUC_DO_CANH_BAO = ['THAP', 'TRUNG_BINH', 'CAO'] as const;
 export type MucDoCanhBao = (typeof MUC_DO_CANH_BAO)[number];
+
+/**
+ * Ảnh nền có sẵn cho màn hình KIOSK tại kho (giai đoạn 6).
+ *
+ * Đây KHÔNG phải enum trong CSDL: cột `kiosk_settings.background_key` là VarChar
+ * nên thêm/bớt mẫu nền không cần migration. Mỗi mẫu là một dải màu vẽ bằng CSS ở
+ * phía web, không kèm tệp ảnh nào — kho mã nguồn không phình thêm và màn hình
+ * kiosk không phải tải ảnh nặng qua mạng kho.
+ */
+export const ANH_NEN_KIOSK = [
+  'XANH_MACH_DIEN',
+  'XANH_CYAN',
+  'DEM_KHO',
+  'TOI_GIAN',
+] as const;
+export type AnhNenKiosk = (typeof ANH_NEN_KIOSK)[number];
