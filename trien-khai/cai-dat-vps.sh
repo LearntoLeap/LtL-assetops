@@ -141,24 +141,40 @@ npm run migrate:deploy
 xong "19 bảng đã sẵn sàng"
 
 buoc "Dữ liệu khởi tạo"
-SO_NGUOI_DUNG="$(node -e '
-const { PrismaClient } = require("./api/node_modules/@prisma/client");
+# Đếm tài khoản từ trong workspace api để Node tìm được @prisma/client
+# (npm workspaces gom phụ thuộc lên node_modules ở gốc).
+SO_NGUOI_DUNG="$(cd api && node -e '
+const { PrismaClient } = require("@prisma/client");
 const p = new PrismaClient();
-p.user.count().then((n) => { console.log(n); return p.$disconnect(); })
- .catch(() => { console.log("-1"); process.exit(0); });
-' 2>/dev/null || echo -1)"
-if [ "$SO_NGUOI_DUNG" = "0" ]; then
-  canh "CSDL chưa có tài khoản nào — phải nạp dữ liệu khởi tạo mới đăng nhập được."
-  canh "Lệnh seed nạp 5 tài khoản mẫu VÀ 30 thiết bị mẫu (xoá được sau trong trang Thiết bị)."
-  if co_khong "Nạp dữ liệu mẫu bây giờ?" c; then
-    (cd api && npm run seed:prod)
-    xong "Đã nạp tài khoản và dữ liệu mẫu"
-  else
-    canh "Chưa nạp. Khi cần: cd api && npm run seed:prod"
-  fi
-else
-  xong "CSDL đã có $SO_NGUOI_DUNG tài khoản — bỏ qua seed để không đụng dữ liệu thật"
-fi
+p.user.count()
+ .then((n) => { process.stdout.write(String(n)); })
+ .catch(() => { process.stdout.write("?"); })
+ .finally(() => p.$disconnect());
+' 2>/dev/null || echo '?')"
+
+case "$SO_NGUOI_DUNG" in
+  0)
+    canh "CSDL chưa có tài khoản nào — KHÔNG nạp thì không đăng nhập được."
+    canh "Lệnh seed nạp 5 tài khoản mẫu VÀ 30 thiết bị mẫu (xoá được sau trong trang Thiết bị)."
+    if co_khong "Nạp dữ liệu khởi tạo bây giờ?" c; then
+      (cd api && npm run seed:prod)
+      xong "Đã nạp tài khoản và dữ liệu mẫu"
+    else
+      canh "Chưa nạp — hệ thống hiện chưa có tài khoản nào."
+      canh "Khi cần chạy: cd api && npm run seed:prod"
+    fi
+    ;;
+  '?')
+    canh "Không đọc được số tài khoản trong CSDL (kiểm tra DATABASE_URL trong api/.env)."
+    if co_khong "Vẫn chạy seed? (chạy lại được, không nhân đôi dữ liệu)" c; then
+      (cd api && npm run seed:prod)
+      xong "Đã chạy seed"
+    fi
+    ;;
+  *)
+    xong "CSDL đã có $SO_NGUOI_DUNG tài khoản — bỏ qua seed để không đụng dữ liệu thật"
+    ;;
+esac
 
 # ── 6. pm2 ────────────────────────────────────────────────────────────────
 buoc "Khởi động API bằng pm2"
@@ -175,10 +191,13 @@ cd "$GOC"
 
 buoc "Kiểm tra API"
 sleep 3
-if curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/dia-diem | grep -q 401; then
+# KHÔNG dùng curl -f: 401 là phản hồi ĐÚNG cho request chưa đăng nhập,
+# nhưng -f lại coi đó là lỗi và bỏ qua nhánh kiểm tra.
+MA_HTTP="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/dia-diem || echo 000)"
+if [ "$MA_HTTP" = "401" ]; then
   xong "API trả 401 cho request chưa đăng nhập — đúng như mong đợi"
 else
-  canh "API chưa phản hồi như mong đợi. Xem log: pm2 logs ltl-taisan-api --lines 50"
+  canh "API trả mã $MA_HTTP, chưa đúng. Xem log: pm2 logs ltl-taisan-api --lines 50"
 fi
 
 cat <<'HD'
