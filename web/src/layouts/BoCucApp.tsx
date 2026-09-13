@@ -168,11 +168,16 @@ export function BoCucApp() {
 
           <div className="ml-auto flex items-center gap-2">
             {nguoiDung ? (
-              <div className="hidden text-right sm:block">
-                <p className="whitespace-nowrap text-sm font-medium leading-tight">
+              // Chặn bề rộng: tên điểm trường dài (vd "Kho văn phòng Learn to
+              // Leap") từng đẩy nút "Thêm" ở cuối thanh điều hướng ra khỏi màn.
+              <div className="hidden max-w-[13rem] text-right sm:block">
+                <p className="truncate text-sm font-medium leading-tight" title={nguoiDung.fullName}>
                   {nguoiDung.fullName}
                 </p>
-                <p className="whitespace-nowrap text-xs text-muted-foreground">
+                <p
+                  className="truncate text-xs text-muted-foreground"
+                  title={`${NHAN_VAI_TRO[nguoiDung.role]}${nguoiDung.tenDiaDiem ? ` · ${nguoiDung.tenDiaDiem}` : ''}`}
+                >
                   {NHAN_VAI_TRO[nguoiDung.role]}
                   {nguoiDung.tenDiaDiem ? ` · ${nguoiDung.tenDiaDiem}` : ''}
                 </p>
