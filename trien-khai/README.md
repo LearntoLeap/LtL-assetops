@@ -14,6 +14,33 @@ Người dùng ──► Vercel (web tĩnh)  ──HTTPS──►  VPS: API (pm2
 | Ảnh | đĩa VPS `api/uploads/` | Đĩa của serverless là tạm, deploy lại là mất ảnh |
 | MySQL | VPS | Prisma cần CSDL kết nối được, có sao lưu |
 
+## 0. Chạy thử trên máy mình (trước khi lên VPS)
+
+Cần sẵn Node 20+ và MySQL 8 (hoặc MariaDB 10.6+) đang chạy. Một lệnh:
+
+```bash
+bash trien-khai/chay-thu-may-minh.sh
+```
+
+Script tự tạo CSDL riêng `ltl_taisan_thu`, sinh khoá JWT, nạp 5 tài khoản và 30
+thiết bị mẫu, rồi bật API ở cổng 3001 và web ở cổng 5173. Mở
+<http://localhost:5173>, đăng nhập bằng một trong năm tài khoản dưới — cả năm
+dùng chung mật khẩu **`LtL@2026Test`**:
+
+| Email | Vai trò |
+|---|---|
+| `admin@learntoleap.vn` | Quản trị — toàn quyền |
+| `vanhanh@learntoleap.vn` | Vận hành — duyệt yêu cầu |
+| `kho@learntoleap.vn` | Kho — xuất/nhập, màn hình kho |
+| `nhansu@learntoleap.vn` | Nhân sự — tạo yêu cầu mượn |
+| `truong.minhkhai@learntoleap.vn` | Điểm trường — chỉ dữ liệu trường mình |
+
+`Ctrl+C` để tắt. Chạy lại được nhiều lần, không ghi đè `api/.env` sẵn có.
+
+> Tài khoản **kho** bị khoá theo GPS nên ở máy mình thường bị chặn (toạ độ mẫu
+> đặt ở Hà Nội). Đăng nhập bằng `admin`, vào *Thêm → Khoá vị trí kho* để sửa toạ
+> độ kho về vị trí của anh/chị, hoặc cấp mã vượt quyền dùng một lần.
+
 ## 1. API trên VPS
 
 Lần đầu:
