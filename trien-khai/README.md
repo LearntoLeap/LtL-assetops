@@ -50,14 +50,27 @@ bash trien-khai/cap-nhat-vps.sh
 | Framework Preset | Other |
 | Build Command | `npm run build:web` (đã có trong `vercel.json`) |
 | Output Directory | `web/dist` (đã có trong `vercel.json`) |
-| Biến môi trường | `VITE_API_URL` = `https://api.tenmien.vn` |
+| Biến môi trường | không cần đặt — `VITE_API_URL` nằm sẵn trong `vercel.json` |
 
-`VITE_API_URL` là **bắt buộc** và phải là địa chỉ API công khai đã bật HTTPS.
-Biến có tiền tố `VITE_` được nhúng vào bản build, nên đổi giá trị thì phải
-deploy lại.
+### Tên miền đang dùng
 
-Nhớ thêm tên miền Vercel vào `CORS_ORIGINS` trong `api/.env` rồi
-`pm2 restart ltl-taisan-api` — nếu không, trình duyệt sẽ chặn mọi lời gọi API.
+| Vai trò | Tên miền | Trỏ về |
+|---|---|---|
+| API | `api-taisan.learntoleap.vn` | bản ghi A → IP của VPS |
+| Web | `ltl-assetops.vercel.app` (tạm) và `taisan.learntoleap.vn` | Vercel |
+
+`VITE_API_URL` đặt trong `build.env` của `vercel.json`, không phải biến môi
+trường trên dashboard — giá trị này không phải bí mật (Vite nhúng thẳng vào
+bundle công khai), nên để trong mã nguồn là đúng chỗ và đổi tên miền chỉ cần sửa
+một dòng rồi push. Đổi xong **phải deploy lại** vì biến `VITE_` được nhúng lúc
+build.
+
+Muốn dùng `taisan.learntoleap.vn`: vào Vercel → project `ltl-assetops` →
+Settings → Domains → thêm tên miền, rồi tạo bản ghi DNS theo hướng dẫn Vercel
+hiện ra.
+
+`CORS_ORIGINS` trong `api/.env` phải chứa **đúng** origin của web (script đã để
+sẵn cả hai). Sai origin là trình duyệt chặn mọi lời gọi API, dù API vẫn chạy.
 
 ## Kiểm tra sau khi lên
 

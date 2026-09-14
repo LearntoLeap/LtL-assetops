@@ -65,8 +65,11 @@ else
   hoi_kin MK_CSDL   "Mật khẩu user MySQL"
   [ -n "$MK_CSDL" ] || loi "Mật khẩu CSDL không được để trống."
   hoi MAY_CSDL      "Địa chỉ MySQL"             "127.0.0.1:3306"
-  hoi TEN_MIEN_API  "Tên miền API (https://…)"  "https://api.doimoi.edu.vn"
-  hoi TEN_MIEN_WEB  "Tên miền web (https://…)"  "https://taisan.doimoi.edu.vn"
+  hoi TEN_MIEN_API  "Tên miền API (https://…)"  "https://api-taisan.learntoleap.vn"
+  # CORS nhận nhiều origin cách nhau bằng dấu phẩy: để sẵn cả tên miền Vercel
+  # tạm thời và tên miền riêng, khỏi phải sửa .env rồi restart lần nữa.
+  hoi TEN_MIEN_WEB  "Tên miền web (nhiều thì cách bằng dấu phẩy)" \
+                    "https://ltl-assetops.vercel.app,https://taisan.learntoleap.vn"
   hoi EMAIL_ADMIN   "Email tài khoản quản trị"  "admin@learntoleap.vn"
   hoi_kin MK_ADMIN  "Mật khẩu quản trị khởi tạo (≥ 8 ký tự)"
   [ "${#MK_ADMIN}" -ge 8 ] || loi "Mật khẩu quản trị phải từ 8 ký tự."
