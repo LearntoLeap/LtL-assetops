@@ -16,11 +16,25 @@ Người dùng ──► Vercel (web tĩnh)  ──HTTPS──►  VPS: API (pm2
 
 ## 0. Chạy thử trên máy mình (trước khi lên VPS)
 
-Cần sẵn Node 20+ và MySQL 8 (hoặc MariaDB 10.6+) đang chạy. Một lệnh:
+Cần sẵn Node 20+ và MySQL 8 (hoặc MariaDB 10.6+) đang chạy. Một lệnh — chạy
+được trên **Windows (cmd/PowerShell), macOS và Linux**:
 
-```bash
-bash trien-khai/chay-thu-may-minh.sh
 ```
+node trien-khai/chay-thu.mjs
+```
+
+Không cần `bash`, không cần lệnh `mysql` trong PATH: cơ sở dữ liệu do Prisma tự
+tạo. Script tự thử mật khẩu rỗng rồi `root` cho user `root` của MySQL; nếu máy
+đặt mật khẩu khác thì truyền vào:
+
+| Hệ điều hành | Lệnh |
+|---|---|
+| Windows (cmd) | `set MYSQL_ROOT_PW=matkhau && node trien-khai/chay-thu.mjs` |
+| Windows (PowerShell) | `$env:MYSQL_ROOT_PW="matkhau"; node trien-khai/chay-thu.mjs` |
+| macOS / Linux | `MYSQL_ROOT_PW=matkhau node trien-khai/chay-thu.mjs` |
+
+Đổi được cả `MYSQL_ROOT_USER`, `MYSQL_HOST`, `MYSQL_PORT` theo cùng cách.
+(`bash trien-khai/chay-thu-may-minh.sh` vẫn dùng được — nó chỉ gọi lại tệp trên.)
 
 Script tự tạo CSDL riêng `ltl_taisan_thu`, sinh khoá JWT, nạp 5 tài khoản và 30
 thiết bị mẫu, rồi bật API ở cổng 3001 và web ở cổng 5173. Mở
@@ -46,8 +60,8 @@ dùng chung mật khẩu **`LtL@2026Test`**:
 Lần đầu:
 
 ```bash
-git clone https://github.com/LearntoLeap/ltl-taisan.git
-cd ltl-taisan
+git clone https://github.com/LearntoLeap/LtL-assetops.git
+cd LtL-assetops
 bash trien-khai/cai-dat-vps.sh
 ```
 
@@ -69,7 +83,7 @@ bash trien-khai/cap-nhat-vps.sh
 ## 2. Web trên Vercel
 
 `vercel.json` ở gốc repo đã cấu hình sẵn. Trong Vercel, tạo project từ repo
-`LearntoLeap/ltl-taisan` với:
+`LearntoLeap/LtL-assetops` với:
 
 | Mục | Giá trị |
 |---|---|

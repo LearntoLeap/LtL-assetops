@@ -9,6 +9,7 @@
  *   - Ghi audit log cho chính lần seed (nguyên tắc bất biến #4).
  */
 import { hash } from 'bcryptjs';
+import { config as napEnv } from 'dotenv';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import {
   DIEM_LUU_TRU,
@@ -17,6 +18,12 @@ import {
   TAI_KHOAN,
   TAI_SAN,
 } from './seed-du-lieu.js';
+
+// Đọc api/.env giống api/src/env.ts. Prisma Client KHÔNG tự đọc .env (chỉ Prisma
+// CLI mới đọc), nên thiếu dòng này thì `npm run seed` báo thiếu DATABASE_URL và
+// SEED_ADMIN_PASSWORD dù api/.env đã có đủ. dotenv không ghi đè biến đã đặt sẵn,
+// nên truyền biến từ dòng lệnh vẫn thắng.
+napEnv();
 
 const prisma = new PrismaClient();
 const SO_VONG_BCRYPT = 12;

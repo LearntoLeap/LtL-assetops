@@ -145,7 +145,7 @@ Trong aaPanel: tạo cơ sở dữ liệu MySQL `ltl_taisan` (bảng mã **utf8m
 
 ```bash
 cd /www/wwwroot
-git clone <repo> ltl-taisan && cd ltl-taisan/taisan
+git clone https://github.com/LearntoLeap/LtL-assetops.git && cd LtL-assetops
 npm ci
 cp api/.env.example api/.env && nano api/.env      # điền DATABASE_URL, JWT_*, SEED_ADMIN_PASSWORD
 npm run build                                       # build shared → api → web
