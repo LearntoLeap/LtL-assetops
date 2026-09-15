@@ -51,7 +51,6 @@ FLUSH PRIVILEGES;
 ### 2. Cài phụ thuộc và cấu hình
 
 ```bash
-cd taisan
 npm install
 
 cp api/.env.example api/.env
@@ -184,8 +183,8 @@ pm2 logs ltl-taisan-api
 Cập nhật về sau:
 
 ```bash
-cd /www/wwwroot/ltl-taisan && git pull
-cd taisan && npm ci && npm run build && npm run migrate:deploy
+cd /opt/ltl-assetops && git pull
+npm ci && npm run build && npm run migrate:deploy
 pm2 restart ltl-taisan-api
 ```
 
@@ -809,7 +808,7 @@ Chạy từ `taisan/`:
 | `npm run migrate:deploy` | Áp migration (dùng trên VPS) |
 | `npm run seed` | Nạp dữ liệu mẫu (chạy lại được) |
 
-Trong `taisan/api/`: `npm run migrate:dev` (tạo migration mới khi sửa lược đồ),
+Trong `api/`: `npm run migrate:dev` (tạo migration mới khi sửa lược đồ),
 `npm run migrate:status`, `npm run prisma:format`.
 
 ## Quy tắc đóng gói

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Cài đặt API Quản lý Tài sản lên VPS (Ubuntu/Debian + aaPanel).
-# Chạy TRÊN VPS, từ thư mục taisan/:
+# Chạy TRÊN VPS, từ thư mục gốc của repo (nơi có package.json):
 #
 #   bash trien-khai/cai-dat-vps.sh
 #

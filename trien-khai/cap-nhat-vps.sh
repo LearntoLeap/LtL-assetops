@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Cập nhật API lên phiên bản mới. Chạy TRÊN VPS, từ thư mục taisan/:
+# Cập nhật API lên phiên bản mới. Chạy TRÊN VPS, từ thư mục gốc của repo:
 #
 #   bash trien-khai/cap-nhat-vps.sh
 #

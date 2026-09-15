@@ -1,5 +1,5 @@
 /**
- * Cấu hình pm2 cho API. Chạy trên VPS từ thư mục taisan/api:
+ * Cấu hình pm2 cho API. Chạy trên VPS từ thư mục api/ của repo:
  *   pm2 start ecosystem.config.cjs
  *   pm2 save && pm2 startup      # tự chạy lại sau khi VPS khởi động
  *   pm2 logs ltl-taisan-api
