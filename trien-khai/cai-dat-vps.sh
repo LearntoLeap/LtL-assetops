@@ -145,8 +145,12 @@ xong "19 bảng đã sẵn sàng"
 
 buoc "Dữ liệu khởi tạo"
 # Đếm tài khoản từ trong workspace api để Node tìm được @prisma/client
-# (npm workspaces gom phụ thuộc lên node_modules ở gốc).
+# (npm workspaces gom phụ thuộc lên node_modules ở gốc). Phải gọi dotenv:
+# Prisma CLIENT không tự đọc api/.env (chỉ Prisma CLI mới đọc), thiếu dòng đó
+# thì lệnh đếm luôn lỗi và trả "?" — nhánh "đã có dữ liệu thật" không bao giờ
+# tới được, mỗi lần cài lại là lại hỏi nạp seed.
 SO_NGUOI_DUNG="$(cd api && node -e '
+require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
 const p = new PrismaClient();
 p.user.count()
@@ -189,14 +193,33 @@ else
   pm2 start ecosystem.config.cjs
   xong "Đã khởi động ltl-taisan-api"
 fi
+
+# pm2 save ghi lại danh sách tiến trình, nhưng CHỈ pm2 startup mới tạo dịch vụ
+# systemd để danh sách đó được bật lại sau khi VPS reboot. Thiếu bước này thì
+# API chết im sau mỗi lần khởi động lại máy.
+if [ "$(id -u)" = "0" ]; then
+  if pm2 startup >/dev/null 2>&1; then
+    xong "Đã cài dịch vụ systemd — API tự bật lại sau khi VPS khởi động"
+  else
+    canh "Không cài được dịch vụ tự khởi động. Chạy tay: pm2 startup"
+  fi
+else
+  canh "Chạy thêm (cần sudo) để API tự bật lại sau khi VPS khởi động:"
+  canh "  pm2 startup   # rồi chạy đúng dòng lệnh nó in ra"
+fi
 pm2 save
 cd "$GOC"
 
 buoc "Kiểm tra API"
-sleep 3
 # KHÔNG dùng curl -f: 401 là phản hồi ĐÚNG cho request chưa đăng nhập,
 # nhưng -f lại coi đó là lỗi và bỏ qua nhánh kiểm tra.
-MA_HTTP="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/dia-diem || echo 000)"
+# Chờ tới 30 giây: lần khởi động đầu trên VPS yếu có thể lâu hơn 3 giây.
+MA_HTTP=000
+for _ in $(seq 1 30); do
+  sleep 1
+  MA_HTTP="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/dia-diem || echo 000)"
+  [ "$MA_HTTP" = "401" ] && break
+done
 if [ "$MA_HTTP" = "401" ]; then
   xong "API trả 401 cho request chưa đăng nhập — đúng như mong đợi"
 else
@@ -209,12 +232,18 @@ cat <<'HD'
 CÒN HAI VIỆC LÀM TRONG aaPanel
 ────────────────────────────────────────────────────────────────────────────
 
-1. Reverse proxy cho API (tên miền api.…):
-   Website → chọn tên miền API → Reverse Proxy → thêm, đích http://127.0.0.1:3001
-   rồi mở Configuration File và dán thêm phần trong trien-khai/nginx-api.conf
-   (có dòng Upgrade/Connection — thiếu là Socket.IO không nối được).
+1. Trang web → Thêm proxy ("Dự án proxy ngược" — KHÔNG phải Dự án PHP):
+     Tên miền   : api-taisan.learntoleap.vn
+     Mục tiêu   : Địa chỉ URL → http://127.0.0.1:3001
+     Gửi máy chủ: $http_host   (giữ nguyên)
+   Làm giống y hệt teachops-api.learntoleap.vn đang chạy.
 
-2. Bật SSL cho cả hai tên miền (Let's Encrypt trong aaPanel).
+2. Mở Cấu hình (Conf) của site vừa tạo, dán thêm phần trong
+   trien-khai/nginx-api.conf — có ba dòng Upgrade/Connection, thiếu là màn hình
+   kho mất cập nhật tức thời mà KHÔNG báo lỗi gì; và client_max_body_size,
+   thiếu là tải ảnh báo 413.
+
+3. Bật SSL (Let's Encrypt trong aaPanel). Cần DNS đã trỏ đúng trước.
 
 Sau đó kiểm tra:
    curl -i https://TEN_MIEN_API/api/dia-diem      → phải là 401

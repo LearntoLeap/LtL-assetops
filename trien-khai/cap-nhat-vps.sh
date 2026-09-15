@@ -31,8 +31,12 @@ buoc "Nạp lại API"
 cd api && pm2 reload ecosystem.config.cjs --update-env && pm2 save && cd "$GOC"
 
 buoc "Kiểm tra"
-sleep 3
-MA="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/dia-diem || echo 000)"
+MA=000
+for _ in $(seq 1 30); do
+  sleep 1
+  MA="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/dia-diem || echo 000)"
+  [ "$MA" = "401" ] && break
+done
 if [ "$MA" = "401" ]; then
   echo "  ✓ API đã chạy (401 cho request chưa đăng nhập)"
 else
