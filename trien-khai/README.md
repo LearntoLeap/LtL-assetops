@@ -55,6 +55,36 @@ dùng chung mật khẩu **`LtL@2026Test`**:
 > đặt ở Hà Nội). Đăng nhập bằng `admin`, vào *Thêm → Khoá vị trí kho* để sửa toạ
 > độ kho về vị trí của anh/chị, hoặc cấp mã vượt quyền dùng một lần.
 
+## 0b. Cách ly với TeachOps trên cùng VPS
+
+Hai hệ thống chạy song song trên `14.225.206.251` và dùng riêng từng thứ:
+
+| Hạng mục | TeachOps | Quản lý Tài sản |
+|---|---|---|
+| Thư mục | `/opt/ltl-teachops` | `/opt/ltl-assetops` |
+| Cổng nội bộ | `3000` | `3001` |
+| Cách chạy tiến trình | Docker compose | pm2 (`ltl-taisan-api`) |
+| Cơ sở dữ liệu | PostgreSQL trong container | MySQL của aaPanel (`ltl_taisan`) |
+| Tên miền API | `teachops-api.learntoleap.vn` | `api-taisan.learntoleap.vn` |
+| Site trong aaPanel | site riêng | site riêng |
+| Project Vercel | `ltl-teachops` | `ltl-assetops` |
+
+Dùng chung đúng ba thứ: **đĩa**, **RAM**, và **Nginx cổng 80/443** (aaPanel chia
+theo từng site). Toàn bộ repo này không có một lệnh `docker`, `systemctl`,
+`apt`, `rm -rf`, `DROP`, hay `prisma migrate reset` nào; bốn thứ duy nhất chạm
+ra ngoài thư mục repo là `npm install -g pm2`, `pm2 startup`, `pm2 save`, và —
+chỉ khi người dùng chủ động chọn "c" — các câu `CREATE DATABASE`/`CREATE USER`.
+
+Chạy script kiểm tra **trước và sau** khi cài, rồi so phần "SỨC KHOẺ TEACHOPS":
+
+```bash
+bash trien-khai/kiem-tra-cach-ly.sh
+```
+
+Script **chỉ đọc**, không tạo/sửa/xoá/khởi động lại gì. Nó thoát với mã 1 nếu
+gặp xung đột thật (cổng 3001 bị chiếm, thiếu đĩa, thiếu RAM) để chặn lại trước
+khi kịp cài.
+
 ## 1. API trên VPS
 
 Lần đầu:
