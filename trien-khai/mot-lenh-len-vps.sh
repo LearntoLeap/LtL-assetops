@@ -36,7 +36,8 @@ set -uo pipefail
 # ── Thông số ───────────────────────────────────────────────────────────────
 THU_MUC="${THU_MUC:-/opt/ltl-assetops}"
 REPO="${REPO:-https://github.com/LearntoLeap/LtL-assetops.git}"
-CONG="${CONG:-3001}"
+# VPS của LtL: Docker đã chiếm CẢ 3000 và 3001 (TeachOps), nên mặc định 3002.
+CONG="${CONG:-3002}"
 TEN_CSDL="${TEN_CSDL:-ltl_taisan}"
 USER_CSDL="${USER_CSDL:-ltl_taisan}"
 TEN_MIEN_API="${TEN_MIEN_API:-https://api-taisan.learntoleap.vn}"
@@ -45,7 +46,8 @@ ADMIN_EMAIL="${ADMIN_EMAIL:-admin@learntoleap.vn}"
 PM2_TEN="ltl-taisan-api"
 
 # TeachOps — chỉ ĐỌC để so trước/sau, không bao giờ ghi
-CONG_TEACHOPS=3000
+# TeachOps chiếm 3000 VÀ 3001 qua docker-proxy; /api/health nằm ở 3001.
+CONG_TEACHOPS=3001
 TEN_MIEN_TEACHOPS="teachops-api.learntoleap.vn"
 
 HOST_API="$(printf '%s' "$TEN_MIEN_API" | sed -e 's#^https\?://##' -e 's#/.*$##')"

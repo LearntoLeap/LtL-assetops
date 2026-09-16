@@ -79,7 +79,7 @@ else
 
   umask 077
   cat > api/.env <<ENV
-PORT=3001
+PORT=3002
 NODE_ENV=production
 
 DATABASE_URL="mysql://${USER_CSDL}:${MK_CSDL}@${MAY_CSDL}/${TEN_CSDL}"
@@ -217,7 +217,7 @@ buoc "Kiểm tra API"
 MA_HTTP=000
 for _ in $(seq 1 30); do
   sleep 1
-  MA_HTTP="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/dia-diem || echo 000)"
+  MA_HTTP="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3002/api/dia-diem || echo 000)"
   [ "$MA_HTTP" = "401" ] && break
 done
 if [ "$MA_HTTP" = "401" ]; then
@@ -234,7 +234,7 @@ CÒN HAI VIỆC LÀM TRONG aaPanel
 
 1. Trang web → Thêm proxy ("Dự án proxy ngược" — KHÔNG phải Dự án PHP):
      Tên miền   : api-taisan.learntoleap.vn
-     Mục tiêu   : Địa chỉ URL → http://127.0.0.1:3001
+     Mục tiêu   : Địa chỉ URL → http://127.0.0.1:3002
      Gửi máy chủ: $http_host   (giữ nguyên)
    Làm giống y hệt teachops-api.learntoleap.vn đang chạy.
 

@@ -34,7 +34,7 @@ buoc "Kiểm tra"
 MA=000
 for _ in $(seq 1 30); do
   sleep 1
-  MA="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/dia-diem || echo 000)"
+  MA="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3002/api/dia-diem || echo 000)"
   [ "$MA" = "401" ] && break
 done
 if [ "$MA" = "401" ]; then

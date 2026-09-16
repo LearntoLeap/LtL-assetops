@@ -30,13 +30,14 @@ SO_CANH=0
 SO_XAU=0
 
 # Thông số của hệ Quản lý Tài sản (khác hoàn toàn TeachOps)
-CONG_TS=3001
+CONG_TS=3002
 THU_MUC_TS="/opt/ltl-assetops"
 CSDL_TS="ltl_taisan"
 PM2_TS="ltl-taisan-api"
 
 # Thông số TeachOps — chỉ để ĐỌC, không bao giờ ghi
-CONG_TO=3000
+# TeachOps giữ cả 3000 và 3001 qua docker-proxy
+CONG_TO=3001
 THU_MUC_TO="/opt/ltl-teachops"
 TEN_MIEN_TO="teachops-api.learntoleap.vn"
 
@@ -55,20 +56,20 @@ dang_nghe() { # $1 = cổng; in ra tiến trình đang nghe, rỗng nếu không
   fi
 }
 
-AI_3001="$(dang_nghe "$CONG_TS")"
-AI_3000="$(dang_nghe "$CONG_TO")"
+AI_TS="$(dang_nghe "$CONG_TS")"
+AI_TO="$(dang_nghe "$CONG_TO")"
 
-if [ -z "$AI_3001" ]; then
+if [ -z "$AI_TS" ]; then
   ok "Cổng $CONG_TS còn trống — Quản lý Tài sản sẽ dùng cổng này"
-elif printf '%s' "$AI_3001" | grep -q "$PM2_TS\|node"; then
-  ok "Cổng $CONG_TS đang do chính Quản lý Tài sản dùng ($AI_3001) — đã cài rồi"
+elif printf '%s' "$AI_TS" | grep -q "$PM2_TS\|node"; then
+  ok "Cổng $CONG_TS đang do chính Quản lý Tài sản dùng ($AI_TS) — đã cài rồi"
 else
-  xau "Cổng $CONG_TS đã bị tiến trình khác chiếm: $AI_3001"
-  tin "Sửa PORT trong api/.env sang cổng khác (vd 3002) và sửa proxy trong aaPanel cho khớp"
+  xau "Cổng $CONG_TS đã bị tiến trình khác chiếm: $AI_TS"
+  tin "Chạy lại script cài đặt với cổng khác (vd CONG=3003) và sửa Mục tiêu proxy cho khớp"
 fi
 
-if [ -n "$AI_3000" ]; then
-  ok "Cổng $CONG_TO vẫn do TeachOps giữ ($AI_3000) — Quản lý Tài sản KHÔNG chạm vào"
+if [ -n "$AI_TO" ]; then
+  ok "Cổng $CONG_TO vẫn do TeachOps giữ ($AI_TO) — Quản lý Tài sản KHÔNG chạm vào"
 else
   canh "Không thấy ai nghe cổng $CONG_TO — TeachOps có đang chạy không?"
 fi
@@ -250,7 +251,7 @@ cat <<'BANG'
     Hạng mục          TeachOps                  Quản lý Tài sản
     ───────────────── ───────────────────────── ─────────────────────────
     Thư mục           /opt/ltl-teachops         /opt/ltl-assetops
-    Cổng nội bộ       3000                      3001
+    Cổng nội bộ       3000 + 3001 (docker)      3002 (pm2)
     Cách chạy         Docker compose            pm2
     Cơ sở dữ liệu     PostgreSQL (container)    MySQL của aaPanel
     Tên miền API      teachops-api.learntol…    api-taisan.learntol…
