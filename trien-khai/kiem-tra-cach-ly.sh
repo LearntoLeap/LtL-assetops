@@ -208,6 +208,39 @@ if command -v docker >/dev/null 2>&1; then
     || echo "    (không đọc được — cần quyền root)"
 fi
 
+# ── 7. Cấu hình Nginx ──────────────────────────────────────────────────────
+muc "7. CẤU HÌNH NGINX (dùng chung — nơi hai hệ có thể va nhau)"
+
+NGINX_BIN="$(command -v nginx || echo /www/server/nginx/sbin/nginx)"
+if [ -x "$NGINX_BIN" ]; then
+  if "$NGINX_BIN" -t >/dev/null 2>&1; then
+    ok "nginx -t: cấu hình hợp lệ — KHÔNG có site nào đang làm Nginx lỗi"
+  else
+    xau "nginx -t THẤT BẠI — Nginx đang giữ cấu hình cũ, lần khởi động lại sẽ không lên"
+    "$NGINX_BIN" -t 2>&1 | sed 's/^/       /' | head -8
+  fi
+else
+  tin "Không tìm thấy lệnh nginx trên máy này"
+fi
+
+THU_MUC_CONF="${THU_MUC_CONF:-/www/server/panel/vhost/nginx}"
+if [ -d "$THU_MUC_CONF" ]; then
+  echo
+  echo "  Các site và cổng đích thật (đọc từ chính file cấu hình):"
+  for tep in "$THU_MUC_CONF"/*.conf; do
+    [ -f "$tep" ] || continue
+    TEN_SITE="$(basename "$tep" .conf)"
+    DICH="$(grep -oE 'proxy_pass[[:space:]]+[^;]+' "$tep" 2>/dev/null \
+            | awk '{print $2}' | sort -u | paste -sd' ' -)"
+    printf "    %-38s %s\n" "$TEN_SITE" "${DICH:-(không phải proxy)}"
+  done
+  echo
+  tin "Mỗi site phải trỏ về ĐÚNG cổng của nó: TeachOps một cổng, Tài sản cổng khác."
+  tin "Hai site trỏ cùng một cổng là một trong hai đang bị cấu hình sai."
+else
+  tin "Không thấy $THU_MUC_CONF — máy này có thể không dùng aaPanel"
+fi
+
 # ── Kết luận ───────────────────────────────────────────────────────────────
 muc "KẾT LUẬN"
 
