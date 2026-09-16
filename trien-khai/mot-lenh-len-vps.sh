@@ -170,6 +170,28 @@ buoc "Cơ sở dữ liệu MySQL"
 
 if [ -f api/.env ] && grep -q '^DATABASE_URL' api/.env; then
   ok "api/.env đã có DATABASE_URL — giữ nguyên, bỏ qua bước tạo CSDL"
+
+elif [ -n "${DB_PASS:-}" ]; then
+  # CSDL đã được tạo sẵn trong aaPanel → CHỈ DÙNG, không cần quyền root chút nào.
+  # Nhánh này là lý do tồn tại của DB_PASS: aaPanel không cho script đọc mật
+  # khẩu root, nên người dùng tạo CSDL bằng giao diện rồi đưa mật khẩu vào đây.
+  MK_CSDL="$DB_PASS"
+  if command -v mysql >/dev/null 2>&1; then
+    mysql -u"$USER_CSDL" -p"$MK_CSDL" -h 127.0.0.1 -e "SELECT 1" "$TEN_CSDL" >/dev/null 2>&1 \
+      || mysql -u"$USER_CSDL" -p"$MK_CSDL" -e "SELECT 1" "$TEN_CSDL" >/dev/null 2>&1 \
+      || loi "Không đăng nhập được CSDL '$TEN_CSDL' bằng user '$USER_CSDL'." \
+           "Kiểm tra lại trong aaPanel → Cơ sở dữ liệu:" \
+           "  · Tên CSDL và tên người dùng đều phải là: $TEN_CSDL" \
+           "  · Mật khẩu truyền qua DB_PASS phải khớp mật khẩu của CSDL đó" \
+           "  · Mật khẩu chứa dấu nháy đơn (') thì hãy sinh lại mật khẩu khác" \
+           "" \
+           "Tên CSDL/user khác thì truyền thêm, ví dụ:" \
+           "  TEN_CSDL=ten_csdl USER_CSDL=ten_user DB_PASS='matkhau' bash $0"
+    ok "Đăng nhập được CSDL '$TEN_CSDL' bằng user '$USER_CSDL' — dùng CSDL tạo sẵn trong aaPanel"
+  else
+    ok "Dùng CSDL '$TEN_CSDL' tạo sẵn trong aaPanel (không có lệnh mysql để thử trước)"
+  fi
+
 else
   # Tìm cách vào MySQL bằng root. Thử lần lượt, KHÔNG in mật khẩu ra màn hình.
   MYSQL_ROOT=""
@@ -188,14 +210,22 @@ else
     done
   fi
 
-  [ -n "$MYSQL_ROOT" ] || loi "Không vào được MySQL bằng root." \
-    "Cách 1 — tạo CSDL trong aaPanel (Cơ sở dữ liệu → Thêm CSDL):" \
-    "    Tên CSDL và user: $TEN_CSDL     Bảng mã: utf8mb4" \
-    "  rồi chạy lại kèm mật khẩu vừa đặt:" \
-    "    DB_PASS='matkhau-aapanel-vua-sinh' bash $0" \
+  [ -n "$MYSQL_ROOT" ] || loi "Không dò được mật khẩu root MySQL — chuyện bình thường với aaPanel." \
+    "CÁCH NÊN DÙNG — tạo cơ sở dữ liệu bằng giao diện aaPanel:" \
     "" \
-    "Cách 2 — đưa mật khẩu root MySQL cho script tự tạo:" \
-    "    MYSQL_ROOT_PW='matkhau-root-mysql' bash $0"
+    "  1. Sidebar → Cơ sở dữ liệu → Thêm CSDL" \
+    "  2. Tên CSDL      : $TEN_CSDL" \
+    "     Tên người dùng: $TEN_CSDL     (giống tên CSDL)" \
+    "     Mật khẩu      : bấm nút sinh ngẫu nhiên rồi CHÉP LẠI" \
+    "     Bảng mã       : utf8mb4       (KHÔNG chọn utf8)" \
+    "  3. Chạy lại lệnh này, thay matkhau bằng mật khẩu vừa chép:" \
+    "" \
+    "     DB_PASS='matkhau' bash $0" \
+    "" \
+    "  Nhánh DB_PASS KHÔNG cần quyền root — nó chỉ dùng CSDL đã có." \
+    "" \
+    "Cách khác, nếu anh/chị biết mật khẩu root MySQL:" \
+    "     MYSQL_ROOT_PW='matkhau-root' bash $0"
 
   MK_CSDL="${DB_PASS:-$(ngau_nhien 18)}"
   # CHỈ CREATE/GRANT. Không có DROP ở bất kỳ đâu trong script này.
