@@ -123,6 +123,40 @@ bash trien-khai/cap-nhat-vps.sh
 | Output Directory | `web/dist` (đã có trong `vercel.json`) |
 | Biến môi trường | không cần đặt — `VITE_API_URL` nằm sẵn trong `vercel.json` |
 
+### Ba project Vercel bị cấu hình sai — và hai tệp vercel.json lồng nhau
+
+Lúc nối repo với Vercel lần đầu đã sinh ra **bốn** project trỏ vào cùng repo này:
+
+| Project | Root Directory | Trạng thái |
+|---|---|---|
+| `ltl-assetops` | gốc repo | **đúng, đang chạy** |
+| `api` | `api` | sai — fail mọi lần push |
+| `lt-l-assetops-api` | `api` | sai — fail mọi lần push |
+| `web` | `web` | sai — fail mọi lần push |
+
+Ba project sai đặt Build Command là `npm run build:web`, nhưng script đó nằm ở
+`package.json` **gốc** repo, không có trong `api/`. Log build nói đúng điều đó:
+
+```
+npm error location /vercel/path0/api
+npm error Missing script: "build:web"
+```
+
+**Cách sửa thật: xoá ba project đó** (project → Settings → cuối trang → Delete
+Project). Gói Hobby không cho `pause`, và API không có lệnh xoá project, nên
+việc này phải làm trong dashboard.
+
+Trong lúc chưa xoá, `api/vercel.json` và `web/vercel.json` chặn sẵn:
+
+```json
+{ "git": { "deploymentEnabled": { "main": false } } }
+```
+
+Vercel chỉ đọc **một** `vercel.json` — cái nằm ở Root Directory của project đó.
+`ltl-assetops` có Root Directory là gốc repo nên nó đọc `/vercel.json` và
+**không** đọc hai tệp trên; ba project sai thì đọc và ngừng deploy. Xoá ba
+project rồi thì hai tệp này thành vô hại, xoá đi cũng được.
+
 ### Tên miền đang dùng
 
 | Vai trò | Tên miền | Trỏ về |
