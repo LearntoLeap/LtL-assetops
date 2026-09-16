@@ -54,7 +54,7 @@ CONF_NGINX="${CONF_NGINX:-/www/server/panel/vhost/nginx/${HOST_API}.conf}"
 # ── In ra màn hình ─────────────────────────────────────────────────────────
 x='\033[0;32m'; v='\033[0;33m'; d='\033[0;31m'; m='\033[2m'; h='\033[0m'
 BUOC=0
-buoc() { BUOC=$((BUOC + 1)); printf "\n${x}▶ [%d/9] %s${h}\n" "$BUOC" "$1"; }
+buoc() { BUOC=$((BUOC + 1)); printf "\n${x}▶ [%d/10] %s${h}\n" "$BUOC" "$1"; }
 ok()   { printf "  ${x}✓${h} %s\n" "$1"; }
 canh() { printf "  ${v}!${h} %s\n" "$1"; }
 tin()  { printf "  ${m}·${h} %s\n" "$1"; }
