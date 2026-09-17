@@ -16,7 +16,7 @@ import { loi400, loi401, loi403, LoiHttp } from '../../lib/loi-http.js';
 import { ghiAudit, ghiAuditKhongChan, type NguoiThaoTac } from '../../lib/audit.js';
 import { gioiHanDangNhap } from '../../lib/gioi-han-lan.js';
 import { log } from '../../lib/ghi-log.js';
-import { kiemTraViTriKho } from './khoa-vi-tri.js';
+import { ghiViTriDangNhapKho } from './khoa-vi-tri.js';
 import type { DuLieuDangNhap } from './auth.schema.js';
 
 export interface BoiCanhGoi {
@@ -40,8 +40,6 @@ export interface KetQuaDangNhap {
   accessToken: string;
   refreshToken: string;
   nguoiDung: HoSoNguoiDung;
-  /** Có dùng mã vượt quyền GPS trong lần đăng nhập này hay không. */
-  dungMaVuotQuyen: boolean;
 }
 
 async function capBoToken(nguoiDung: {
@@ -136,20 +134,20 @@ export async function dangNhap(
     throw loi403('Tài khoản đã bị khoá. Liên hệ quản trị viên.');
   }
 
-  // Khoá vị trí: chỉ áp cho vai trò KHO.
+  // XÁC NHẬN BẰNG GPS ĐÃ BỎ HẲN. Không còn phép kiểm nào chặn đăng nhập theo
+  // vị trí. Nếu máy có gửi toạ độ thì vẫn ghi nhật ký kèm khoảng cách tới kho,
+  // để sau còn truy được ai đăng nhập từ đâu — nhưng thiếu toạ độ cũng vào
+  // được bình thường.
   let khoangCach: number | null = null;
-  let dungMaVuotQuyen = false;
   if (nguoiDung.role === 'KHO') {
-    const ketQua = await kiemTraViTriKho({
+    const kq = await ghiViTriDangNhapKho({
       nguoiDung: { ...nguoiThaoTac, locationId: nguoiDung.locationId },
       toaDo: duLieu.viTri
         ? { latitude: duLieu.viTri.latitude, longitude: duLieu.viTri.longitude }
         : null,
-      maVuotQuyen: duLieu.maVuotQuyen ?? null,
       boiCanh,
     });
-    khoangCach = ketQua.khoangCachM;
-    dungMaVuotQuyen = ketQua.dungMaVuotQuyen;
+    khoangCach = kq.khoangCachM;
   }
 
   const boToken = await capBoToken(nguoiDung, boiCanh);
@@ -170,7 +168,9 @@ export async function dangNhap(
     distanceM: khoangCach,
     note:
       nguoiDung.role === 'KHO'
-        ? `Đăng nhập kho, cách kho ${khoangCach ?? '?'}m${dungMaVuotQuyen ? ' (dùng mã vượt quyền)' : ''}.`
+        ? khoangCach === null
+          ? 'Đăng nhập kho — máy không gửi toạ độ.'
+          : `Đăng nhập kho, cách kho ${khoangCach}m.`
         : null,
   });
 
@@ -178,7 +178,6 @@ export async function dangNhap(
 
   return {
     ...boToken,
-    dungMaVuotQuyen,
     nguoiDung: {
       id: nguoiDung.id,
       email: nguoiDung.email,

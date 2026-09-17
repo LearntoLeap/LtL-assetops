@@ -15,6 +15,7 @@ import {
   PackageX,
   QrCode,
   Search,
+  Settings,
   TimerOff,
   Truck,
   Wrench,
@@ -137,7 +138,12 @@ function OThongKe({
         <Icon className="size-5" aria-hidden />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[0.7rem] uppercase tracking-wide text-white/70">
+        {/*
+          KHÔNG truncate: ở 390px ô chỉ rộng ~150px nên "Đơn vị tại kho" bị cắt
+          thành "ĐƠN VỊ TẠI ..." — người đọc mất luôn từ quan trọng nhất. Cho
+          xuống dòng thì ô cao thêm một dòng nhưng đọc được đủ chữ.
+        */}
+        <span className="block text-[0.7rem] uppercase leading-tight tracking-wide text-white/70">
           {nhan}
         </span>
         <span className={`block text-2xl font-semibold leading-tight ${doi ? 'text-amber-300' : ''}`}>
@@ -367,26 +373,32 @@ export function ManHinhKiosk() {
                 variant="outline"
                 className="min-h-[3rem] border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                 onClick={() => datMoDoiNen((m) => !m)}
+                title="Đổi ảnh nền"
               >
                 <ImageIcon aria-hidden />
-                Ảnh nền
+                <span className="hidden sm:inline">Ảnh nền</span>
               </Button>
               <Button
                 size="cham"
                 variant="outline"
                 className="min-h-[3rem] border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                 asChild
+                title="Về trang quản trị"
               >
-                <Link to="/">Về trang quản trị</Link>
+                <Link to="/">
+                  <Settings aria-hidden />
+                  <span className="hidden sm:inline">Trang quản trị</span>
+                </Link>
               </Button>
               <Button
                 size="cham"
                 variant="outline"
                 className="min-h-[3rem] border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                 onClick={() => void thoat()}
+                title="Đăng xuất"
               >
                 <LogOut aria-hidden />
-                Đăng xuất
+                <span className="hidden sm:inline">Đăng xuất</span>
               </Button>
             </div>
           </header>

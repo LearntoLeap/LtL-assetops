@@ -13,6 +13,19 @@ import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
  * hẳn, nhất là khi mạng kho yếu.
  */
 const TongQuan = lazy(() => import('@/features/tong-quan/TongQuan').then((m) => ({ default: m.TongQuan })));
+
+/**
+ * Trang mặc định theo vai trò.
+ *
+ * Tài khoản KHO về màn hình kho; các vai trò khác về Tổng quan. Đặt ở route
+ * `index` thay vì rải điều kiện ở từng chỗ gọi: đăng nhập xong, bấm logo, hay
+ * thoát khỏi một trang con đều rơi về "/", nên một chỗ này bao hết.
+ */
+function TrangMacDinh() {
+  const { nguoiDung } = useAuth();
+  if (nguoiDung?.role === 'KHO') return <Navigate to="/kiosk" replace />;
+  return <TongQuan />;
+}
 const DoiMatKhau = lazy(() => import('@/features/auth/DoiMatKhau').then((m) => ({ default: m.DoiMatKhau })));
 const ThietBiList = lazy(() => import('@/features/thiet-bi/ThietBiList').then((m) => ({ default: m.ThietBiList })));
 const ThietBiChiTiet = lazy(() => import('@/features/thiet-bi/ThietBiChiTiet').then((m) => ({ default: m.ThietBiChiTiet })));
@@ -124,7 +137,14 @@ export default function App() {
             </CanDangNhap>
           }
         >
-          <Route index element={<TongQuan />} />
+          {/*
+            Trang mặc định: tài khoản KHO về MÀN HÌNH KHO, không phải Tổng
+            quan. Máy ở kho đặt cố định và người dùng nó cả ngày chỉ cần màn
+            hình đó; bắt họ qua Tổng quan rồi tự tìm đường sang là thừa. Mọi
+            đường dẫn "/" — đăng nhập xong, bấm logo, thoát khỏi trang con —
+            đều rơi vào đây nên chỉ cần một chỗ này là đủ.
+          */}
+          <Route index element={<TrangMacDinh />} />
           <Route path="doi-mat-khau" element={<DoiMatKhau />} />
 
           {/* Thiết bị — mọi vai trò xem được, phạm vi do server lọc */}

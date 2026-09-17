@@ -1,229 +1,64 @@
 /**
- * KHOÁ ĐĂNG NHẬP THEO VỊ TRÍ cho vai trò KHO.
+ * GHI NHẬT KÝ VỊ TRÍ ĐĂNG NHẬP — không còn chặn.
  *
- * Client gửi toạ độ, SERVER tính khoảng cách và quyết định — không bao giờ tin
- * kết luận của client. Vì GPS trong nhà hay lệch:
- *   - bán kính cấu hình được theo từng kho (mặc định GPS_DEFAULT_RADIUS_M),
- *   - ADMIN cấp được mã vượt quyền DÙNG MỘT LẦN,
- *   - mọi lần đăng nhập đều ghi nhật ký kèm toạ độ và khoảng cách.
+ * Trước đây đây là chốt KHOÁ ĐĂNG NHẬP theo vị trí cho vai trò KHO: server
+ * tính khoảng cách và từ chối nếu ngoài bán kính. LtL đã quyết định BỎ HẲN
+ * việc xác nhận bằng GPS — lý do đo được từ thực tế: GPS trong nhà lệch
+ * 50-200m mà kho nằm trong toà nhà, nên chốt này chặn oan nhân viên đứng ngay
+ * trong kho nhiều hơn là chặn được người ở xa; người ra vào kho đã kiểm soát
+ * bằng cửa.
+ *
+ * Giữ lại đúng phần CÓ ÍCH: nếu máy đăng nhập có gửi toạ độ thì ghi vào nhật
+ * ký kèm khoảng cách tới kho, để sau còn truy được ai đăng nhập từ đâu. Hàm
+ * này KHÔNG BAO GIỜ ném lỗi — thiếu toạ độ, thiếu kho, toạ độ sai, tất cả đều
+ * chỉ là "không ghi được khoảng cách", không phải lý do từ chối đăng nhập.
  */
-import { compare } from 'bcryptjs';
 import { prisma } from '../../prisma.js';
-import { env } from '../../env.js';
 import { khoangCachM, toaDoHopLe, type ToaDo } from '../../lib/khoang-cach.js';
-import { loi403, loi422 } from '../../lib/loi-http.js';
 import { ghiAuditKhongChan, type NguoiThaoTac } from '../../lib/audit.js';
-import { chuanHoaMa, tienToMa } from '../../lib/ma-vuot-quyen.js';
 
-export interface ThamSoKiemViTri {
+export interface ThamSoGhiViTri {
   nguoiDung: NguoiThaoTac & { locationId: string | null };
   toaDo: ToaDo | null;
-  maVuotQuyen: string | null;
   boiCanh: { ip: string | null; userAgent: string | null };
 }
 
-export interface KetQuaKiemViTri {
-  khoangCachM: number | null;
-  dungMaVuotQuyen: boolean;
-  tenKho: string;
-  banKinhM: number;
-}
-
 /**
- * Tìm và TIÊU một mã vượt quyền còn hiệu lực của kho. Trả về id mã nếu dùng
- * được. Việc đánh dấu đã dùng làm bằng updateMany có điều kiện `usedAt: null`,
- * nên hai người nhập cùng một mã cùng lúc chỉ một người đi qua được.
+ * Ghi nhật ký vị trí đăng nhập của tài khoản kho. Trả về khoảng cách tới kho
+ * (mét) nếu tính được, null nếu không — dùng cho bản ghi audit chính.
  */
-async function tieuMaVuotQuyen(
-  locationId: string,
-  ma: string,
-  userId: string,
-): Promise<string | null> {
-  const chuanHoa = chuanHoaMa(ma);
-  if (chuanHoa.length < 4) return null;
+export async function ghiViTriDangNhapKho(
+  thamSo: ThamSoGhiViTri,
+): Promise<{ khoangCachM: number | null; tenKho: string | null }> {
+  const { nguoiDung, toaDo, boiCanh } = thamSo;
 
-  const ungVien = await prisma.gpsOverrideCode.findMany({
-    where: {
-      locationId,
-      codePrefix: tienToMa(chuanHoa),
-      usedAt: null,
-      expiresAt: { gt: new Date() },
-    },
-    select: { id: true, codeHash: true },
-  });
-
-  for (const uv of ungVien) {
-    if (!(await compare(chuanHoa, uv.codeHash))) continue;
-    const daTieu = await prisma.gpsOverrideCode.updateMany({
-      where: { id: uv.id, usedAt: null },
-      data: { usedAt: new Date(), usedById: userId },
-    });
-    if (daTieu.count === 1) return uv.id;
-  }
-  return null;
-}
-
-/**
- * Kiểm tra vị trí đăng nhập của tài khoản KHO.
- * Ném lỗi 422/403 kèm nhật ký nếu không đạt; trả về thông tin để ghi log nếu đạt.
- */
-export async function kiemTraViTriKho(thamSo: ThamSoKiemViTri): Promise<KetQuaKiemViTri> {
-  const { nguoiDung, toaDo, maVuotQuyen, boiCanh } = thamSo;
-
-  if (!nguoiDung.locationId) {
-    await ghiAuditKhongChan({
-      actor: nguoiDung,
-      action: 'auth.login.tu_choi',
-      entityType: 'user',
-      entityId: nguoiDung.id,
-      ...boiCanh,
-      note: 'Tài khoản KHO chưa được gán kho.',
-    });
-    throw loi403(
-      'Tài khoản kho chưa được gán điểm kho. Liên hệ quản trị viên để gán kho trước khi đăng nhập.',
-    );
-  }
+  if (!nguoiDung.locationId) return { khoangCachM: null, tenKho: null };
 
   const kho = await prisma.location.findUnique({
     where: { id: nguoiDung.locationId },
-    select: {
-      id: true,
-      name: true,
-      latitude: true,
-      longitude: true,
-      gpsRadiusM: true,
-      gpsRequired: true,
-    },
+    select: { id: true, name: true, latitude: true, longitude: true },
   });
+  if (!kho) return { khoangCachM: null, tenKho: null };
 
-  if (!kho) {
-    await ghiAuditKhongChan({
-      actor: nguoiDung,
-      action: 'auth.login.tu_choi',
-      entityType: 'user',
-      entityId: nguoiDung.id,
-      ...boiCanh,
-      note: `Kho ${nguoiDung.locationId} không còn tồn tại.`,
-    });
-    throw loi403('Kho của tài khoản này không còn tồn tại. Liên hệ quản trị viên.');
-  }
-
-  // ADMIN đã tắt khoá vị trí cho điểm này — đi qua, nhưng VẪN ghi nhật ký kèm
-  // toạ độ nếu máy có gửi, để sau còn truy được ai đăng nhập từ đâu.
-  if (!kho.gpsRequired) {
-    const banKinhM = kho.gpsRadiusM ?? env.GPS_DEFAULT_RADIUS_M;
-    const coToaDo = toaDo !== null && toaDoHopLe(toaDo);
-    const cachKho =
-      coToaDo && kho.latitude !== null && kho.longitude !== null
-        ? khoangCachM(toaDo, {
-            latitude: Number(kho.latitude),
-            longitude: Number(kho.longitude),
-          })
-        : null;
-    await ghiAuditKhongChan({
-      actor: nguoiDung,
-      action: 'auth.login.gps_da_tat',
-      entityType: 'location',
-      entityId: kho.id,
-      ...boiCanh,
-      ...(coToaDo ? { latitude: toaDo.latitude, longitude: toaDo.longitude } : {}),
-      ...(cachKho === null ? {} : { distanceM: cachKho }),
-      note:
-        `Khoá vị trí đang TẮT cho ${kho.name}` +
-        (cachKho === null ? ' (máy không gửi toạ độ).' : ` (máy cách kho ${cachKho}m).`),
-    });
-    return { khoangCachM: cachKho, dungMaVuotQuyen: false, tenKho: kho.name, banKinhM };
-  }
-
-  if (kho.latitude === null || kho.longitude === null) {
-    await ghiAuditKhongChan({
-      actor: nguoiDung,
-      action: 'auth.login.tu_choi',
-      entityType: 'user',
-      entityId: nguoiDung.id,
-      ...boiCanh,
-      note: `Kho ${kho.name} bật khoá vị trí nhưng chưa cấu hình toạ độ GPS.`,
-    });
-    // Chặn (fail-safe): chưa có toạ độ thì không thể kiểm, không cho đi qua.
-    throw loi403(
-      'Kho của tài khoản này đang bật khoá vị trí nhưng chưa có toạ độ GPS. Quản trị ' +
-        'viên cần vào Thêm → Khoá vị trí kho để đặt toạ độ, hoặc tắt khoá vị trí cho kho này.',
-    );
-  }
-
-  const banKinhM = kho.gpsRadiusM ?? env.GPS_DEFAULT_RADIUS_M;
-  const toaDoKho: ToaDo = { latitude: Number(kho.latitude), longitude: Number(kho.longitude) };
-
-  if (!toaDo || !toaDoHopLe(toaDo)) {
-    await ghiAuditKhongChan({
-      actor: nguoiDung,
-      action: 'auth.login.tu_choi',
-      entityType: 'user',
-      entityId: nguoiDung.id,
-      ...boiCanh,
-      note: 'Không nhận được toạ độ hợp lệ từ máy đăng nhập.',
-    });
-    throw loi422(
-      'Tài khoản kho phải gửi vị trí khi đăng nhập. Hãy cho phép trình duyệt truy cập vị trí rồi thử lại.',
-      'THIEU_VI_TRI',
-      { tenKho: kho.name, banKinhM },
-    );
-  }
-
-  const khoangCach = khoangCachM(toaDo, toaDoKho);
-
-  if (khoangCach <= banKinhM) {
-    return { khoangCachM: khoangCach, dungMaVuotQuyen: false, tenKho: kho.name, banKinhM };
-  }
-
-  // Ngoài bán kính — còn một đường: mã vượt quyền dùng một lần do ADMIN cấp.
-  if (maVuotQuyen) {
-    const idMa = await tieuMaVuotQuyen(kho.id, maVuotQuyen, nguoiDung.id);
-    if (idMa) {
-      await ghiAuditKhongChan({
-        actor: nguoiDung,
-        action: 'auth.login.vuot_quyen_gps',
-        entityType: 'gps_override_code',
-        entityId: idMa,
-        ...boiCanh,
-        latitude: toaDo.latitude,
-        longitude: toaDo.longitude,
-        distanceM: khoangCach,
-        note: `Đăng nhập ngoài bán kính ${banKinhM}m (cách ${khoangCach}m) bằng mã vượt quyền.`,
-      });
-      return { khoangCachM: khoangCach, dungMaVuotQuyen: true, tenKho: kho.name, banKinhM };
-    }
-  }
+  const coToaDo = toaDo !== null && toaDoHopLe(toaDo);
+  const cachKho =
+    coToaDo && kho.latitude !== null && kho.longitude !== null
+      ? khoangCachM(toaDo, { latitude: Number(kho.latitude), longitude: Number(kho.longitude) })
+      : null;
 
   await ghiAuditKhongChan({
     actor: nguoiDung,
-    action: 'auth.login.ngoai_vung',
-    entityType: 'user',
-    entityId: nguoiDung.id,
+    action: 'auth.login.vi_tri_kho',
+    entityType: 'location',
+    entityId: kho.id,
     ...boiCanh,
-    latitude: toaDo.latitude,
-    longitude: toaDo.longitude,
-    distanceM: khoangCach,
-    note: maVuotQuyen
-      ? `Cách kho ${khoangCach}m, vượt bán kính ${banKinhM}m; mã vượt quyền không hợp lệ hoặc đã dùng.`
-      : `Cách kho ${khoangCach}m, vượt bán kính ${banKinhM}m.`,
+    ...(coToaDo ? { latitude: toaDo.latitude, longitude: toaDo.longitude } : {}),
+    ...(cachKho === null ? {} : { distanceM: cachKho }),
+    note:
+      cachKho === null
+        ? `Đăng nhập kho ${kho.name} — máy không gửi toạ độ (xác nhận GPS đã bỏ).`
+        : `Đăng nhập kho ${kho.name} — máy cách kho ${cachKho}m (xác nhận GPS đã bỏ).`,
   });
 
-  await prisma.alert.create({
-    data: {
-      type: 'DANG_NHAP_NGOAI_VUNG',
-      severity: 'TRUNG_BINH',
-      title: `Đăng nhập kho ngoài vùng: ${nguoiDung.email}`,
-      message:
-        `Tài khoản ${nguoiDung.email} thử đăng nhập cách ${kho.name} ${khoangCach}m, ` +
-        `vượt bán kính cho phép ${banKinhM}m.`,
-      entityType: 'user',
-      entityId: nguoiDung.id,
-    },
-  });
-
-  throw loi403(
-    `Bạn đang ở cách ${kho.name} khoảng ${khoangCach}m, vượt bán kính cho phép ${banKinhM}m. ` +
-      'Đăng nhập đã bị từ chối và ghi nhật ký. Nếu GPS lệch, xin quản trị viên cấp mã vượt quyền.',
-  );
+  return { khoangCachM: cachKho, tenKho: kho.name };
 }

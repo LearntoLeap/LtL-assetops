@@ -16,6 +16,7 @@ import {
   Tablet,
   TriangleAlert,
   History,
+  Monitor,
   Upload,
   Users,
   Wrench,
@@ -103,6 +104,11 @@ export function BoCucApp() {
     };
   }, [moThem]);
 
+  // Tài khoản kho: mọi đường "về" đều dẫn về MÀN HÌNH KHO, không phải Tổng
+  // quan. Máy ở kho đặt cố định, người dùng nó cả ngày chỉ cần màn hình đó.
+  const laKho = nguoiDung?.role === 'KHO';
+  const duongVe = laKho ? '/kiosk' : '/';
+
   const hopVaiTro = (m: MucMenu): boolean =>
     !m.vaiTro || Boolean(nguoiDung && m.vaiTro.includes(nguoiDung.role));
   const mucHienThi = MENU.filter(hopVaiTro);
@@ -117,7 +123,7 @@ export function BoCucApp() {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur">
         <div className="container flex h-16 items-center gap-3">
-          <Link to="/" className="flex items-center gap-3">
+          <Link to={duongVe} className="flex items-center gap-3">
             <DauHieuAssetOps canh={40} className="shrink-0 rounded-[9px]" />
             <span className="hidden sm:block">
               <span className="block text-sm font-semibold leading-tight">
@@ -228,6 +234,13 @@ export function BoCucApp() {
                 </p>
               </div>
             ) : null}
+            {laKho ? (
+              <Button variant="accent" size="icon" asChild title="Về màn hình kho">
+                <Link to="/kiosk" aria-label="Về màn hình kho">
+                  <Monitor aria-hidden />
+                </Link>
+              </Button>
+            ) : null}
             <NutDoiGiaoDien />
             <Button
               variant="outline"
@@ -256,6 +269,16 @@ export function BoCucApp() {
           aria-label="Điều hướng (màn hình nhỏ)"
         >
           <div className="flex flex-col gap-1">
+            {laKho ? (
+              <Link
+                to="/kiosk"
+                onClick={() => datMoMenu(false)}
+                className="flex min-h-cham items-center gap-2 rounded-md bg-primary/10 px-3 text-sm font-semibold text-primary"
+              >
+                <Monitor className="size-4" aria-hidden />
+                Về màn hình kho
+              </Link>
+            ) : null}
             {[...mucHienThi, ...mucThem].map((m) => (
               <NavLink
                 key={m.duongDan}
