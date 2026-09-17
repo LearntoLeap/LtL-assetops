@@ -1,0 +1,15 @@
+{
+  "name": "AssetOps — Quản lý Tài sản Learn to Leap",
+  "short_name": "AssetOps",
+  "description": "Quản lý tài sản, kho thiết bị và robot STEM của Learn to Leap.",
+  "lang": "vi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1B5AEA",
+  "theme_color": "#1B5AEA",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

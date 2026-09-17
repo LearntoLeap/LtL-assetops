@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Boxes, KeyRound, Loader2, MapPin } from 'lucide-react';
+import { KeyRound, Loader2, MapPin } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DauHieuAssetOpsDay } from '@/components/DauHieuAssetOps';
 import { NutDoiGiaoDien } from '@/components/NutDoiGiaoDien';
 import { LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -88,12 +89,14 @@ export function DangNhap() {
       <div className="w-full max-w-md space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="nen-xanh-chuyen grid size-11 place-items-center rounded-lg text-primary-foreground">
-              <Boxes aria-hidden />
-            </span>
+            <DauHieuAssetOpsDay canh={52} className="shrink-0 rounded-xl" />
             <div>
-              <p className="font-semibold leading-tight">Quản lý Tài sản</p>
-              <p className="text-sm text-muted-foreground">Learn to Leap</p>
+              <p className="text-lg font-semibold leading-tight">
+                Asset<span className="text-primary">Ops</span>
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Learn to Leap · Vận hành thiết bị
+              </p>
             </div>
           </div>
           <NutDoiGiaoDien />

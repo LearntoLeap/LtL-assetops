@@ -22,6 +22,7 @@ import {
 import { NHAN_VAI_TRO } from '@ltl/taisan-shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DauHieuAssetOps } from '@/components/DauHieuAssetOps';
 import { NutDoiGiaoDien } from '@/components/NutDoiGiaoDien';
 import { cn } from '@/lib/utils';
 import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
@@ -109,11 +110,11 @@ export function BoCucApp() {
       <header className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur">
         <div className="container flex h-16 items-center gap-3">
           <Link to="/" className="flex items-center gap-3">
-            <span className="nen-xanh-chuyen grid size-10 place-items-center rounded-lg text-primary-foreground">
-              <Boxes aria-hidden />
-            </span>
+            <DauHieuAssetOps canh={40} className="shrink-0 rounded-[9px]" />
             <span className="hidden sm:block">
-              <span className="block text-sm font-semibold leading-tight">Quản lý Tài sản</span>
+              <span className="block text-sm font-semibold leading-tight">
+                Asset<span className="text-primary">Ops</span>
+              </span>
               <span className="block text-xs text-muted-foreground">Learn to Leap</span>
             </span>
           </Link>
