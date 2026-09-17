@@ -2,14 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
+  Boxes,
+  CalendarDays,
   ClipboardCheck,
+  Clock,
   FileSignature,
   Image as ImageIcon,
   LogOut,
+  MapPin,
   PackageCheck,
   PackageOpen,
+  PackageX,
   QrCode,
   Search,
+  TimerOff,
+  Truck,
+  Wrench,
   X,
 } from 'lucide-react';
 import {
@@ -32,6 +40,7 @@ import { ngayGio } from '@/lib/dinh-dang';
 import type { CaiDatKiosk, SoLieuNhanh, ThietBi, ViecChoXuLy } from '@/lib/kieu';
 import { SU_KIEN, useRealtime } from '@/hooks/useRealtime';
 import { NEN_KIOSK, NEN_MAC_DINH } from './mau-nen';
+import { MatRobot, RobotNen } from './RobotTrangTri';
 
 type ThietBiTraCuu = Pick<ThietBi, 'id' | 'code' | 'name' | 'condition'> & {
   category: { name: string };
@@ -79,34 +88,127 @@ function DongHo() {
   const phut = String(bayGio.getMinutes()).padStart(2, '0');
   const giay = String(bayGio.getSeconds()).padStart(2, '0');
   return (
-    <div>
-      <p className="text-[clamp(2.75rem,8vw,5.5rem)] font-semibold leading-none tracking-tight">
-        {gio}:{phut}
-        <span className="ml-2 text-[0.4em] font-normal text-white/70 tabular-nums">{giay}</span>
-      </p>
-      <p className="mt-1 text-lg text-white/80 sm:text-xl">{thuNgayDayDu(bayGio)}</p>
+    <div className="flex items-center gap-4">
+      {/*
+        Đồng hồ có dấu hiệu riêng: mặt robot + mặt đồng hồ, để người đứng cách
+        màn hình vài mét nhận ra ngay đây là khu vực giờ, không phải một con số
+        thống kê nào khác.
+      */}
+      <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-sky-400/20 text-sky-200 ring-1 ring-inset ring-sky-300/40 sm:size-[4.5rem]">
+        <MatRobot canh={38} />
+      </span>
+      <div>
+        <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-sky-200/80">
+          <Clock className="size-3.5" aria-hidden />
+          Giờ kho
+        </p>
+        <p className="text-[clamp(2.5rem,7.5vw,5rem)] font-semibold leading-none tracking-tight tabular-nums">
+          {gio}:{phut}
+          <span className="ml-2 text-[0.38em] font-normal text-white/60 tabular-nums">{giay}</span>
+        </p>
+        <p className="mt-1 flex items-center gap-2 text-base text-white/80 sm:text-lg">
+          <CalendarDays className="size-4" aria-hidden />
+          {thuNgayDayDu(bayGio)}
+        </p>
+      </div>
     </div>
   );
 }
 
-function OThongKe({ nhan, gia, canhBao }: { nhan: string; gia: number; canhBao?: boolean }) {
+function OThongKe({
+  nhan,
+  gia,
+  icon: Icon,
+  canhBao,
+}: {
+  nhan: string;
+  gia: number;
+  icon: typeof Boxes;
+  canhBao?: boolean;
+}) {
+  const doi = canhBao && gia > 0;
   return (
-    <div className={`${O_MEN} px-4 py-3`}>
-      <p className="text-xs uppercase tracking-wide text-white/70">{nhan}</p>
-      <p className={`text-2xl font-semibold ${canhBao && gia > 0 ? 'text-amber-300' : ''}`}>
-        {so(gia)}
-      </p>
+    <div className={`${O_MEN} flex items-center gap-3 px-4 py-3`}>
+      <span
+        className={`grid size-10 shrink-0 place-items-center rounded-xl ${
+          doi ? 'bg-amber-400/20 text-amber-200' : 'bg-white/10 text-white/70'
+        }`}
+      >
+        <Icon className="size-5" aria-hidden />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[0.7rem] uppercase tracking-wide text-white/70">
+          {nhan}
+        </span>
+        <span className={`block text-2xl font-semibold leading-tight ${doi ? 'text-amber-300' : ''}`}>
+          {so(gia)}
+        </span>
+      </span>
     </div>
   );
 }
 
-const O_LON: ReadonlyArray<{ nhan: string; phu: string; den: string; icon: typeof PackageOpen }> = [
-  { nhan: 'Xuất kho', phu: 'Yêu cầu đã duyệt', den: '/yeu-cau?status=DA_DUYET', icon: PackageOpen },
-  { nhan: 'Nhập kho', phu: 'Nhận hàng về', den: '/yeu-cau?status=DA_DUYET&type=NHAP_KHO', icon: PackageCheck },
-  { nhan: 'Kiểm kê', phu: 'Đợt đang mở', den: '/kiem-ke', icon: ClipboardCheck },
-  { nhan: 'Báo hỏng', phu: 'Chụp ảnh chỗ hỏng', den: '/bao-hong/moi', icon: AlertTriangle },
-  { nhan: 'Tra cứu thiết bị', phu: 'Tìm theo mã, tên', den: '/thiet-bi', icon: Search },
-  { nhan: 'In biên bản', phu: 'BBBG khổ A4', den: '/bbbg', icon: FileSignature },
+/**
+ * Các ô chức năng lớn. Mỗi ô có BIỂU TƯỢNG VÀ MÀU RIÊNG thay vì cùng một màu
+ * trắng: người ở kho dùng máy này cả ngày, nhận ô theo màu nhanh hơn nhiều so
+ * với đọc chữ, nhất là khi đứng cách màn hình một hai mét.
+ */
+const O_LON: ReadonlyArray<{
+  nhan: string;
+  phu: string;
+  den: string;
+  icon: typeof PackageOpen;
+  mau: string;
+}> = [
+  {
+    nhan: 'Xuất kho',
+    phu: 'Yêu cầu đã duyệt',
+    den: '/yeu-cau?status=DA_DUYET',
+    icon: PackageOpen,
+    mau: 'bg-emerald-400/20 text-emerald-200 ring-emerald-300/40',
+  },
+  {
+    nhan: 'Nhập kho',
+    phu: 'Nhận hàng về',
+    den: '/yeu-cau?status=DA_DUYET&type=NHAP_KHO',
+    icon: PackageCheck,
+    mau: 'bg-sky-400/20 text-sky-200 ring-sky-300/40',
+  },
+  {
+    nhan: 'Lấy linh kiện',
+    phu: 'Thay cho báo hỏng',
+    den: '/linh-kien',
+    icon: Wrench,
+    mau: 'bg-violet-400/20 text-violet-200 ring-violet-300/40',
+  },
+  {
+    nhan: 'Báo hỏng',
+    phu: 'Chụp ảnh chỗ hỏng',
+    den: '/bao-hong/moi',
+    icon: AlertTriangle,
+    mau: 'bg-amber-400/20 text-amber-200 ring-amber-300/40',
+  },
+  {
+    nhan: 'Kiểm kê',
+    phu: 'Đợt đang mở',
+    den: '/kiem-ke',
+    icon: ClipboardCheck,
+    mau: 'bg-teal-400/20 text-teal-200 ring-teal-300/40',
+  },
+  {
+    nhan: 'Tra cứu thiết bị',
+    phu: 'Tìm theo mã, tên',
+    den: '/thiet-bi',
+    icon: Search,
+    mau: 'bg-indigo-400/20 text-indigo-200 ring-indigo-300/40',
+  },
+  {
+    nhan: 'In biên bản',
+    phu: 'BBBG khổ A4',
+    den: '/bbbg',
+    icon: FileSignature,
+    mau: 'bg-rose-400/20 text-rose-200 ring-rose-300/40',
+  },
 ];
 
 /**
@@ -116,8 +218,10 @@ const O_LON: ReadonlyArray<{ nhan: string; phu: string; den: string; icon: typeo
  * thiểu 96px, chữ lớn, tương phản cao. Trang nằm NGOÀI bố cục ứng dụng để dùng
  * hết màn hình, không có thanh menu chen ngang.
  *
- * Khoá theo vị trí GPS của tài khoản kho đã chặn từ lúc ĐĂNG NHẬP (giai đoạn 2),
- * nên vào được tới đây nghĩa là đã qua chốt vị trí.
+ * Khoá vị trí GPS hiện TẮT cho mọi kho theo quyết định của LtL (GPS trong nhà
+ * lệch 50-200m nên chặn oan nhiều hơn chặn đúng). Server vẫn ghi nhật ký mọi
+ * lần đăng nhập kèm toạ độ và khoảng cách thật, và ADMIN bật lại được từng kho
+ * ở Thêm → Khoá vị trí kho.
  */
 export function ManHinhKiosk() {
   const { nguoiDung, dangXuat } = useAuth();
@@ -241,12 +345,20 @@ export function ManHinhKiosk() {
     // này — các nút dùng chung (nút quét QR chẳng hạn) mới có tương phản đúng,
     // dù người dùng đang để giao diện sáng ở phần quản trị.
     <div className="dark min-h-dvh text-white" style={nen}>
-      <div className="flex min-h-dvh flex-col bg-black/25">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6">
+      <div className="relative flex min-h-dvh flex-col overflow-hidden bg-black/25">
+        {/*
+          Robot nền ở góc phải dưới. `pointer-events-none` để nó không bao giờ
+          ăn cú bấm của các ô chức năng, và đặt sau nội dung trong thứ tự vẽ
+          bằng z-index âm thay vì absolute chồng lên.
+        */}
+        <RobotNen className="pointer-events-none absolute -bottom-14 -right-10 z-0 h-[26rem] w-auto text-white/[0.07] sm:h-[34rem]" />
+        <RobotNen className="pointer-events-none absolute -left-16 top-24 z-0 hidden h-64 w-auto rotate-[-8deg] text-white/[0.04] xl:block" />
+        <div className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6">
           <header className="flex flex-wrap items-start justify-between gap-4">
             <DongHo />
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`${O_MEN} px-4 py-2 text-sm`}>
+              <span className={`${O_MEN} flex items-center gap-2 px-4 py-2 text-sm`}>
+                <MatRobot canh={20} className="shrink-0 text-sky-200" />
                 {nguoiDung?.fullName}
                 {nguoiDung?.tenDiaDiem ? ` · ${nguoiDung.tenDiaDiem}` : ''}
               </span>
@@ -338,12 +450,17 @@ export function ManHinhKiosk() {
               className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
               aria-label="Thống kê kho"
             >
-              <OThongKe nhan="Đơn vị tại kho" gia={soLieu.donViTaiKho} />
-              <OThongKe nhan="Đơn vị ở trường" gia={soLieu.donViOTruong} />
-              <OThongKe nhan="Mã đang cho mượn" gia={soLieu.maChoMuon} />
-              <OThongKe nhan="Quá hạn trả" gia={soLieu.maQuaHan} canhBao />
-              <OThongKe nhan="Hỏng / mất" gia={soLieu.maHong} canhBao />
-              <OThongKe nhan="Chờ xuất kho" gia={soLieu.yeuCauChoXuat} canhBao />
+              <OThongKe nhan="Đơn vị tại kho" gia={soLieu.donViTaiKho} icon={Boxes} />
+              <OThongKe nhan="Đơn vị ở trường" gia={soLieu.donViOTruong} icon={MapPin} />
+              <OThongKe nhan="Mã đang cho mượn" gia={soLieu.maChoMuon} icon={Truck} />
+              <OThongKe nhan="Quá hạn trả" gia={soLieu.maQuaHan} icon={TimerOff} canhBao />
+              <OThongKe nhan="Hỏng / mất" gia={soLieu.maHong} icon={PackageX} canhBao />
+              <OThongKe
+                nhan="Chờ xuất kho"
+                gia={soLieu.yeuCauChoXuat}
+                icon={PackageOpen}
+                canhBao
+              />
             </section>
           ) : null}
 
@@ -354,9 +471,13 @@ export function ManHinhKiosk() {
                   <Link
                     key={o.nhan}
                     to={o.den}
-                    className={`${O_MEN} flex min-h-[7rem] flex-col justify-between p-4 transition-colors hover:bg-white/20`}
+                    className={`${O_MEN} group flex min-h-[7.5rem] flex-col justify-between gap-3 p-4 transition-all hover:bg-white/20 hover:ring-white/30 active:scale-[0.98]`}
                   >
-                    <o.icon className="size-9" aria-hidden />
+                    <span
+                      className={`grid size-12 place-items-center rounded-xl ring-1 ring-inset transition-transform group-hover:scale-105 ${o.mau}`}
+                    >
+                      <o.icon className="size-6" aria-hidden />
+                    </span>
                     <span>
                       <span className="block text-lg font-semibold leading-tight">{o.nhan}</span>
                       <span className="block text-sm text-white/70">{o.phu}</span>
@@ -418,8 +539,8 @@ export function ManHinhKiosk() {
           </div>
 
           <p className="pb-2 text-xs text-white/50">
-            Màn hình đặt tại kho. Tài khoản kho chỉ đăng nhập được khi đứng trong bán kính GPS do
-            quản trị cấu hình — máy chủ tính khoảng cách và quyết định.
+            Màn hình đặt tại kho. Mọi lần đăng nhập đều được ghi nhật ký kèm toạ độ máy và khoảng
+            cách tới kho. Quản trị bật lại khoá vị trí bất cứ lúc nào ở Thêm → Khoá vị trí kho.
           </p>
         </div>
       </div>

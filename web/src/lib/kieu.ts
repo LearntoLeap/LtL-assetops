@@ -341,6 +341,40 @@ export interface PhieuBaoHong {
   photos: Array<{ id: string; kind: LoaiAnh; createdAt: string }>;
 }
 
+/* ──────────── Linh kiện thay thế ──────────── */
+
+/** Một phiếu lấy linh kiện ra khỏi kho, luôn gắn với một phiếu báo hỏng. */
+export interface PhieuLinhKien {
+  id: string;
+  code: string;
+  quantity: number;
+  /** Tên tự nhập — chỉ có với linh kiện không có mã trong kho. */
+  partName: string | null;
+  /** Mã của hãng cung cấp — chỉ có với linh kiện không có mã trong kho. */
+  vendorCode: string | null;
+  note: string | null;
+  issuedAt: string;
+  /** Null = linh kiện không có mã trong kho. */
+  asset: { id: string; code: string; name: string } | null;
+  reason: { id: string; name: string };
+  fromLocation: { id: string; name: string } | null;
+  issuedBy: { id: string; fullName: string; email: string };
+  request: {
+    id: string;
+    code: string;
+    status: TrangThaiYeuCau;
+    items: Array<{
+      asset: {
+        id: string;
+        code: string;
+        name: string;
+        currentLocation: { id: string; name: string } | null;
+      };
+    }>;
+  };
+  photos: Array<{ id: string; kind: LoaiAnh }>;
+}
+
 /* ──────────── GĐ6: dashboard, kiosk, màn hình tablet ──────────── */
 
 export interface SoLieuNhanh {

@@ -23,6 +23,9 @@ const NhapLieuHangLoat = lazy(() => import('@/features/nhap-xuat/NhapLieuHangLoa
 const InNhanQR = lazy(() => import('@/features/qr/InNhanQR').then((m) => ({ default: m.InNhanQR })));
 const QuanLyNguoiDung = lazy(() => import('@/features/nguoi-dung/QuanLyNguoiDung').then((m) => ({ default: m.QuanLyNguoiDung })));
 const KhoaViTri = lazy(() => import('@/features/gps/KhoaViTri').then((m) => ({ default: m.KhoaViTri })));
+const LayLinhKien = lazy(() =>
+  import('@/features/linh-kien/LayLinhKien').then((m) => ({ default: m.LayLinhKien })),
+);
 const YeuCauList = lazy(() => import('@/features/yeu-cau/YeuCauList').then((m) => ({ default: m.YeuCauList })));
 const YeuCauChiTiet = lazy(() => import('@/features/yeu-cau/YeuCauChiTiet').then((m) => ({ default: m.YeuCauChiTiet })));
 const FormYeuCau = lazy(() => import('@/features/yeu-cau/FormYeuCau').then((m) => ({ default: m.FormYeuCau })));
@@ -200,6 +203,21 @@ export default function App() {
           <Route path="bao-hong" element={<BaoHongList />} />
           <Route path="bao-hong/moi" element={<FormBaoHong />} />
           <Route path="bao-hong/:id" element={<BaoHongChiTiet />} />
+
+          {/*
+            Lấy linh kiện: người ĐỨNG Ở KHO mới lấy được, nên giới hạn ba vai
+            trò. Máy chủ kiểm lại bằng middleware — ẩn ở đây chỉ là phụ.
+            Trang vẫn cho mọi vai trò XEM lịch sử qua /api/linh-kien, nhưng
+            người không có quyền lấy thì không cần vào form này.
+          */}
+          <Route
+            path="linh-kien"
+            element={
+              <CanDangNhap vaiTro={['ADMIN', 'VAN_HANH', 'KHO']}>
+                <LayLinhKien />
+              </CanDangNhap>
+            }
+          />
 
           <Route path="dia-diem" element={<DiaDiemList />} />
           <Route

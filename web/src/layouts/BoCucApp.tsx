@@ -17,6 +17,7 @@ import {
   TriangleAlert,
   Upload,
   Users,
+  Wrench,
   X,
 } from 'lucide-react';
 import { NHAN_VAI_TRO } from '@ltl/taisan-shared';
@@ -54,6 +55,11 @@ const MENU: readonly MucMenu[] = [
  * được. Tách làm hai nhóm vẫn giữ nguyên đường dẫn và quyền của từng mục.
  */
 const MENU_THEM: readonly MucMenu[] = [
+  // Đặt đầu nhóm vì dùng nhiều nhất trong đây. KHÔNG đưa lên thanh chính: thêm
+  // mục thứ 8 vào thanh làm mục cuối bị cắt còn trơ biểu tượng không nhãn —
+  // đã thấy trong ảnh chụp ở 1280px. Đường vào chính của việc này là ô lớn
+  // "Lấy linh kiện" trên màn hình kho và liên kết từ phiếu báo hỏng.
+  { duongDan: '/linh-kien', nhan: 'Lấy linh kiện', icon: Wrench, vaiTro: ['ADMIN', 'VAN_HANH', 'KHO'] },
   { duongDan: '/dia-diem', nhan: 'Điểm lưu trữ', icon: MapPin },
   { duongDan: '/danh-muc', nhan: 'Danh mục', icon: LayoutGrid, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/nhap-lieu', nhan: 'Nhập hàng loạt', icon: Upload, vaiTro: VAI_TRO_NHAP_LIEU },

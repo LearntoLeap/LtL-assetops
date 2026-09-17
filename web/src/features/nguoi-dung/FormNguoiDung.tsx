@@ -216,7 +216,7 @@ export function FormNguoiDung({ dangSua, diaDiem, duocTao, onXong, onHuy }: Form
             </Select>
             {role === 'KHO' ? (
               <p className="text-xs text-muted-foreground">
-                Tài khoản kho chỉ đăng nhập được khi ở trong bán kính GPS của kho này.
+                Gán kho để nhật ký đăng nhập tính được khoảng cách, và để bật khoá vị trí về sau nếu cần.
               </p>
             ) : null}
             {role === 'TRUONG' ? (
