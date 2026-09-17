@@ -44,6 +44,7 @@ export function KhoaViTri() {
   const [vi, datVi] = useState('');
   const [kinh, datKinh] = useState('');
   const [banKinh, datBanKinh] = useState('150');
+  const [batKhoa, datBatKhoa] = useState(true);
   const [dangLuu, datDangLuu] = useState(false);
 
   const [capChoKho, datCapChoKho] = useState('');
@@ -78,6 +79,7 @@ export function KhoaViTri() {
     datVi(d.latitude === null ? '' : String(d.latitude));
     datKinh(d.longitude === null ? '' : String(d.longitude));
     datBanKinh(d.gpsRadiusM === null ? '150' : String(d.gpsRadiusM));
+    datBatKhoa(d.gpsRequired);
     datThongBao(null);
     datLoi(null);
   }
@@ -109,9 +111,14 @@ export function KhoaViTri() {
           latitude: coToaDo ? Number(vi) : null,
           longitude: coToaDo ? Number(kinh) : null,
           gpsRadiusM: banKinh.trim() === '' ? null : Number(banKinh),
+          gpsRequired: batKhoa,
         },
       });
-      datThongBao('Đã lưu cấu hình khoá vị trí.');
+      datThongBao(
+        batKhoa
+          ? 'Đã lưu cấu hình khoá vị trí.'
+          : 'Đã TẮT khoá vị trí cho kho này. Tài khoản kho đăng nhập được từ mọi nơi; mỗi lần vẫn ghi nhật ký.',
+      );
       await tai();
     } catch (e) {
       datLoi(e instanceof LoiApi ? e.message : 'Lưu thất bại.');
@@ -177,8 +184,10 @@ export function KhoaViTri() {
             Toạ độ &amp; bán kính của kho
           </CardTitle>
           <CardDescription>
-            Kho chưa có toạ độ thì tài khoản kho của nó <strong>không đăng nhập được</strong> —
-            chặn chủ động để không ai lọt qua khi thiếu cấu hình.
+            Kho <strong>còn bật khoá</strong> mà chưa có toạ độ thì tài khoản kho của nó{' '}
+            <strong>không đăng nhập được</strong> — chặn chủ động để không ai lọt qua khi thiếu
+            cấu hình. Kho nằm ngay trụ sở, người ra vào đã kiểm soát bằng cửa, thì tắt khoá cho
+            đỡ vướng vì GPS trong nhà hay lệch.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 px-0 sm:px-5">
@@ -188,6 +197,7 @@ export function KhoaViTri() {
                 <TableHead>Kho</TableHead>
                 <TableHead>Vĩ độ</TableHead>
                 <TableHead>Kinh độ</TableHead>
+                <TableHead>Khoá vị trí</TableHead>
                 <TableHead>Bán kính</TableHead>
                 <TableHead className="text-right">Cấu hình</TableHead>
               </TableRow>
@@ -204,7 +214,16 @@ export function KhoaViTri() {
                   <TableCell className="font-mono text-xs">{d.latitude ?? '—'}</TableCell>
                   <TableCell className="font-mono text-xs">{d.longitude ?? '—'}</TableCell>
                   <TableCell>
-                    {d.latitude === null ? (
+                    {d.gpsRequired ? (
+                      <Badge variant="success">Đang bật</Badge>
+                    ) : (
+                      <Badge variant="muted">Đã tắt</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {!d.gpsRequired ? (
+                      <span className="text-xs text-muted-foreground">không áp dụng</span>
+                    ) : d.latitude === null ? (
                       <Badge variant="warning">Chưa cấu hình</Badge>
                     ) : (
                       <Badge variant="success">{d.gpsRadiusM ?? 150} m</Badge>
@@ -245,7 +264,28 @@ export function KhoaViTri() {
                   placeholder="105.8123456"
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-3">
+                <Label
+                  htmlFor="g-bat"
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                >
+                  <input
+                    id="g-bat"
+                    type="checkbox"
+                    className="mt-0.5 size-4 shrink-0 accent-[hsl(var(--primary))]"
+                    checked={batKhoa}
+                    onChange={(su) => datBatKhoa(su.target.checked)}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">Bật khoá vị trí cho kho này</span>
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      Bỏ dấu tích là tài khoản kho đăng nhập được từ mọi nơi. Máy chủ vẫn ghi
+                      nhật ký mỗi lần đăng nhập kèm toạ độ nếu máy có gửi.
+                    </span>
+                  </span>
+                </Label>
+              </div>
+              <div className={batKhoa ? 'space-y-1.5' : 'space-y-1.5 opacity-50'}>
                 <Label htmlFor="g-bk">Bán kính cho phép (m)</Label>
                 <Input
                   id="g-bk"

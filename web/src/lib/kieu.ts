@@ -29,6 +29,8 @@ export interface DiaDiem {
   latitude: number | null;
   longitude: number | null;
   gpsRadiusM: number | null;
+  /** Khoá vị trí có đang bật cho điểm này không. */
+  gpsRequired: boolean;
   isActive: boolean;
   note: string | null;
 }

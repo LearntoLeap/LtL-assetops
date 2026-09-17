@@ -86,21 +86,68 @@ export async function kiemTraViTriKho(thamSo: ThamSoKiemViTri): Promise<KetQuaKi
 
   const kho = await prisma.location.findUnique({
     where: { id: nguoiDung.locationId },
-    select: { id: true, name: true, latitude: true, longitude: true, gpsRadiusM: true },
+    select: {
+      id: true,
+      name: true,
+      latitude: true,
+      longitude: true,
+      gpsRadiusM: true,
+      gpsRequired: true,
+    },
   });
 
-  if (!kho || kho.latitude === null || kho.longitude === null) {
+  if (!kho) {
     await ghiAuditKhongChan({
       actor: nguoiDung,
       action: 'auth.login.tu_choi',
       entityType: 'user',
       entityId: nguoiDung.id,
       ...boiCanh,
-      note: `Kho ${kho?.name ?? nguoiDung.locationId} chưa cấu hình toạ độ GPS.`,
+      note: `Kho ${nguoiDung.locationId} không còn tồn tại.`,
+    });
+    throw loi403('Kho của tài khoản này không còn tồn tại. Liên hệ quản trị viên.');
+  }
+
+  // ADMIN đã tắt khoá vị trí cho điểm này — đi qua, nhưng VẪN ghi nhật ký kèm
+  // toạ độ nếu máy có gửi, để sau còn truy được ai đăng nhập từ đâu.
+  if (!kho.gpsRequired) {
+    const banKinhM = kho.gpsRadiusM ?? env.GPS_DEFAULT_RADIUS_M;
+    const coToaDo = toaDo !== null && toaDoHopLe(toaDo);
+    const cachKho =
+      coToaDo && kho.latitude !== null && kho.longitude !== null
+        ? khoangCachM(toaDo, {
+            latitude: Number(kho.latitude),
+            longitude: Number(kho.longitude),
+          })
+        : null;
+    await ghiAuditKhongChan({
+      actor: nguoiDung,
+      action: 'auth.login.gps_da_tat',
+      entityType: 'location',
+      entityId: kho.id,
+      ...boiCanh,
+      ...(coToaDo ? { latitude: toaDo.latitude, longitude: toaDo.longitude } : {}),
+      ...(cachKho === null ? {} : { distanceM: cachKho }),
+      note:
+        `Khoá vị trí đang TẮT cho ${kho.name}` +
+        (cachKho === null ? ' (máy không gửi toạ độ).' : ` (máy cách kho ${cachKho}m).`),
+    });
+    return { khoangCachM: cachKho, dungMaVuotQuyen: false, tenKho: kho.name, banKinhM };
+  }
+
+  if (kho.latitude === null || kho.longitude === null) {
+    await ghiAuditKhongChan({
+      actor: nguoiDung,
+      action: 'auth.login.tu_choi',
+      entityType: 'user',
+      entityId: nguoiDung.id,
+      ...boiCanh,
+      note: `Kho ${kho.name} bật khoá vị trí nhưng chưa cấu hình toạ độ GPS.`,
     });
     // Chặn (fail-safe): chưa có toạ độ thì không thể kiểm, không cho đi qua.
     throw loi403(
-      'Kho của tài khoản này chưa được cấu hình toạ độ GPS. Quản trị viên cần cấu hình trước khi tài khoản kho đăng nhập được.',
+      'Kho của tài khoản này đang bật khoá vị trí nhưng chưa có toạ độ GPS. Quản trị ' +
+        'viên cần vào Thêm → Khoá vị trí kho để đặt toạ độ, hoặc tắt khoá vị trí cho kho này.',
     );
   }
 

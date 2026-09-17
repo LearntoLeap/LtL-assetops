@@ -47,6 +47,7 @@ const CHON = {
   latitude: true,
   longitude: true,
   gpsRadiusM: true,
+  gpsRequired: true,
   isActive: true,
   note: true,
 } as const;
@@ -111,9 +112,21 @@ const luocDoGps = z
     latitude: z.coerce.number().min(-90).max(90).nullable(),
     longitude: z.coerce.number().min(-180).max(180).nullable(),
     gpsRadiusM: z.coerce.number().int().min(20).max(50_000).nullable(),
+    // z.boolean() chứ KHÔNG dùng z.coerce.boolean(): coerce biến chuỗi "false"
+    // thành true (Boolean("false") === true), nên công tắc sẽ không tắt được.
+    // Mặc định true để lời gọi cũ (chưa gửi trường này) giữ nguyên hành vi.
+    gpsRequired: z.boolean().default(true),
   })
   .refine((v) => (v.latitude === null) === (v.longitude === null), {
     message: 'Vĩ độ và kinh độ phải cùng có hoặc cùng để trống.',
+  })
+  // Còn bật khoá thì BẮT BUỘC có toạ độ, nếu không tài khoản kho sẽ bị chặn
+  // sạch: phép kiểm là fail-safe, thiếu toạ độ là từ chối đăng nhập. Chặn ngay
+  // ở đây để ADMIN thấy lỗi lúc lưu, chứ không để nhân viên kho phát hiện lúc
+  // đứng trước máy mà không vào được.
+  .refine((v) => !v.gpsRequired || v.latitude !== null, {
+    message:
+      'Còn bật khoá vị trí thì phải có toạ độ. Hãy đặt toạ độ, hoặc tắt khoá vị trí cho điểm này.',
   })
   .refine(
     (v) =>
@@ -133,7 +146,14 @@ diaDiemRouter.patch(
 
     const truoc = await prisma.location.findUnique({
       where: { id },
-      select: { id: true, name: true, latitude: true, longitude: true, gpsRadiusM: true },
+      select: {
+        id: true,
+        name: true,
+        latitude: true,
+        longitude: true,
+        gpsRadiusM: true,
+        gpsRequired: true,
+      },
     });
     if (!truoc) throw loi404('Không tìm thấy điểm lưu trữ.');
 
@@ -143,6 +163,7 @@ diaDiemRouter.patch(
         latitude: duLieu.latitude,
         longitude: duLieu.longitude,
         gpsRadiusM: duLieu.gpsRadiusM,
+        gpsRequired: duLieu.gpsRequired,
       },
       select: CHON,
     });
@@ -156,13 +177,18 @@ diaDiemRouter.patch(
         latitude: truoc.latitude === null ? null : Number(truoc.latitude),
         longitude: truoc.longitude === null ? null : Number(truoc.longitude),
         gpsRadiusM: truoc.gpsRadiusM,
+        gpsRequired: truoc.gpsRequired,
       },
       afterValue: {
         latitude: duLieu.latitude,
         longitude: duLieu.longitude,
         gpsRadiusM: duLieu.gpsRadiusM,
+        gpsRequired: duLieu.gpsRequired,
       },
-      note: `Cấu hình khoá vị trí cho ${truoc.name}.`,
+      note:
+        truoc.gpsRequired === duLieu.gpsRequired
+          ? `Cấu hình khoá vị trí cho ${truoc.name}.`
+          : `${duLieu.gpsRequired ? 'BẬT' : 'TẮT'} khoá vị trí cho ${truoc.name}.`,
       ...boiCanh(req),
     });
 

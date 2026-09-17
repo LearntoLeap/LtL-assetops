@@ -14,6 +14,8 @@ export interface DongDiemLuuTru {
   latitude?: number;
   longitude?: number;
   gpsRadiusM?: number;
+  /** Bỏ trống = bật khoá vị trí (mặc định của cột trong CSDL). */
+  gpsRequired?: boolean;
   note?: string;
 }
 
@@ -93,7 +95,11 @@ export const DIEM_LUU_TRU: ReadonlyArray<DongDiemLuuTru> = [
     latitude: 21.0012345,
     longitude: 105.8123456,
     gpsRadiusM: 150,
-    note: 'Toạ độ và bán kính là dữ liệu MẪU — ADMIN cấu hình lại trước khi dùng thật.',
+    // Kho văn phòng nằm ngay trụ sở, người ra vào đã kiểm soát bằng cửa, nên
+    // khoá GPS ở đây chỉ gây vướng vì GPS trong nhà hay lệch. Vẫn giữ toạ độ
+    // để nhật ký ghi được máy đăng nhập cách kho bao xa.
+    gpsRequired: false,
+    note: 'Toạ độ và bán kính là dữ liệu MẪU — ADMIN cấu hình lại trước khi dùng thật. Khoá vị trí đang TẮT cho kho này.',
   },
   {
     code: 'TRUONG-MINHKHAI',
