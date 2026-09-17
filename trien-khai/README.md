@@ -183,6 +183,26 @@ header `Host` chứ không theo đích CNAME.
 `taisan.learntoleap.vn` vẫn giữ trong `CORS_ORIGINS` làm dự phòng, nhưng chưa
 gắn vào Vercel nên chưa dùng được.
 
+#### Vercel báo "Verification Required" — đừng đi tìm bản ghi TXT
+
+Lần gắn `assetops.learntoleap.vn` đầu tiên, Vercel để trạng thái
+`verified: false` kèm yêu cầu một bản ghi TXT tên `_vercel.learntoleap.vn`.
+**Bản ghi đó không cần thiết.** Chỉ cần bấm **Refresh** ở dòng tên miền trong
+Vercel → project → Domains là Vercel kiểm lại và xác thực qua chính CNAME đang
+có. Nguyên nhân: lúc thêm tên miền thì CNAME chưa tồn tại, Vercel kiểm ngay tại
+thời điểm đó rồi rơi vào diện phải chứng minh quyền sở hữu.
+
+Đừng mất thời gian với TXT, vì PA Vietnam **không phát được** bản ghi TXT ở host
+bắt đầu bằng dấu gạch dưới: bảng điều khiển nhận và hiển thị dòng đó, nhưng hỏi
+thẳng hai máy chủ gốc `ns1.pavietnam.vn` (112.213.89.3) và `ns2.pavietnam.vn`
+(222.255.121.247) thì `_vercel.learntoleap.vn` trả `NOERROR` với **0 bản ghi ở
+mọi loại** — nhãn có trong vùng nhưng rỗng — trong khi nhãn không tồn tại thật
+(vd `vercel.learntoleap.vn`) trả `NXDOMAIN`. Tức là hệ thống tạo nhãn mà không
+ghi giá trị.
+
+Thứ tự đúng cho tên miền mới: tạo CNAME ở PA Vietnam **trước**, đợi phân giải
+được, **rồi** mới thêm tên miền vào Vercel. Làm ngược thì phải bấm Refresh.
+
 `CORS_ORIGINS` trong `api/.env` phải chứa **đúng** origin của web (script đã để
 sẵn cả hai). Sai origin là trình duyệt chặn mọi lời gọi API, dù API vẫn chạy.
 
