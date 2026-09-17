@@ -315,14 +315,18 @@ model Location {
   latitude     Decimal?     @db.Decimal(10, 7)
   longitude    Decimal?     @db.Decimal(10, 7)
   gpsRadiusM   Int?         @map("gps_radius_m")
-  /// Bật/tắt khoá vị trí cho điểm này. Mặc định BẬT.
+  /// Bật/tắt khoá vị trí cho điểm này. Mặc định TẮT theo quyết định của LtL.
   ///
   /// Cần một cột riêng chứ không suy từ việc thiếu toạ độ: phép kiểm là
   /// fail-safe — thiếu toạ độ thì CHẶN đăng nhập, không cho qua. Nên xoá toạ độ
-  /// là khoá cứng tài khoản kho, không phải bỏ khoá. Kho văn phòng nằm ngay trụ
-  /// sở, người ra vào đã bị kiểm soát bằng cửa, nên khoá GPS ở đó chỉ gây vướng
-  /// khi GPS trong nhà lệch. Tắt là quyết định của ADMIN và được ghi nhật ký.
-  gpsRequired  Boolean      @default(true) @map("gps_required")
+  /// là khoá cứng tài khoản kho, không phải bỏ khoá.
+  ///
+  /// Vì sao mặc định TẮT: GPS trong nhà lệch 50-200m mà kho nằm trong toà nhà,
+  /// nên khoá vị trí chặn oan nhân viên đứng ngay trong kho nhiều hơn là chặn
+  /// được người ở xa; người ra vào kho đã kiểm soát bằng cửa. Bù lại server VẪN
+  /// ghi nhật ký mọi lần đăng nhập kèm toạ độ và khoảng cách thật (audit
+  /// `auth.login.gps_da_tat`). ADMIN bật lại ở Thêm → Khoá vị trí kho.
+  gpsRequired  Boolean      @default(false) @map("gps_required")
   note         String?      @db.Text
   isActive     Boolean      @default(true) @map("is_active")
   createdAt    DateTime     @default(now()) @map("created_at")

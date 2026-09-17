@@ -87,7 +87,7 @@ async function napDiemLuuTru(): Promise<Map<string, string>> {
       latitude: d.latitude ?? null,
       longitude: d.longitude ?? null,
       gpsRadiusM: d.gpsRadiusM ?? null,
-      gpsRequired: d.gpsRequired ?? true,
+      gpsRequired: d.gpsRequired ?? false,
       note: d.note ?? null,
     } satisfies Omit<Prisma.LocationUncheckedCreateInput, 'code'>;
 

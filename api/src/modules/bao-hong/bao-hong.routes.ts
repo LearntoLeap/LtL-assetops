@@ -17,7 +17,12 @@ import { boiCanh, ghiAudit } from '../../lib/audit.js';
 import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
 import { dieuKienTaiSan } from '../../lib/pham-vi.js';
-import { phatChoNguoiDuyet, SU_KIEN } from '../../realtime.js';
+import {
+  phatChoDiaDiem,
+  phatChoNguoiDung,
+  phatChoNhomSuCo,
+  SU_KIEN,
+} from '../../realtime.js';
 import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
@@ -90,7 +95,7 @@ baoHongRouter.post(
     // hộ thiết bị của trường khác.
     const thietBi = await prisma.asset.findFirst({
       where: { code: duLieu.code, ...dieuKienTaiSan(actor) },
-      select: { id: true, code: true, name: true, condition: true },
+      select: { id: true, code: true, name: true, condition: true, currentLocationId: true },
     });
     if (!thietBi) {
       throw loi404(
@@ -175,11 +180,19 @@ baoHongRouter.post(
       return taoMoi;
     });
 
-    phatChoNguoiDuyet(SU_KIEN.CANH_BAO_MOI, {
+    // Phát cho ĐỦ BỐN NHÓM — Quản trị, Vận hành, Kho, Nhân sự. Trước đây chỉ
+    // phát cho nhóm duyệt, nên kho không biết để chuẩn bị linh kiện và nhân sự
+    // phụ trách trường không biết để trả lời nhà trường.
+    const tin = {
       id: phieu.id,
       code: phieu.code,
-      thongDiep: `Báo hỏng mới: ${thietBi.code}.`,
-    });
+      thongDiep: `Báo hỏng mới: ${thietBi.code} — ${thietBi.name}.`,
+    };
+    phatChoNhomSuCo(SU_KIEN.CANH_BAO_MOI, tin);
+    // Và cho chính điểm đang giữ thiết bị, để trường thấy phiếu của mình.
+    if (thietBi.currentLocationId) {
+      phatChoDiaDiem(thietBi.currentLocationId, SU_KIEN.CANH_BAO_MOI, tin);
+    }
     res.status(201).json({ ok: true, phieu });
   }),
 );
@@ -245,7 +258,21 @@ baoHongRouter.post(
         code: true,
         type: true,
         status: true,
-        items: { select: { asset: { select: { id: true, code: true, condition: true } } } },
+        createdById: true,
+        createdBy: { select: { locationId: true } },
+        items: {
+          select: {
+            asset: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                condition: true,
+                currentLocationId: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!phieu) throw loi404('Không tìm thấy phiếu báo hỏng.');
@@ -294,6 +321,30 @@ baoHongRouter.post(
       );
       return capNhat;
     });
+
+    // Trước đây bước xử lý KHÔNG phát thông báo nào: người báo hỏng không bao
+    // giờ biết việc của mình đã xong, phải gọi điện hỏi. Nay phát ba hướng.
+    const tin = {
+      id: phieu.id,
+      code: phieu.code,
+      status: duLieu.dong ? 'DA_HOAN_TAT' : 'DA_DUYET',
+      thongDiep: duLieu.dong
+        ? `Đã xử lý xong báo hỏng ${thietBi.code}: ${duLieu.ketLuan.slice(0, 120)}`
+        : `Cập nhật báo hỏng ${thietBi.code}: ${duLieu.ketLuan.slice(0, 120)}`,
+    };
+    phatChoNhomSuCo(SU_KIEN.CANH_BAO_MOI, tin);
+    if (thietBi.currentLocationId) {
+      phatChoDiaDiem(thietBi.currentLocationId, SU_KIEN.CANH_BAO_MOI, tin);
+    }
+    // Người báo cũng phải biết. Nhưng nếu họ đã nằm trong chính điểm vừa phát ở
+    // trên (trường tự báo thiết bị của mình — trường hợp phổ biến nhất) thì bỏ
+    // qua, không thì họ nhận hai tin giống nhau. Đã đo thấy đúng 2 tin khi thử.
+    const daNhanTheoDiem =
+      thietBi.currentLocationId !== null &&
+      phieu.createdBy.locationId === thietBi.currentLocationId;
+    if (!daNhanTheoDiem) {
+      phatChoNguoiDung(phieu.createdById, SU_KIEN.CANH_BAO_MOI, tin);
+    }
 
     res.json({ ok: true, phieu: ketQua });
   }),

@@ -14,7 +14,7 @@ export interface DongDiemLuuTru {
   latitude?: number;
   longitude?: number;
   gpsRadiusM?: number;
-  /** Bỏ trống = bật khoá vị trí (mặc định của cột trong CSDL). */
+  /** Bỏ trống = TẮT khoá vị trí (mặc định của cột trong CSDL). */
   gpsRequired?: boolean;
   note?: string;
 }

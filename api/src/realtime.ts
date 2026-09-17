@@ -35,11 +35,24 @@ export interface ThongTinSuKien {
 const PHONG_DUYET = 'vai-tro:duyet';
 /** Phòng cho tài khoản kho — nơi nhận yêu cầu đã duyệt cần xuất. */
 const PHONG_KHO = 'vai-tro:kho';
+/**
+ * Phòng cho mọi nhóm cần biết sự cố thiết bị: ADMIN, VAN_HANH, KHO, NHAN_SU.
+ *
+ * Báo hỏng trước đây chỉ phát cho nhóm duyệt, nên kho không biết để chuẩn bị
+ * linh kiện và nhân sự phụ trách trường không biết để trả lời nhà trường —
+ * hai người đúng ra cần biết SỚM nhất lại nghe sau cùng qua điện thoại.
+ * TRUONG không nằm trong phòng này: mỗi trường chỉ được thấy việc của mình,
+ * và việc đó đã phát riêng qua phòng `dia-diem:<id>`.
+ */
+const PHONG_SU_CO = 'vai-tro:su-co';
 
 function phongCuaVaiTro(vaiTro: UserRole): string[] {
   const phong = [`vai-tro:${vaiTro}`];
   if (vaiTro === 'ADMIN' || vaiTro === 'VAN_HANH') phong.push(PHONG_DUYET);
   if (vaiTro === 'KHO') phong.push(PHONG_KHO);
+  if (vaiTro === 'ADMIN' || vaiTro === 'VAN_HANH' || vaiTro === 'KHO' || vaiTro === 'NHAN_SU') {
+    phong.push(PHONG_SU_CO);
+  }
   return phong;
 }
 
@@ -103,6 +116,14 @@ export function dungRealtime(server: HttpServer): Server {
 /** Phát sự kiện cho nhóm duyệt (ADMIN + VAN_HANH). */
 export function phatChoNguoiDuyet(suKien: string, duLieu: ThongTinSuKien): void {
   io?.to(PHONG_DUYET).emit(suKien, duLieu);
+}
+
+/**
+ * Phát cho mọi nhóm cần biết sự cố thiết bị: ADMIN, VAN_HANH, KHO, NHAN_SU.
+ * Dùng cho báo hỏng và cho việc lấy linh kiện thay thế.
+ */
+export function phatChoNhomSuCo(suKien: string, duLieu: ThongTinSuKien): void {
+  io?.to(PHONG_SU_CO).emit(suKien, duLieu);
 }
 
 /** Phát cho tài khoản kho. */
