@@ -10,6 +10,7 @@ export const TIEN_TO = {
   YEU_CAU: 'YC',
   BBBG: 'BBBG',
   KIEM_KE: 'KK',
+  LINH_KIEN: 'LK',
 } as const;
 
 export type TienTo = (typeof TIEN_TO)[keyof typeof TIEN_TO];

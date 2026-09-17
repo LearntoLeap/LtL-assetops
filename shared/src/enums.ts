@@ -77,6 +77,7 @@ export const LOAI_DI_CHUYEN = [
   'CHO_MUON',
   'TRA_VE_KHO',
   'DIEU_CHINH_KIEM_KE',
+  'XUAT_LINH_KIEN',
 ] as const;
 export type LoaiDiChuyen = (typeof LOAI_DI_CHUYEN)[number];
 
@@ -88,6 +89,7 @@ export const LOAI_ANH = [
   'KIEM_KE',
   'BBBG',
   'KIOSK_BACKGROUND',
+  'LINH_KIEN',
 ] as const;
 export type LoaiAnh = (typeof LOAI_ANH)[number];
 

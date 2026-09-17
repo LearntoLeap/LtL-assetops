@@ -15,6 +15,7 @@ import {
   DIEM_LUU_TRU,
   DONG_GIAI_PHAP,
   LOAI_TAI_SAN,
+  LY_DO_THAY_LINH_KIEN,
   TAI_KHOAN,
   TAI_SAN,
 } from './seed-du-lieu.js';
@@ -102,6 +103,18 @@ async function napDiemLuuTru(): Promise<Map<string, string>> {
   const soTruong = DIEM_LUU_TRU.filter((d) => d.type === 'DIEM_TRUONG').length;
   viet(`  • Điểm lưu trữ: ${DIEM_LUU_TRU.length} (trong đó ${soTruong} điểm trường)`);
   return banDo;
+}
+
+/** Danh mục lý do thay linh kiện. Chạy lại nhiều lần không sinh bản trùng. */
+async function napLyDoLinhKien(): Promise<void> {
+  for (const name of LY_DO_THAY_LINH_KIEN) {
+    await prisma.partReplacementReason.upsert({
+      where: { name },
+      create: { name },
+      update: {},
+    });
+  }
+  viet(`  • Lý do thay linh kiện: ${LY_DO_THAY_LINH_KIEN.length}`);
 }
 
 async function napTaiKhoan(diemLuuTru: Map<string, string>): Promise<Map<string, string>> {
@@ -336,6 +349,7 @@ async function ghiAuditLog(ketQua: KetQuaTaiSan, taiKhoan: Map<string, string>):
 async function chay(): Promise<void> {
   viet('Nạp dữ liệu mẫu — LtL Quản lý Tài sản');
   await napDanhMuc();
+  await napLyDoLinhKien();
   const diemLuuTru = await napDiemLuuTru();
   const taiKhoan = await napTaiKhoan(diemLuuTru);
   const ketQua = await napTaiSan(diemLuuTru, taiKhoan);

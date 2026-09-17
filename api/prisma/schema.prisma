@@ -109,6 +109,8 @@ enum MovementType {
   CHO_MUON
   TRA_VE_KHO
   DIEU_CHINH_KIEM_KE
+  /// Xuất linh kiện thay thế cho một phiếu báo hỏng — không qua bước duyệt.
+  XUAT_LINH_KIEN
 }
 
 /// Phân loại ảnh — thay cho việc gắn cột ảnh cứng vào movements.
@@ -121,6 +123,8 @@ enum PhotoKind {
   KIEM_KE
   BBBG
   KIOSK_BACKGROUND
+  /// Ảnh linh kiện lúc lấy ra khỏi kho. BẮT BUỘC với linh kiện không có mã.
+  LINH_KIEN
 }
 
 enum HandoverStatus {
@@ -180,25 +184,27 @@ model User {
   location  Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
   createdBy User?     @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
-  createdUsers          User[]               @relation("UserCreatedBy")
+  createdUsers          User[]                  @relation("UserCreatedBy")
   refreshTokens         RefreshToken[]
-  createdAssets         Asset[]              @relation("AssetCreatedBy")
-  heldAssets            Asset[]              @relation("AssetHolder")
-  createdRequests       Request[]            @relation("RequestCreatedBy")
-  approvedRequests      Request[]            @relation("RequestApprovedBy")
+  createdAssets         Asset[]                 @relation("AssetCreatedBy")
+  heldAssets            Asset[]                 @relation("AssetHolder")
+  createdRequests       Request[]               @relation("RequestCreatedBy")
+  approvedRequests      Request[]               @relation("RequestApprovedBy")
   performedMovements    Movement[]
   uploadedPhotos        Photo[]
   auditLogs             AuditLog[]
-  confirmedHandovers    HandoverNote[]       @relation("HandoverConfirmedBy")
-  createdHandovers      HandoverNote[]       @relation("HandoverCreatedBy")
-  createdCounts         InventoryCount[]     @relation("CountCreatedBy")
-  closedCounts          InventoryCount[]     @relation("CountClosedBy")
+  confirmedHandovers    HandoverNote[]          @relation("HandoverConfirmedBy")
+  createdHandovers      HandoverNote[]          @relation("HandoverCreatedBy")
+  createdCounts         InventoryCount[]        @relation("CountCreatedBy")
+  closedCounts          InventoryCount[]        @relation("CountClosedBy")
   countedItems          InventoryCountItem[]
-  issuedOverrideCodes   GpsOverrideCode[]    @relation("OverrideIssuedBy")
-  targetedOverrideCodes GpsOverrideCode[]    @relation("OverrideIssuedFor")
-  usedOverrideCodes     GpsOverrideCode[]    @relation("OverrideUsedBy")
+  issuedOverrideCodes   GpsOverrideCode[]       @relation("OverrideIssuedBy")
+  targetedOverrideCodes GpsOverrideCode[]       @relation("OverrideIssuedFor")
+  usedOverrideCodes     GpsOverrideCode[]       @relation("OverrideUsedBy")
   kioskSetting          KioskSetting?
-  resolvedAlerts        Alert[]              @relation("AlertResolvedBy")
+  resolvedAlerts        Alert[]                 @relation("AlertResolvedBy")
+  lyDoLinhKienTao       PartReplacementReason[] @relation("ReasonCreatedBy")
+  phieuLinhKien         PartIssue[]             @relation("PartIssueBy")
 
   @@index([role])
   @@index([locationId])
@@ -341,6 +347,7 @@ model Location {
   handoverNotes    HandoverNote[]
   inventoryCounts  InventoryCount[]
   gpsOverrideCodes GpsOverrideCode[]
+  partIssuesFrom   PartIssue[]       @relation("PartIssueFrom")
 
   @@index([type])
   @@map("locations")
@@ -399,6 +406,7 @@ model Asset {
   handoverItems HandoverNoteItem[]
   countItems    InventoryCountItem[]
   alerts        Alert[]
+  partIssues    PartIssue[]
 
   @@index([categoryId])
   @@index([productLineId])
@@ -447,6 +455,7 @@ model Request {
 
   items         RequestItem[]
   movements     Movement[]
+  partIssues    PartIssue[]
   photos        Photo[]
   handoverNotes HandoverNote[]
   alerts        Alert[]
@@ -506,7 +515,8 @@ model Movement {
   performedBy  User      @relation(fields: [performedById], references: [id])
 
   /// Ảnh lúc xuất = photos(kind: ANH_XUAT); ảnh lúc nhận = photos(kind: ANH_NHAN).
-  photos Photo[]
+  photos    Photo[]
+  partIssue PartIssue?
 
   @@index([assetId, performedAt])
   @@index([fromLocationId])
@@ -514,6 +524,90 @@ model Movement {
   @@index([requestId])
   @@index([performedAt])
   @@map("movements")
+}
+
+// ===========================================================================
+// LINH KIỆN THAY THẾ
+// ===========================================================================
+
+/// Lý do thay linh kiện — danh mục LỚN DẦN theo thực tế dùng.
+///
+/// Là bảng chứ không phải enum vì người ở kho phải thêm được ngay tại chỗ khi
+/// gặp hiện tượng chưa có trong danh sách; enum thì phải sửa mã và deploy lại.
+/// Giữ nguyên bản ghi cũ thay vì xoá (dùng isActive), để phiếu đã lập không bị
+/// mất lý do khi danh mục thay đổi.
+model PartReplacementReason {
+  id          String   @id @default(cuid()) @db.VarChar(30)
+  name        String   @unique @db.VarChar(191)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String?  @map("created_by_id") @db.VarChar(30)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  createdBy User?       @relation("ReasonCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  issues    PartIssue[]
+
+  @@index([isActive])
+  @@map("part_replacement_reasons")
+}
+
+/// Phiếu lấy linh kiện thay thế ra khỏi kho.
+///
+/// KHÔNG qua bước duyệt (quyết định của LtL: robot hỏng giữa giờ dạy thì chờ
+/// duyệt là mất tiết). Bù lại BẮT BUỘC gắn vào một phiếu báo hỏng — nhờ vậy
+/// vẫn giữ được tinh thần nguyên tắc bất biến #2: mỗi lần linh kiện rời kho
+/// đều có chứng từ gốc, và vì báo hỏng đã trỏ tới thiết bị nên truy được linh
+/// kiện đó lắp vào robot nào mà không phải bắt người ở kho chọn lại.
+///
+/// Hai dạng linh kiện, và đây là lý do phải có bảng riêng thay vì chỉ dùng
+/// `movements`:
+///   - CÓ MÃ trong kho  → assetId, và sinh kèm một movement XUAT_LINH_KIEN để
+///     tồn kho vẫn đúng theo nguyên tắc #5 (tồn suy từ movements);
+///   - KHÔNG CÓ MÃ      → assetId null, bắt buộc tên hoặc mã hãng + ẢNH.
+///     Không thể là movement vì movements.asset_id là khoá ngoại không null.
+model PartIssue {
+  id   String @id @default(cuid()) @db.VarChar(30)
+  /// Số phiếu tự sinh, vd LK-2026-0001.
+  code String @unique @db.VarChar(64)
+
+  /// Phiếu báo hỏng gốc — BẮT BUỘC, không có đường nào lấy linh kiện mà không
+  /// gắn vào một báo hỏng.
+  requestId String @map("request_id") @db.VarChar(30)
+
+  /// Linh kiện có mã trong kho. Null = linh kiện không có mã.
+  assetId    String? @map("asset_id") @db.VarChar(30)
+  /// Tên linh kiện tự nhập — bắt buộc khi không có mã (hoặc dùng vendorCode).
+  partName   String? @map("part_name") @db.VarChar(191)
+  /// Mã linh kiện của hãng cung cấp, vd "MG996R" — thay được cho tên.
+  vendorCode String? @map("vendor_code") @db.VarChar(128)
+
+  quantity Int
+  reasonId String  @map("reason_id") @db.VarChar(30)
+  /// Ghi chú thêm ngoài lý do đã chọn.
+  note     String? @db.Text
+
+  /// Kho xuất ra. Null nếu linh kiện không có mã và không trừ tồn của kho nào.
+  fromLocationId String? @map("from_location_id") @db.VarChar(30)
+  /// Movement sinh kèm (chỉ có với linh kiện CÓ MÃ).
+  movementId     String? @unique @map("movement_id") @db.VarChar(30)
+
+  issuedById String   @map("issued_by_id") @db.VarChar(30)
+  issuedAt   DateTime @default(now()) @map("issued_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  request      Request               @relation(fields: [requestId], references: [id])
+  asset        Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  reason       PartReplacementReason @relation(fields: [reasonId], references: [id])
+  fromLocation Location?             @relation("PartIssueFrom", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  movement     Movement?             @relation(fields: [movementId], references: [id], onDelete: SetNull)
+  issuedBy     User                  @relation("PartIssueBy", fields: [issuedById], references: [id])
+
+  photos Photo[]
+
+  @@index([requestId])
+  @@index([assetId])
+  @@index([fromLocationId, issuedAt])
+  @@index([issuedAt])
+  @@map("part_issues")
 }
 
 // ===========================================================================
@@ -542,6 +636,7 @@ model Photo {
   requestId   String? @map("request_id") @db.VarChar(30)
   movementId  String? @map("movement_id") @db.VarChar(30)
   countItemId String? @map("count_item_id") @db.VarChar(30)
+  partIssueId String? @map("part_issue_id") @db.VarChar(30)
 
   uploadedById String   @map("uploaded_by_id") @db.VarChar(30)
   createdAt    DateTime @default(now()) @map("created_at")
@@ -550,6 +645,7 @@ model Photo {
   request    Request?            @relation(fields: [requestId], references: [id], onDelete: Cascade)
   movement   Movement?           @relation(fields: [movementId], references: [id], onDelete: Cascade)
   countItem  InventoryCountItem? @relation(fields: [countItemId], references: [id], onDelete: Cascade)
+  partIssue  PartIssue?          @relation(fields: [partIssueId], references: [id], onDelete: Cascade)
   uploadedBy User                @relation(fields: [uploadedById], references: [id])
 
   kioskSettings KioskSetting[]
@@ -558,6 +654,7 @@ model Photo {
   @@index([requestId])
   @@index([movementId, kind])
   @@index([countItemId])
+  @@index([partIssueId])
   @@index([kind])
   @@map("photos")
 }

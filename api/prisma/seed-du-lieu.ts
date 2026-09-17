@@ -402,6 +402,25 @@ export interface DongTaiKhoan {
  * Mật khẩu KHÔNG nằm trong mã nguồn — lấy từ biến môi trường SEED_ADMIN_PASSWORD
  * (xem api/.env.example). Tài khoản email admin có thể đổi qua SEED_ADMIN_EMAIL.
  */
+/**
+ * Lý do thay linh kiện — mồi ban đầu cho danh mục.
+ *
+ * Chỉ là mồi: người ở kho thêm được lý do mới ngay tại chỗ, nên danh sách này
+ * cố tình ngắn và chỉ gồm những hiện tượng gặp nhiều nhất ở robot STEM.
+ */
+export const LY_DO_THAY_LINH_KIEN: readonly string[] = [
+  'Cháy động cơ servo',
+  'Đứt dây tín hiệu',
+  'Vỡ bánh răng',
+  'Chai pin, không giữ điện',
+  'Cảm biến không nhận tín hiệu',
+  'Gãy khớp nhựa',
+  'Lỏng chân cắm, tiếp xúc kém',
+  'Mất phụ kiện kèm theo',
+  'Hỏng bảng mạch điều khiển',
+  'Nứt vỏ, hở mạch',
+];
+
 export const TAI_KHOAN: ReadonlyArray<DongTaiKhoan> = [
   {
     email: 'admin@learntoleap.vn',

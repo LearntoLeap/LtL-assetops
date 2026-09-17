@@ -116,6 +116,7 @@ export const NHAN_LOAI_DI_CHUYEN = {
   CHO_MUON: 'Cho mượn',
   TRA_VE_KHO: 'Trả về kho',
   DIEU_CHINH_KIEM_KE: 'Điều chỉnh sau kiểm kê',
+  XUAT_LINH_KIEN: 'Xuất linh kiện thay thế',
 } satisfies Record<LoaiDiChuyen, string>;
 
 export const NHAN_LOAI_ANH = {
@@ -126,6 +127,7 @@ export const NHAN_LOAI_ANH = {
   KIEM_KE: 'Ảnh kiểm kê',
   BBBG: 'Ảnh biên bản bàn giao',
   KIOSK_BACKGROUND: 'Ảnh nền màn hình kho',
+  LINH_KIEN: 'Ảnh linh kiện',
 } satisfies Record<LoaiAnh, string>;
 
 export const NHAN_ANH_NEN_KIOSK = {
