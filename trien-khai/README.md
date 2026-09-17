@@ -162,7 +162,7 @@ project rồi thì hai tệp này thành vô hại, xoá đi cũng được.
 | Vai trò | Tên miền | Trỏ về |
 |---|---|---|
 | API | `api-taisan.learntoleap.vn` | bản ghi A → IP của VPS |
-| Web | `ltl-assetops.vercel.app` (tạm) và `taisan.learntoleap.vn` | Vercel |
+| Web | `assetops.learntoleap.vn` (chính) và `ltl-assetops.vercel.app` | Vercel |
 
 `VITE_API_URL` đặt trong `build.env` của `vercel.json`, không phải biến môi
 trường trên dashboard — giá trị này không phải bí mật (Vite nhúng thẳng vào
@@ -170,9 +170,18 @@ bundle công khai), nên để trong mã nguồn là đúng chỗ và đổi tê
 một dòng rồi push. Đổi xong **phải deploy lại** vì biến `VITE_` được nhúng lúc
 build.
 
-Muốn dùng `taisan.learntoleap.vn`: vào Vercel → project `ltl-assetops` →
-Settings → Domains → thêm tên miền, rồi tạo bản ghi DNS theo hướng dẫn Vercel
-hiện ra.
+Tên miền web chính là `assetops.learntoleap.vn`: đã thêm vào Vercel (project
+`ltl-assetops` → Settings → Domains), và ở PA Vietnam có bản ghi **CNAME** tên
+`assetops` trỏ về `cname.vercel-dns.com`.
+
+Lưu ý mỗi project Vercel có một giá trị CNAME riêng — `teacher` trỏ về
+`b183fe68714cdcbb.vercel-dns-017.com`, `muahang` trỏ về
+`52b97ed206e792cd.vercel-dns-017.com`. **Đừng chép giá trị của project khác.**
+`cname.vercel-dns.com` dùng được cho mọi project vì Vercel định tuyến theo
+header `Host` chứ không theo đích CNAME.
+
+`taisan.learntoleap.vn` vẫn giữ trong `CORS_ORIGINS` làm dự phòng, nhưng chưa
+gắn vào Vercel nên chưa dùng được.
 
 `CORS_ORIGINS` trong `api/.env` phải chứa **đúng** origin của web (script đã để
 sẵn cả hai). Sai origin là trình duyệt chặn mọi lời gọi API, dù API vẫn chạy.

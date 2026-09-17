@@ -69,7 +69,7 @@ else
   # CORS nhận nhiều origin cách nhau bằng dấu phẩy: để sẵn cả tên miền Vercel
   # tạm thời và tên miền riêng, khỏi phải sửa .env rồi restart lần nữa.
   hoi TEN_MIEN_WEB  "Tên miền web (nhiều thì cách bằng dấu phẩy)" \
-                    "https://ltl-assetops.vercel.app,https://taisan.learntoleap.vn"
+                    "https://ltl-assetops.vercel.app,https://assetops.learntoleap.vn,https://taisan.learntoleap.vn"
   hoi EMAIL_ADMIN   "Email tài khoản quản trị"  "admin@learntoleap.vn"
   hoi_kin MK_ADMIN  "Mật khẩu quản trị khởi tạo (≥ 8 ký tự)"
   [ "${#MK_ADMIN}" -ge 8 ] || loi "Mật khẩu quản trị phải từ 8 ký tự."

@@ -41,7 +41,7 @@ CONG="${CONG:-3002}"
 TEN_CSDL="${TEN_CSDL:-ltl_taisan}"
 USER_CSDL="${USER_CSDL:-ltl_taisan}"
 TEN_MIEN_API="${TEN_MIEN_API:-https://api-taisan.learntoleap.vn}"
-TEN_MIEN_WEB="${TEN_MIEN_WEB:-https://ltl-assetops.vercel.app,https://taisan.learntoleap.vn}"
+TEN_MIEN_WEB="${TEN_MIEN_WEB:-https://ltl-assetops.vercel.app,https://assetops.learntoleap.vn,https://taisan.learntoleap.vn}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@learntoleap.vn}"
 PM2_TEN="ltl-taisan-api"
 
