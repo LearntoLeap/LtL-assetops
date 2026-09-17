@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Plus, Save, Trash2 } from 'lucide-react';
-import { DS_LOAI_YEU_CAU, type LoaiYeuCau } from '@ltl/taisan-shared';
+import { ArrowLeft, Loader2, PackagePlus, Plus, Save, Trash2 } from 'lucide-react';
+import { DS_LOAI_YEU_CAU } from '@ltl/taisan-shared';
+import { MAU_YEU_CAU, NOI_KHAC, type MauYeuCau } from './mau-yeu-cau';
+import { TaoNhanhThietBi } from './TaoNhanhThietBi';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,12 +14,11 @@ import { NutQuetQR } from '@/components/QuetQR';
 import { goiApi, LoiApi } from '@/lib/api';
 import type { NoiDen, ThietBi, TrangDuLieu, YeuCau } from '@/lib/kieu';
 
-/** Loại yêu cầu bắt buộc chọn nơi đến trong danh mục — khớp kiểm tra ở server. */
-const CAN_NOI_DEN: ReadonlySet<LoaiYeuCau> = new Set<LoaiYeuCau>([
-  'XUAT_KHO',
-  'PHAN_BO_VE_TRUONG',
-  'LUAN_CHUYEN_TRUONG',
-]);
+/** Loại lập được ở form này — BÁO HỎNG có trang riêng vì bắt buộc kèm ảnh. */
+type LoaiLapDuoc = keyof typeof MAU_YEU_CAU;
+const LOAI_LAP_DUOC = DS_LOAI_YEU_CAU.filter(
+  (l) => l.ma !== 'BAO_HONG',
+) as ReadonlyArray<{ ma: LoaiLapDuoc; nhan: string }>;
 
 interface DongMuc {
   code: string;
@@ -29,7 +30,9 @@ interface DongMuc {
 
 export function FormYeuCau() {
   const dieuHuong = useNavigate();
-  const [type, datType] = useState<LoaiYeuCau>('CHO_MUON');
+  const [type, datType] = useState<LoaiLapDuoc>('CHO_MUON');
+  /** Dòng đang mở bảng tạo nhanh thiết bị; null = không mở. */
+  const [dongTaoNhanh, datDongTaoNhanh] = useState<number | null>(null);
   const [reason, datReason] = useState('');
   const [toLocationId, datToLocationId] = useState('');
   const [destinationNote, datDestinationNote] = useState('');
@@ -99,8 +102,10 @@ export function FormYeuCau() {
         than: {
           type,
           reason,
-          ...(toLocationId ? { toLocationId } : {}),
-          ...(destinationNote.trim() ? { destinationNote } : {}),
+          // Chọn "Nơi khác" thì KHÔNG gửi toLocationId — giá trị NOI_KHAC chỉ
+          // là cờ của giao diện, gửi lên server sẽ thành id không tồn tại.
+          ...(toLocationId && toLocationId !== NOI_KHAC ? { toLocationId } : {}),
+          ...(destinationNote.trim() ? { destinationNote: destinationNote.trim() } : {}),
           ...(expectedReturnAt ? { expectedReturnAt: new Date(expectedReturnAt).toISOString() } : {}),
           muc: dong.map((d) => ({
             code: d.code.trim().toUpperCase(),
@@ -116,7 +121,8 @@ export function FormYeuCau() {
     }
   }
 
-  const canNoiDen = CAN_NOI_DEN.has(type);
+  const mau: MauYeuCau = MAU_YEU_CAU[type];
+  const noiKhac = toLocationId === NOI_KHAC;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -127,15 +133,15 @@ export function FormYeuCau() {
             Về danh sách yêu cầu
           </Link>
         </Button>
-        <h1 className="text-xl font-semibold sm:text-2xl">Tạo yêu cầu</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">Tạo yêu cầu · {mau.tieuDe}</h1>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Nội dung yêu cầu</CardTitle>
+          <CardTitle>{mau.tieuDe}</CardTitle>
           <CardDescription>
-            Tạo xong sẽ ở trạng thái Nháp. Bấm Gửi duyệt ở trang chi tiết thì người có quyền duyệt
-            mới thấy.
+            {mau.moTa} Tạo xong ở trạng thái Nháp; bấm Gửi duyệt ở trang chi tiết thì người có
+            quyền duyệt mới thấy.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -147,46 +153,78 @@ export function FormYeuCau() {
                   id="y-loai"
                   required
                   value={type}
-                  onChange={(su) => datType(su.target.value as LoaiYeuCau)}
+                  onChange={(su) => {
+                    datType(su.target.value as LoaiLapDuoc);
+                    // Đổi loại thì xoá nơi đến và hạn trả: mỗi loại có bộ ô
+                    // riêng, giữ lại giá trị cũ dễ gửi đi thứ không áp dụng.
+                    datToLocationId('');
+                    datDestinationNote('');
+                    datExpectedReturnAt('');
+                  }}
                 >
-                  {DS_LOAI_YEU_CAU.map((l) => (
+                  {LOAI_LAP_DUOC.map((l) => (
                     <option key={l.ma} value={l.ma}>
                       {l.nhan}
                     </option>
                   ))}
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Thiết bị hỏng thì lập ở{' '}
+                  <Link to="/bao-hong/moi" className="font-medium text-primary underline">
+                    trang Báo hỏng
+                  </Link>{' '}
+                  — ở đó bắt buộc kèm ảnh và tự báo cho kho, vận hành, nhân sự.
+                </p>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="y-noi-den">
-                  Nơi đến {canNoiDen ? '*' : '(không bắt buộc)'}
-                </Label>
-                <Select
-                  id="y-noi-den"
-                  required={canNoiDen}
-                  value={toLocationId}
-                  onChange={(su) => datToLocationId(su.target.value)}
-                >
-                  <option value="">— Chưa chọn —</option>
-                  {diaDiem.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </Select>
-                {canNoiDen ? (
+              {mau.noiDen !== 'an' ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="y-noi-den">
+                    {mau.nhanNoiDen} {mau.noiDen === 'bat-buoc' ? '*' : '(không bắt buộc)'}
+                  </Label>
+                  <Select
+                    id="y-noi-den"
+                    required={mau.noiDen === 'bat-buoc'}
+                    value={toLocationId}
+                    onChange={(su) => datToLocationId(su.target.value)}
+                  >
+                    <option value="">— Chưa chọn —</option>
+                    {diaDiem.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                    <option value={NOI_KHAC}>— Nơi khác, tự điền —</option>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{mau.giaiThichNoiDen}</p>
+                </div>
+              ) : null}
+
+              {/*
+                Ô tự điền chỉ hiện khi chọn "Nơi khác". Trước đây nó luôn hiện
+                dưới tên "Ghi chú nơi đến" nên không ai hiểu khi nào thì dùng —
+                giờ nó là đường chính thức để ghi nơi đến ngoài danh mục.
+              */}
+              {noiKhac ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="y-noi-tu-dien">Nơi đến — tự điền *</Label>
+                  <Input
+                    id="y-noi-tu-dien"
+                    required
+                    value={destinationNote}
+                    onChange={(su) => datDestinationNote(su.target.value)}
+                    placeholder="VD: Nhà thi đấu Cầu Giấy — giải ROBOG vòng khu vực"
+                    maxLength={255}
+                  />
                   <p className="text-xs text-muted-foreground">
-                    Loại yêu cầu này bắt buộc có nơi đến thì mới gửi duyệt được.
+                    Ghi rõ để kho biết giao đi đâu. Nơi dùng thường xuyên thì nên nhờ quản trị
+                    thêm vào danh mục Điểm lưu trữ.
                   </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Cho nhân sự mượn thì để trống — thiết bị vẫn thuộc kho, chỉ gắn người giữ.
-                  </p>
-                )}
-              </div>
+                </div>
+              ) : null}
 
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="y-ly-do">Lý do *</Label>
+                <Label htmlFor="y-ly-do">{mau.nhanLyDo} *</Label>
                 <textarea
                   id="y-ly-do"
                   required
@@ -195,34 +233,30 @@ export function FormYeuCau() {
                   className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   value={reason}
                   onChange={(su) => datReason(su.target.value)}
-                  placeholder="VD: Mượn laptop soạn học liệu cho khối 3, dùng trong 2 tuần."
+                  placeholder={mau.goiYLyDo}
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="y-han-tra">Thời gian dự kiến trả</Label>
-                <Input
-                  id="y-han-tra"
-                  type="date"
-                  value={expectedReturnAt}
-                  onChange={(su) => datExpectedReturnAt(su.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="y-ghi-noi-den">Ghi chú nơi đến</Label>
-                <Input
-                  id="y-ghi-noi-den"
-                  value={destinationNote}
-                  onChange={(su) => datDestinationNote(su.target.value)}
-                  placeholder="VD: Sự kiện lẻ tại nhà thi đấu"
-                />
-              </div>
+              {mau.hanTra !== 'an' ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="y-han-tra">
+                    Thời gian dự kiến trả{' '}
+                    {mau.hanTra === 'nen-co' ? '(nên điền)' : '(không bắt buộc)'}
+                  </Label>
+                  <Input
+                    id="y-han-tra"
+                    type="date"
+                    value={expectedReturnAt}
+                    onChange={(su) => datExpectedReturnAt(su.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">{mau.giaiThichHanTra}</p>
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label>Thiết bị *</Label>
+                <Label>{mau.nhanThietBi} *</Label>
                 <NutQuetQR
                   nhan="Quét mã thêm dòng"
                   onQuetDuoc={(ma) => {
@@ -262,7 +296,44 @@ export function FormYeuCau() {
                         {d.ten ? (
                           <p className="text-xs text-success-dam">{d.ten}</p>
                         ) : d.loi ? (
-                          <p className="text-xs text-destructive-dam">{d.loi}</p>
+                          <div className="space-y-1">
+                            <p className="text-xs text-destructive-dam">{d.loi}</p>
+                            {/*
+                              Mã không có trong kho là chuyện thường: linh kiện
+                              mới về, thiết bị tặng, hàng chưa kịp vào sổ. Cho
+                              thêm ngay tại đây thay vì bắt rời form — máy chủ
+                              vẫn đòi ảnh nên không có gì vào sổ mà không ai
+                              thấy mặt.
+                            */}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => datDongTaoNhanh(dongTaoNhanh === i ? null : i)}
+                              aria-expanded={dongTaoNhanh === i}
+                            >
+                              <PackagePlus aria-hidden />
+                              Thiết bị chưa có mã — thêm ngay
+                            </Button>
+                          </div>
+                        ) : null}
+                        {dongTaoNhanh === i ? (
+                          <div className="mt-2">
+                            <TaoNhanhThietBi
+                              goiYTen=""
+                              onHuy={() => datDongTaoNhanh(null)}
+                              onTaoXong={(tb) => {
+                                datMuc((cu) =>
+                                  cu.map((x, j) =>
+                                    j === i
+                                      ? { ...x, code: tb.code, ten: tb.name, loi: undefined }
+                                      : x,
+                                  ),
+                                );
+                                datDongTaoNhanh(null);
+                              }}
+                            />
+                          </div>
                         ) : null}
                       </div>
                       <Input
