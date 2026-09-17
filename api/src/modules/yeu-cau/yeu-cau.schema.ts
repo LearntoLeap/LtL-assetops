@@ -7,8 +7,27 @@ const ngayGioISO = z
   .trim()
   .refine((v) => !Number.isNaN(new Date(v).getTime()), 'Thời điểm không hợp lệ.');
 
+/**
+ * Loại yêu cầu lập được qua API này. BAO_HONG bị loại ra CÓ CHỦ Ý.
+ *
+ * Báo hỏng có luồng riêng ở /api/bao-hong với ba ràng buộc mà API chung không
+ * có: bắt buộc ít nhất một ẢNH, mô tả tối thiểu 10 ký tự, và tạo kèm bản ghi
+ * cảnh báo để bốn nhóm nhận thông báo. Trước khi chặn, gọi thẳng /api/yeu-cau
+ * với type BAO_HONG tạo ra phiếu ở trạng thái BAN_NHAP, không ảnh, không ai
+ * được thông báo — phiếu hỏng vô hình. Đã dựng lại đúng lỗi này rồi mới sửa.
+ */
+const LOAI_LAP_QUA_API_CHUNG = LOAI_YEU_CAU.filter((l) => l !== 'BAO_HONG') as [
+  (typeof LOAI_YEU_CAU)[number],
+  ...(typeof LOAI_YEU_CAU)[number][],
+];
+
 export const luocDoTaoYeuCau = z.object({
-  type: z.enum(LOAI_YEU_CAU),
+  type: z.enum(LOAI_LAP_QUA_API_CHUNG, {
+    errorMap: () => ({
+      message:
+        'Báo hỏng phải lập qua trang Báo hỏng (bắt buộc kèm ảnh và mô tả), không lập qua yêu cầu thường.',
+    }),
+  }),
   reason: z.string().trim().min(5, 'Lý do phải có ít nhất 5 ký tự.').max(5000),
   fromLocationId: chuoiTuyChon(30),
   toLocationId: chuoiTuyChon(30),

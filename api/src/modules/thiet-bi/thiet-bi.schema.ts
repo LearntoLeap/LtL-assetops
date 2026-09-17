@@ -25,6 +25,38 @@ const ngayISO = z
   .trim()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày phải theo dạng NĂM-THÁNG-NGÀY, ví dụ 2026-03-15');
 
+/**
+ * TẠO NHANH thiết bị khi lập yêu cầu mà mã chưa có trong kho.
+ *
+ * Người ở kho đang giữa việc — bắt họ rời form yêu cầu, sang trang Thiết bị,
+ * điền đủ mười mấy ô rồi quay lại là mất mạch. Ở đây chỉ hỏi những gì KHÔNG
+ * suy ra được: tên, loại tài sản, nơi nhập về, và ẢNH.
+ *
+ * ẢNH LÀ BẮT BUỘC, đúng lý do như với linh kiện không mã: thiết bị vào sổ mà
+ * không ai thấy mặt nó thì sau này không đối chiếu được. Các trường còn lại
+ * lấy mặc định an toàn (nguồn gốc KHÁC, tình trạng TỐT) và ghi rõ trong ghi
+ * chú rằng bản ghi này tạo nhanh, cần bổ sung sau.
+ *
+ * Mã do SERVER sinh, không để người dùng tự đặt: tạo nhanh giữa lúc gấp là
+ * lúc dễ đặt mã trùng hoặc sai quy ước nhất.
+ */
+export const luocDoTaoNhanhThietBi = z.object({
+  name: z.string().trim().min(2, 'Tên thiết bị phải có ít nhất 2 ký tự.').max(191),
+  categoryId: z.string().trim().min(1, 'Chưa chọn loại tài sản.').max(30),
+  nhapVeLocationId: z.string().trim().min(1, 'Chưa chọn nơi nhập về.').max(30),
+  /** Mã/serial của hãng cung cấp, nếu vỏ hộp có in. */
+  vendorCode: z.string().trim().max(191).optional(),
+  soLuongNhap: z.coerce.number().int().min(1).max(1_000_000).default(1),
+  purpose: z.enum(MUC_DICH_SU_DUNG).default('XHH'),
+  /** Ảnh thiết bị — BẮT BUỘC ít nhất một. */
+  anhIds: z
+    .array(z.string().trim().min(1).max(30))
+    .min(1, 'Bắt buộc chụp ít nhất một ảnh thiết bị khi tạo nhanh.')
+    .max(5),
+  note: z.string().trim().max(5000).optional(),
+});
+export type DuLieuTaoNhanhThietBi = z.infer<typeof luocDoTaoNhanhThietBi>;
+
 export const luocDoTaoThietBi = z
   .object({
     code: maThietBi,

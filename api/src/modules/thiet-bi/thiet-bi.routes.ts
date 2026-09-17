@@ -11,6 +11,7 @@ import {
 import {
   luocDoLocThietBi,
   luocDoSuaThietBi,
+  luocDoTaoNhanhThietBi,
   luocDoTaoThietBi,
   maThietBi,
 } from './thiet-bi.schema.js';
@@ -72,6 +73,22 @@ thietBiRouter.post(
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoTaoThietBi.parse(req.body);
     const thietBi = await dv.tao(duLieu, actor, boiCanh(req));
+    res.status(201).json({ ok: true, thietBi });
+  }),
+);
+
+/**
+ * Tạo nhanh khi lập yêu cầu mà mã chưa có. Mã do SERVER sinh, ẢNH bắt buộc.
+ * Cùng quyền với tạo thường (chỉ người nhập liệu) — tạo nhanh không phải là
+ * cửa sau để vai trò khác thêm thiết bị.
+ */
+thietBiRouter.post(
+  '/nhanh',
+  chiNguoiNhapLieu,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const duLieu = luocDoTaoNhanhThietBi.parse(req.body);
+    const thietBi = await dv.taoNhanh(duLieu, actor, boiCanh(req));
     res.status(201).json({ ok: true, thietBi });
   }),
 );
