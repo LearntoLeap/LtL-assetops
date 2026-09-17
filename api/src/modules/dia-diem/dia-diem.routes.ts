@@ -255,7 +255,11 @@ diaDiemRouter.get(
     const nguoiDung = nguoiDungHienTai(req);
     // Vẫn chặn theo phạm vi: TRUONG không xem được điểm của trường khác.
     const diaDiem = await prisma.location.findFirst({
-      where: { id: String(req.params['id']), ...dieuKienDiaDiem(nguoiDung) },
+      // AND chứ không spread: dieuKienDiaDiem cũng đặt khoá `id` (vai trò
+      // TRUONG trả về { id: { in: [...] } }), nên spread sẽ ghi đè id trong
+      // params và truy vấn thành "điểm ĐẦU TIÊN trong phạm vi" — đo thật:
+      // hỏi chi tiết Kho văn phòng lại trả về Trường Tiểu học Minh Khai.
+      where: { AND: [{ id: String(req.params['id']) }, dieuKienDiaDiem(nguoiDung)] },
       select: CHON,
     });
     if (!diaDiem) throw loi404('Không tìm thấy điểm lưu trữ, hoặc ngoài phạm vi của bạn.');

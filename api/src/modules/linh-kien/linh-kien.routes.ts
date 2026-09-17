@@ -370,8 +370,13 @@ linhKienRouter.get(
           items: {
             some: {
               asset: {
-                ...dieuKienTaiSan(nguoiDung),
-                ...(loc.diaDiemId ? { currentLocationId: loc.diaDiemId } : {}),
+                // AND: dieuKienTaiSan đặt `currentLocationId` cho vai trò
+                // TRUONG, nên spread một currentLocationId khác từ query sẽ
+                // ghi đè phạm vi. Đo thật: trường xem được 9 phiếu của kho.
+                AND: [
+                  dieuKienTaiSan(nguoiDung),
+                  ...(loc.diaDiemId ? [{ currentLocationId: loc.diaDiemId }] : []),
+                ],
               },
             },
           },

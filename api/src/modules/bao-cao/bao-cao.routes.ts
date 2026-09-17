@@ -29,3 +29,32 @@ baoCaoRouter.get(
     res.json({ ok: true, ...(await dv.dashboard(nguoiDung, soNgay)) });
   }),
 );
+
+const luocDoMotDiem = z.object({
+  diaDiemId: z.string().trim().min(1).max(30),
+  gioiHan: z.coerce.number().int().positive().max(300).default(100),
+});
+
+/**
+ * Lịch sử sửa chữa / thay linh kiện, gom theo điểm lưu trữ.
+ *
+ * Không giới hạn vai trò ở middleware — service lọc theo phạm vi, nên điểm
+ * trường chỉ thấy dòng của trường mình, ADMIN và VAN_HANH thấy hết.
+ */
+baoCaoRouter.get(
+  '/lich-su-sua-chua',
+  batAsync(async (req, res) => {
+    const nguoiDung = nguoiDungHienTai(req);
+    res.json({ ok: true, muc: await dv.lichSuSuaChuaTheoDiem(nguoiDung) });
+  }),
+);
+
+/** Dòng thời gian của MỘT điểm: báo hỏng và lấy linh kiện trộn lẫn. */
+baoCaoRouter.get(
+  '/lich-su-sua-chua/chi-tiet',
+  batAsync(async (req, res) => {
+    const nguoiDung = nguoiDungHienTai(req);
+    const { diaDiemId, gioiHan } = luocDoMotDiem.parse(req.query);
+    res.json({ ok: true, muc: await dv.lichSuMotDiem(nguoiDung, diaDiemId, gioiHan) });
+  }),
+);

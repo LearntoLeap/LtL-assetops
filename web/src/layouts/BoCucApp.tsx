@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Tablet,
   TriangleAlert,
+  History,
   Upload,
   Users,
   Wrench,
@@ -60,6 +61,7 @@ const MENU_THEM: readonly MucMenu[] = [
   // đã thấy trong ảnh chụp ở 1280px. Đường vào chính của việc này là ô lớn
   // "Lấy linh kiện" trên màn hình kho và liên kết từ phiếu báo hỏng.
   { duongDan: '/linh-kien', nhan: 'Lấy linh kiện', icon: Wrench, vaiTro: ['ADMIN', 'VAN_HANH', 'KHO'] },
+  { duongDan: '/lich-su-sua-chua', nhan: 'Lịch sử sửa chữa', icon: History },
   { duongDan: '/dia-diem', nhan: 'Điểm lưu trữ', icon: MapPin },
   { duongDan: '/danh-muc', nhan: 'Danh mục', icon: LayoutGrid, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/nhap-lieu', nhan: 'Nhập hàng loạt', icon: Upload, vaiTro: VAI_TRO_NHAP_LIEU },
@@ -139,7 +141,13 @@ export function BoCucApp() {
             className="ml-2 hidden min-w-0 flex-1 items-center gap-1 lg:flex"
             aria-label="Điều hướng chính"
           >
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {/*
+              mask-image làm mép phải mờ dần. Khi thanh chật, mục cuối bị cắt
+              giữa chữ trông như lỗi hiển thị — đã thấy "Cố định tại k" trong
+              ảnh chụp ở 1280px. Mờ dần thì cú cắt đó đọc thành "còn nữa, cuộn
+              tiếp". Không fade oan khi thanh rộng: chỗ mờ rơi vào vùng trống.
+            */}
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [mask-image:linear-gradient(to_right,black_0,black_calc(100%-1.75rem),transparent_100%)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {mucHienThi.map((m) => (
                 <NavLink
                   key={m.duongDan}

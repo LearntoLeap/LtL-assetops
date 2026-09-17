@@ -112,20 +112,29 @@ export async function danhSach(
   nguoiDung: NguoiDungDaXacThuc,
   loc: DuLieuLocYeuCau,
 ): Promise<{ muc: YeuCauDayDu[]; tong: number; trang: number; moiTrang: number }> {
+  // AND chứ KHÔNG spread. dieuKienYeuCau trả về { OR: [...] } cho vai trò
+  // TRUONG, và điều kiện tìm kiếm bên dưới cũng dùng `OR` — spread thì OR của
+  // tìm kiếm GHI ĐÈ OR của phạm vi, tức chỉ cần gõ một từ khoá là điểm trường
+  // thấy yêu cầu của mọi trường. Đo thật trước khi sửa: trường thấy 6 phiếu
+  // khi có từ khoá (bằng admin) so với 2 phiếu khi không có.
   const dieuKien: Prisma.RequestWhereInput = {
-    ...dieuKienYeuCau(nguoiDung),
+    AND: [
+      dieuKienYeuCau(nguoiDung),
+      ...(loc.tuKhoa
+        ? [
+            {
+              OR: [
+                { code: { contains: loc.tuKhoa } },
+                { reason: { contains: loc.tuKhoa } },
+                { items: { some: { asset: { code: { contains: loc.tuKhoa } } } } },
+              ],
+            },
+          ]
+        : []),
+    ],
     ...(loc.type ? { type: loc.type } : {}),
     ...(loc.status ? { status: loc.status } : {}),
     ...(loc.cuaToi === 'true' ? { createdById: nguoiDung.id } : {}),
-    ...(loc.tuKhoa
-      ? {
-          OR: [
-            { code: { contains: loc.tuKhoa } },
-            { reason: { contains: loc.tuKhoa } },
-            { items: { some: { asset: { code: { contains: loc.tuKhoa } } } } },
-          ],
-        }
-      : {}),
   };
 
   const [muc, tong] = await Promise.all([

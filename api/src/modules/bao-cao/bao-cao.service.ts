@@ -328,3 +328,216 @@ export async function dashboard(
       : null,
   };
 }
+
+// ===========================================================================
+// LỊCH SỬ SỬA CHỮA THEO ĐIỂM
+// ===========================================================================
+
+export interface DongLichSuDiem {
+  diaDiemId: string;
+  ten: string;
+  loai: string;
+  /** Số phiếu báo hỏng đã lập cho thiết bị đang ở điểm này. */
+  soBaoHong: number;
+  /** Trong đó còn đang mở. */
+  soBaoHongDangMo: number;
+  /** Số phiếu lấy linh kiện thay cho thiết bị của điểm này. */
+  soPhieuLinhKien: number;
+  /** Tổng số linh kiện đã thay (cộng số lượng, không phải số phiếu). */
+  tongLinhKien: number;
+  /** Lần sửa gần nhất — null nếu chưa có gì. */
+  lanCuoi: Date | null;
+}
+
+export interface MocLichSu {
+  loai: 'BAO_HONG' | 'LINH_KIEN';
+  id: string;
+  code: string;
+  luc: Date;
+  /** Mã + tên thiết bị liên quan. */
+  maThietBi: string;
+  tenThietBi: string;
+  /** Mô tả hỏng, hoặc tên linh kiện đã thay. */
+  noiDung: string;
+  /** Lý do thay (chỉ có với mốc linh kiện). */
+  lyDo: string | null;
+  soLuong: number | null;
+  nguoi: string;
+  trangThai: string | null;
+  soAnh: number;
+}
+
+/**
+ * Bảng tổng: mỗi điểm lưu trữ một dòng, kèm số lần hỏng và số linh kiện đã thay.
+ *
+ * Đếm theo VỊ TRÍ HIỆN TẠI của thiết bị (`currentLocationId`), không theo nơi
+ * lập phiếu: câu hỏi thực tế là "trường này hay hỏng cái gì", nên thiết bị
+ * đang ở đâu thì tính cho đó.
+ */
+export async function lichSuSuaChuaTheoDiem(
+  nguoiDung: NguoiDungDaXacThuc,
+): Promise<DongLichSuDiem[]> {
+  const diem = await prisma.location.findMany({
+    where: { ...dieuKienDiaDiem(nguoiDung) },
+    select: { id: true, name: true, type: true },
+    orderBy: [{ type: 'asc' }, { name: 'asc' }],
+  });
+  if (diem.length === 0) return [];
+  const idDiem = diem.map((d) => d.id);
+
+  // Báo hỏng: gom theo điểm của thiết bị trong phiếu.
+  const baoHong = await prisma.request.findMany({
+    where: {
+      type: 'BAO_HONG',
+      items: { some: { asset: { currentLocationId: { in: idDiem } } } },
+    },
+    select: {
+      id: true,
+      status: true,
+      createdAt: true,
+      items: { select: { asset: { select: { currentLocationId: true } } } },
+    },
+  });
+
+  const phieuLK = await prisma.partIssue.findMany({
+    where: { request: { items: { some: { asset: { currentLocationId: { in: idDiem } } } } } },
+    select: {
+      quantity: true,
+      issuedAt: true,
+      request: { select: { items: { select: { asset: { select: { currentLocationId: true } } } } } },
+    },
+  });
+
+  const bang = new Map<string, DongLichSuDiem>(
+    diem.map((d) => [
+      d.id,
+      {
+        diaDiemId: d.id,
+        ten: d.name,
+        loai: d.type,
+        soBaoHong: 0,
+        soBaoHongDangMo: 0,
+        soPhieuLinhKien: 0,
+        tongLinhKien: 0,
+        lanCuoi: null,
+      },
+    ]),
+  );
+
+  const moiNhat = (cu: Date | null, moi: Date): Date => (cu === null || moi > cu ? moi : cu);
+
+  for (const p of baoHong) {
+    const diaDiemId = p.items[0]?.asset.currentLocationId;
+    const o = diaDiemId ? bang.get(diaDiemId) : undefined;
+    if (!o) continue;
+    o.soBaoHong += 1;
+    if (p.status !== 'DA_HOAN_TAT') o.soBaoHongDangMo += 1;
+    o.lanCuoi = moiNhat(o.lanCuoi, p.createdAt);
+  }
+  for (const p of phieuLK) {
+    const diaDiemId = p.request.items[0]?.asset.currentLocationId;
+    const o = diaDiemId ? bang.get(diaDiemId) : undefined;
+    if (!o) continue;
+    o.soPhieuLinhKien += 1;
+    o.tongLinhKien += p.quantity;
+    o.lanCuoi = moiNhat(o.lanCuoi, p.issuedAt);
+  }
+
+  return [...bang.values()];
+}
+
+/** Dòng thời gian của một điểm: báo hỏng và lấy linh kiện trộn lẫn, mới nhất trước. */
+export async function lichSuMotDiem(
+  nguoiDung: NguoiDungDaXacThuc,
+  diaDiemId: string,
+  gioiHan = 100,
+): Promise<MocLichSu[]> {
+  // Chốt phạm vi: điểm không nằm trong phạm vi thì trả rỗng, không lộ dữ liệu.
+  const trongPhamVi = await prisma.location.findFirst({
+    // AND: dieuKienDiaDiem cũng đặt `id`, spread sẽ xoá mất diaDiemId và phép
+    // chốt phạm vi này thành "có điểm nào trong phạm vi không" — luôn đúng.
+    where: { AND: [{ id: diaDiemId }, dieuKienDiaDiem(nguoiDung)] },
+    select: { id: true },
+  });
+  if (!trongPhamVi) return [];
+
+  const [baoHong, phieuLK] = await Promise.all([
+    prisma.request.findMany({
+      where: {
+        type: 'BAO_HONG',
+        items: { some: { asset: { currentLocationId: diaDiemId } } },
+      },
+      select: {
+        id: true,
+        code: true,
+        status: true,
+        reason: true,
+        createdAt: true,
+        createdBy: { select: { fullName: true } },
+        items: { select: { asset: { select: { code: true, name: true } } } },
+        photos: { select: { id: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: gioiHan,
+    }),
+    prisma.partIssue.findMany({
+      where: { request: { items: { some: { asset: { currentLocationId: diaDiemId } } } } },
+      select: {
+        id: true,
+        code: true,
+        quantity: true,
+        partName: true,
+        vendorCode: true,
+        note: true,
+        issuedAt: true,
+        asset: { select: { code: true, name: true } },
+        reason: { select: { name: true } },
+        issuedBy: { select: { fullName: true } },
+        request: {
+          select: { code: true, items: { select: { asset: { select: { code: true, name: true } } } } },
+        },
+        photos: { select: { id: true } },
+      },
+      orderBy: { issuedAt: 'desc' },
+      take: gioiHan,
+    }),
+  ]);
+
+  const moc: MocLichSu[] = [
+    ...baoHong.map((p): MocLichSu => ({
+      loai: 'BAO_HONG',
+      id: p.id,
+      code: p.code,
+      luc: p.createdAt,
+      maThietBi: p.items[0]?.asset.code ?? '—',
+      tenThietBi: p.items[0]?.asset.name ?? '—',
+      noiDung: p.reason,
+      lyDo: null,
+      soLuong: null,
+      nguoi: p.createdBy.fullName,
+      trangThai: p.status,
+      soAnh: p.photos.length,
+    })),
+    ...phieuLK.map((p): MocLichSu => ({
+      loai: 'LINH_KIEN',
+      id: p.id,
+      code: p.code,
+      luc: p.issuedAt,
+      maThietBi: p.request.items[0]?.asset.code ?? '—',
+      tenThietBi: p.request.items[0]?.asset.name ?? '—',
+      noiDung:
+        p.asset?.name ??
+        p.partName ??
+        p.vendorCode ??
+        'Linh kiện không tên',
+      lyDo: p.reason.name,
+      soLuong: p.quantity,
+      nguoi: p.issuedBy.fullName,
+      trangThai: null,
+      soAnh: p.photos.length,
+    })),
+  ];
+
+  moc.sort((a, b) => b.luc.getTime() - a.luc.getTime());
+  return moc.slice(0, gioiHan);
+}

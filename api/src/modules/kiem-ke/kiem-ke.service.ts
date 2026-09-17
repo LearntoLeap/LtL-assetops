@@ -137,10 +137,15 @@ export async function danhSach(
   nguoiDung: NguoiDungDaXacThuc,
   loc: DuLieuLocKiemKe,
 ): Promise<{ muc: KiemKeDayDu[]; tong: number; trang: number; moiTrang: number }> {
+  // AND: dieuKienPhamVi đặt khoá `locationId`, nên spread một `locationId`
+  // khác từ query sẽ GHI ĐÈ phạm vi — điểm trường truyền ?locationId= của
+  // trường khác là xem được đợt kiểm kê của trường đó.
   const dieuKien: Prisma.InventoryCountWhereInput = {
-    ...dieuKienPhamVi(nguoiDung),
+    AND: [
+      dieuKienPhamVi(nguoiDung),
+      ...(loc.locationId ? [{ locationId: loc.locationId }] : []),
+    ],
     ...(loc.status ? { status: loc.status } : {}),
-    ...(loc.locationId ? { locationId: loc.locationId } : {}),
   };
   const [muc, tong] = await Promise.all([
     prisma.inventoryCount.findMany({

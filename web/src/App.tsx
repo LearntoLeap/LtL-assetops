@@ -26,6 +26,9 @@ const KhoaViTri = lazy(() => import('@/features/gps/KhoaViTri').then((m) => ({ d
 const LayLinhKien = lazy(() =>
   import('@/features/linh-kien/LayLinhKien').then((m) => ({ default: m.LayLinhKien })),
 );
+const LichSuSuaChua = lazy(() =>
+  import('@/features/lich-su/LichSuSuaChua').then((m) => ({ default: m.LichSuSuaChua })),
+);
 const YeuCauList = lazy(() => import('@/features/yeu-cau/YeuCauList').then((m) => ({ default: m.YeuCauList })));
 const YeuCauChiTiet = lazy(() => import('@/features/yeu-cau/YeuCauChiTiet').then((m) => ({ default: m.YeuCauChiTiet })));
 const FormYeuCau = lazy(() => import('@/features/yeu-cau/FormYeuCau').then((m) => ({ default: m.FormYeuCau })));
@@ -218,6 +221,12 @@ export default function App() {
               </CanDangNhap>
             }
           />
+
+          {/*
+            Lịch sử sửa chữa: KHÔNG giới hạn vai trò, vì điểm trường cũng cần
+            xem lịch sử của trường mình. Máy chủ lọc theo phạm vi.
+          */}
+          <Route path="lich-su-sua-chua" element={<LichSuSuaChua />} />
 
           <Route path="dia-diem" element={<DiaDiemList />} />
           <Route

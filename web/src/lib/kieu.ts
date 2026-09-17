@@ -375,6 +375,37 @@ export interface PhieuLinhKien {
   photos: Array<{ id: string; kind: LoaiAnh }>;
 }
 
+/* ──────────── Lịch sử sửa chữa theo điểm ──────────── */
+
+/** Một dòng trong bảng tổng hợp lịch sử sửa chữa. */
+export interface DongLichSuDiem {
+  diaDiemId: string;
+  ten: string;
+  loai: string;
+  soBaoHong: number;
+  soBaoHongDangMo: number;
+  soPhieuLinhKien: number;
+  /** Tổng số linh kiện đã thay — cộng số lượng, không phải số phiếu. */
+  tongLinhKien: number;
+  lanCuoi: string | null;
+}
+
+/** Một mốc trong dòng thời gian của một điểm. */
+export interface MocLichSu {
+  loai: 'BAO_HONG' | 'LINH_KIEN';
+  id: string;
+  code: string;
+  luc: string;
+  maThietBi: string;
+  tenThietBi: string;
+  noiDung: string;
+  lyDo: string | null;
+  soLuong: number | null;
+  nguoi: string;
+  trangThai: string | null;
+  soAnh: number;
+}
+
 /* ──────────── GĐ6: dashboard, kiosk, màn hình tablet ──────────── */
 
 export interface SoLieuNhanh {
