@@ -26,6 +26,7 @@ function TrangMacDinh() {
   if (nguoiDung?.role === 'KHO') return <Navigate to="/kiosk" replace />;
   return <TongQuan />;
 }
+const TongThe = lazy(() => import('@/features/tong-the/TongThe').then((m) => ({ default: m.TongThe })));
 const DoiMatKhau = lazy(() => import('@/features/auth/DoiMatKhau').then((m) => ({ default: m.DoiMatKhau })));
 const ThietBiList = lazy(() => import('@/features/thiet-bi/ThietBiList').then((m) => ({ default: m.ThietBiList })));
 const ThietBiChiTiet = lazy(() => import('@/features/thiet-bi/ThietBiChiTiet').then((m) => ({ default: m.ThietBiChiTiet })));
@@ -247,6 +248,12 @@ export default function App() {
             xem lịch sử của trường mình. Máy chủ lọc theo phạm vi.
           */}
           <Route path="lich-su-sua-chua" element={<LichSuSuaChua />} />
+
+          {/*
+            Tổng thể: cũng không giới hạn vai trò — máy chủ lọc theo phạm vi nên
+            điểm trường mở trang này chỉ thấy số của trường mình.
+          */}
+          <Route path="tong-the" element={<TongThe />} />
 
           <Route path="dia-diem" element={<DiaDiemList />} />
           <Route

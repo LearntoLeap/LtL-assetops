@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileSignature,
+  Gauge,
   LayoutGrid,
   LogOut,
   MapPin,
@@ -57,6 +58,10 @@ const MENU: readonly MucMenu[] = [
  * được. Tách làm hai nhóm vẫn giữ nguyên đường dẫn và quyền của từng mục.
  */
 const MENU_THEM: readonly MucMenu[] = [
+  // Dashboard tổng thể: cũng KHÔNG đưa lên thanh chính vì lý do y như "Lấy linh
+  // kiện" bên dưới — thanh đã đủ bảy mục. Đường vào chính là nút "Xem tổng thể"
+  // ngay đầu trang Tổng quan, chỗ ai cũng đi qua sau khi đăng nhập.
+  { duongDan: '/tong-the', nhan: 'Tổng thể', icon: Gauge },
   // Đặt đầu nhóm vì dùng nhiều nhất trong đây. KHÔNG đưa lên thanh chính: thêm
   // mục thứ 8 vào thanh làm mục cuối bị cắt còn trơ biểu tượng không nhãn —
   // đã thấy trong ảnh chụp ở 1280px. Đường vào chính của việc này là ô lớn

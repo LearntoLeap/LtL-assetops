@@ -468,6 +468,50 @@ export interface DuLieuDashboard {
   } | null;
 }
 
+/** Số liệu trang "Tổng thể" — cả guồng vận hành, không chỉ tài sản. */
+export interface DuLieuTongThe {
+  ok: true;
+  soNgay: number;
+  tuNgay: string;
+  soLieu: SoLieuNhanh;
+  /** Theo ĐÚNG thứ tự quy trình — đừng sắp lại theo giá trị. */
+  yeuCauTheoBuoc: DongDem[];
+  yeuCauTheoLoai: DongDem[];
+  yeuCauBiTuChoi: number;
+  gioDuyetTrungBinh: number | null;
+  baoHong: {
+    dangMo: number;
+    moTrongKy: number;
+    dongTrongKy: number;
+    gioXuLyTrungBinh: number | null;
+  };
+  baoHongTheoNgay: Array<{ ngay: string; moMoi: number; daDong: number }>;
+  linhKien: {
+    soPhieu: number;
+    tongLinhKien: number;
+    soPhieuKhongMa: number;
+    theoLyDo: DongDem[];
+  };
+  diemCanDeMat: Array<{
+    diaDiemId: string;
+    ten: string;
+    loai: string;
+    soBaoHong: number;
+    soBaoHongDangMo: number;
+    soPhieuLinhKien: number;
+    tongLinhKien: number;
+    lanCuoi: string | null;
+  }>;
+  dangCho: {
+    yeuCauChoDuyet: number;
+    yeuCauChoXuat: number;
+    bienBanChoXacNhan: number;
+    kiemKeDangMo: number;
+    baoHongDangMo: number;
+    thietBiQuaHan: number;
+  };
+}
+
 export interface CaiDatKiosk {
   backgroundKey: AnhNenKiosk | null;
   backgroundPhotoId: string | null;

@@ -30,6 +30,21 @@ baoCaoRouter.get(
   }),
 );
 
+/**
+ * Số liệu DASHBOARD TỔNG THỂ — cả guồng, không chỉ tài sản.
+ *
+ * Cũng không giới hạn vai trò ở middleware: service ghép điều kiện phạm vi vào
+ * từng truy vấn, nên điểm trường mở trang này chỉ thấy số của trường mình.
+ */
+baoCaoRouter.get(
+  '/tong-the',
+  batAsync(async (req, res) => {
+    const nguoiDung = nguoiDungHienTai(req);
+    const { soNgay } = luocDoLoc.parse(req.query);
+    res.json({ ok: true, ...(await dv.tongThe(nguoiDung, soNgay)) });
+  }),
+);
+
 const luocDoMotDiem = z.object({
   diaDiemId: z.string().trim().min(1).max(30),
   gioiHan: z.coerce.number().int().positive().max(300).default(100),

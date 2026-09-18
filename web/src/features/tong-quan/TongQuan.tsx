@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileSignature,
+  Gauge,
   MapPin,
   Monitor,
   PackageOpen,
@@ -151,6 +152,14 @@ export function TongQuan() {
               </Link>
             </Button>
           ) : null}
+          {/* Đường vào chính của trang Tổng thể: thanh điều hướng đã hết chỗ,
+              mà đây là nơi mọi vai trò đi qua ngay sau khi đăng nhập. */}
+          <Button variant="outline" asChild>
+            <Link to="/tong-the">
+              <Gauge aria-hidden />
+              Xem tổng thể
+            </Link>
+          </Button>
           <Button variant="outline" size="icon" onClick={() => void tai()} aria-label="Tải lại">
             <RefreshCw className={dangTai ? 'animate-spin' : ''} aria-hidden />
           </Button>

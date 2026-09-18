@@ -60,6 +60,16 @@
        đều ≥ 3:1. Lưới và chữ trục dùng lại token sẵn có của giao diện. */
     --viz-chuoi-1: #2a78d6;
     --viz-chuoi-2: #eb6834;
+
+    /* Dải màu THỨ TỰ (một tông xanh, nhạt → đậm) cho những thứ có thứ tự tự
+       nhiên như các bước của một yêu cầu. Không dùng nhiều màu cho việc này:
+       thứ tự phải đọc được ngay trong sắc độ. Bước nhạt nhất vẫn ≥ 2:1 so với
+       nền thẻ (đo 2,11:1) nên không bị lẫn vào nền. */
+    --viz-thu-tu-1: #86b6ef;
+    --viz-thu-tu-2: #5598e7;
+    --viz-thu-tu-3: #2a78d6;
+    --viz-thu-tu-4: #1c5cab;
+    --viz-thu-tu-5: #104281;
   }
 
   .dark {
@@ -107,6 +117,15 @@
     /* Bước màu chọn riêng cho nền tối, không phải đảo màu của nền sáng. */
     --viz-chuoi-1: #3987e5;
     --viz-chuoi-2: #d95926;
+
+    /* Nền tối: dải thứ tự vẫn nhạt → đậm nhưng dừng ở bước sáng hơn, để bước
+       đậm nhất còn tách khỏi nền thẻ (đo 2,11:1). Không phải đảo màu của dải
+       nền sáng. */
+    --viz-thu-tu-1: #b7d3f6;
+    --viz-thu-tu-2: #6da7ec;
+    --viz-thu-tu-3: #3987e5;
+    --viz-thu-tu-4: #256abf;
+    --viz-thu-tu-5: #184f95;
   }
 
   * {
