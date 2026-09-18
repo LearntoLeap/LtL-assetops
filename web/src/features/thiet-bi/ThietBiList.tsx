@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Download, Plus, QrCode, RefreshCw, Search, Upload } from 'lucide-react';
+import { Download, Plus, QrCode, RefreshCw, Search, Trash2, Upload } from 'lucide-react';
 import {
   DS_MUC_DICH_SU_DUNG,
   DS_TINH_TRANG,
@@ -63,6 +63,9 @@ export function ThietBiList() {
   const dieuHuong = useNavigate();
   const duocSua =
     nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH' || nguoiDung?.role === 'KHO';
+  // Xoá hẳn chỉ ADMIN — trùng với `yeuCauAdmin` ở API. Ẩn nút chỉ là cho gọn mắt,
+  // chặn thật vẫn nằm ở middleware phía server.
+  const laAdmin = nguoiDung?.role === 'ADMIN';
 
   const [muc, datMuc] = useState<ThietBi[]>([]);
   const [tong, datTong] = useState(0);
@@ -128,6 +131,30 @@ export function ThietBiList() {
   };
 
   const soTrang = Math.max(1, Math.ceil(tong / MOI_TRANG));
+
+  /**
+   * Xoá hẳn một thiết bị ngay tại danh sách.
+   *
+   * Có nút ở đây vì thiết bị vừa "thêm nhanh" lúc lập yêu cầu (mã LTL-TN-…) hay
+   * vừa nhập sai mã thì người dùng đang ở danh sách, không có lý gì phải mở
+   * trang chi tiết mới xoá được. API chỉ cho xoá khi thiết bị CHƯA phát sinh
+   * nghiệp vụ; nếu đã phát sinh thì thông điệp 409 của server hiện nguyên văn
+   * để người dùng biết nên chuyển sang "Ngừng theo dõi".
+   */
+  async function xoaThietBi(t: ThietBi): Promise<void> {
+    if (!window.confirm(`Xoá hẳn thiết bị ${t.code} — ${t.name}?\n\nKhông thể hoàn lại.`)) return;
+    datLoi(null);
+    try {
+      await goiApi(`/api/thiet-bi/${t.id}`, { method: 'DELETE' });
+      await tai();
+    } catch (e) {
+      datLoi(
+        e instanceof LoiApi
+          ? `Không xoá được ${t.code}: ${e.message}`
+          : `Không xoá được ${t.code}.`,
+      );
+    }
+  }
 
   const quetXong = useCallback(
     async (ma: string) => {
@@ -303,6 +330,7 @@ export function ThietBiList() {
                     <TableHead>Phân bổ</TableHead>
                     <TableHead>Quản lý</TableHead>
                     <TableHead className="text-right">Giá trị (VND)</TableHead>
+                    {laAdmin ? <TableHead className="w-10 sr-only">Xoá</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -338,6 +366,20 @@ export function ThietBiList() {
                         {NHAN_KIEU_QUAN_LY[t.trackingType]}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{tienVN(t.value)}</TableCell>
+                      {laAdmin ? (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive-dam hover:bg-destructive/10"
+                            onClick={() => void xoaThietBi(t)}
+                            aria-label={`Xoá thiết bị ${t.code}`}
+                            title="Xoá thiết bị"
+                          >
+                            <Trash2 aria-hidden />
+                          </Button>
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   ))}
                 </TableBody>

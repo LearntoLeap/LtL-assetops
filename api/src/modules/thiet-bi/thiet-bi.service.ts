@@ -13,6 +13,7 @@ import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { dieuKienTaiSan } from '../../lib/pham-vi.js';
 import { tonCuaTaiSan } from '../../lib/ton-kho.js';
+import { xoaFileAnh } from '../../lib/luu-anh.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
 import type { BoiCanhGoi } from '../auth/auth.service.js';
 import type {
@@ -364,6 +365,10 @@ export async function sua(
  * Xoá thiết bị — chỉ khi CHƯA phát sinh nghiệp vụ gì (mới tạo, nhập sai mã).
  * Thiết bị đã có lịch sử thì dùng "Ngừng theo dõi" (isActive = false) để giữ
  * nguyên nhật ký di chuyển và các chứng từ liên quan.
+ *
+ * "Nghiệp vụ" ở đây là: movement khác NHAP_BAN_DAU, dòng yêu cầu, dòng biên bản
+ * bàn giao, dòng kiểm kê. ẢNH thì KHÔNG — ảnh đi theo thiết bị (cascade) nên xoá
+ * thiết bị là xoá cả ảnh và file trên đĩa.
  */
 export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<void> {
   const truoc = await prisma.asset.findUnique({
@@ -372,14 +377,17 @@ export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Pro
   });
   if (!truoc) throw loi404('Không tìm thấy thiết bị.');
 
-  const [soMovement, yeuCau, anh, bbbg, kiemKe] = await Promise.all([
+  // ẢNH KHÔNG PHẢI NGHIỆP VỤ nên không nằm trong danh sách chặn: `Photo.assetId`
+  // khai `onDelete: Cascade`, tức ảnh là phần thân của bản ghi thiết bị chứ không
+  // phải chứng từ độc lập. Đếm ảnh vào đây khiến MỌI thiết bị thêm nhanh (luồng
+  // đó bắt buộc có ảnh) không bao giờ xoá được — đúng lỗi người dùng báo.
+  const [soMovement, yeuCau, bbbg, kiemKe] = await Promise.all([
     prisma.movement.count({ where: { assetId: id, type: { not: 'NHAP_BAN_DAU' } } }),
     prisma.requestItem.count({ where: { assetId: id } }),
-    prisma.photo.count({ where: { assetId: id } }),
     prisma.handoverNoteItem.count({ where: { assetId: id } }),
     prisma.inventoryCountItem.count({ where: { assetId: id } }),
   ]);
-  const rangBuoc = { diChuyen: soMovement, yeuCau, anh, bienBan: bbbg, kiemKe };
+  const rangBuoc = { diChuyen: soMovement, yeuCau, bienBan: bbbg, kiemKe };
   const tong = Object.values(rangBuoc).reduce((s, n) => s + n, 0);
 
   if (tong > 0) {
@@ -388,6 +396,13 @@ export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Pro
       rangBuoc,
     );
   }
+
+  // Lấy đường dẫn file TRƯỚC khi xoá: sau transaction thì bản ghi ảnh đã bị
+  // cascade mất, không còn đường nào tìm lại file trên đĩa nữa.
+  const anhCanDonDia = await prisma.photo.findMany({
+    where: { assetId: id },
+    select: { filePath: true },
+  });
 
   await prisma.$transaction(async (tx) => {
     await ghiAudit(
@@ -405,6 +420,10 @@ export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Pro
     await tx.movement.deleteMany({ where: { assetId: id } });
     await tx.asset.delete({ where: { id } });
   });
+
+  // Đặt ngoài transaction: CSDL đã chốt xong thì mới dọn đĩa, và lỗi dọn đĩa
+  // (file bị xoá tay, quyền ghi…) không được phép làm hỏng lượt xoá đã thành công.
+  for (const a of anhCanDonDia) await xoaFileAnh(a.filePath);
 }
 
 /**
