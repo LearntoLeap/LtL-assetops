@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
+  BookOpen,
   Boxes,
   ClipboardCheck,
   ClipboardList,
@@ -58,6 +59,8 @@ const MENU: readonly MucMenu[] = [
  * được. Tách làm hai nhóm vẫn giữ nguyên đường dẫn và quyền của từng mục.
  */
 const MENU_THEM: readonly MucMenu[] = [
+  // Thư viện wiki: mọi vai trò xem được, nên không đặt `vaiTro`.
+  { duongDan: '/wiki', nhan: 'Thư viện thiết bị', icon: BookOpen },
   // Dashboard tổng thể: cũng KHÔNG đưa lên thanh chính vì lý do y như "Lấy linh
   // kiện" bên dưới — thanh đã đủ bảy mục. Đường vào chính là nút "Xem tổng thể"
   // ngay đầu trang Tổng quan, chỗ ai cũng đi qua sau khi đăng nhập.

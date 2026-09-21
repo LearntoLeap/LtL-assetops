@@ -5,6 +5,11 @@
 import {
   LOAI_ANH,
   LOAI_CANH_BAO,
+  LOAI_DICH_WIKI,
+  LOAI_MUC_WIKI,
+  LOAI_TAI_LIEU_WIKI,
+  MUC_DO_LUU_Y,
+  TRANG_THAI_WIKI,
   LOAI_DIEM_LUU_TRU,
   LOAI_DI_CHUYEN,
   LOAI_YEU_CAU,
@@ -24,7 +29,12 @@ import {
   type LoaiCanhBao,
   type LoaiDiChuyen,
   type LoaiDiemLuuTru,
+  type LoaiDichWiki,
+  type LoaiMucWiki,
+  type LoaiTaiLieuWiki,
   type LoaiYeuCau,
+  type MucDoLuuY,
+  type TrangThaiWiki,
   type MucDichSuDung,
   type MucDoCanhBao,
   type NguonGoc,
@@ -128,7 +138,44 @@ export const NHAN_LOAI_ANH = {
   BBBG: 'Ảnh biên bản bàn giao',
   KIOSK_BACKGROUND: 'Ảnh nền màn hình kho',
   LINH_KIEN: 'Ảnh linh kiện',
+  WIKI: 'Ảnh minh hoạ wiki',
 } satisfies Record<LoaiAnh, string>;
+
+// --- Thư viện wiki thiết bị -------------------------------------------------
+
+export const NHAN_LOAI_MUC_WIKI = {
+  THANH_PHAN: 'Thành phần',
+  LUU_Y: 'Lưu ý',
+  LOI_THUONG_GAP: 'Lỗi thường gặp',
+  THONG_SO: 'Thông số kỹ thuật',
+} satisfies Record<LoaiMucWiki, string>;
+
+export const NHAN_MUC_DO_LUU_Y = {
+  THONG_TIN: 'Cần biết',
+  CAN_THAN: 'Cẩn thận',
+  NGUY_HIEM: 'Nguy hiểm',
+} satisfies Record<MucDoLuuY, string>;
+
+export const NHAN_LOAI_TAI_LIEU_WIKI = {
+  HUONG_DAN_HANG: 'Hướng dẫn của hãng',
+  HUONG_DAN_NOI_BO: 'Hướng dẫn nội bộ',
+  SO_DO_MACH: 'Sơ đồ mạch / bản vẽ',
+  PHAN_MEM_FIRMWARE: 'Phần mềm / firmware',
+  BAO_HANH: 'Bảo hành',
+  DAO_TAO: 'Tài liệu đào tạo',
+  KHAC: 'Khác',
+} satisfies Record<LoaiTaiLieuWiki, string>;
+
+export const NHAN_TRANG_THAI_WIKI = {
+  BAN_NHAP: 'Nháp',
+  DA_DANG: 'Đã đăng',
+} satisfies Record<TrangThaiWiki, string>;
+
+export const NHAN_LOAI_DICH_WIKI = {
+  THIET_BI: 'Mã thiết bị',
+  LOAI_TAI_SAN: 'Loại tài sản',
+  DONG_GIAI_PHAP: 'Dòng giải pháp',
+} satisfies Record<LoaiDichWiki, string>;
 
 export const NHAN_ANH_NEN_KIOSK = {
   XANH_MACH_DIEN: 'Mạch điện xanh',
@@ -181,6 +228,11 @@ export const DS_KIEU_QUAN_LY = danhSach(KIEU_QUAN_LY, NHAN_KIEU_QUAN_LY);
 export const DS_NGUON_GOC = danhSach(NGUON_GOC, NHAN_NGUON_GOC);
 export const DS_MUC_DICH_SU_DUNG = danhSach(MUC_DICH_SU_DUNG, NHAN_MUC_DICH_SU_DUNG);
 export const DS_TINH_TRANG = danhSach(TINH_TRANG, NHAN_TINH_TRANG);
+export const DS_LOAI_MUC_WIKI = danhSach(LOAI_MUC_WIKI, NHAN_LOAI_MUC_WIKI);
+export const DS_MUC_DO_LUU_Y = danhSach(MUC_DO_LUU_Y, NHAN_MUC_DO_LUU_Y);
+export const DS_LOAI_TAI_LIEU_WIKI = danhSach(LOAI_TAI_LIEU_WIKI, NHAN_LOAI_TAI_LIEU_WIKI);
+export const DS_TRANG_THAI_WIKI = danhSach(TRANG_THAI_WIKI, NHAN_TRANG_THAI_WIKI);
+export const DS_LOAI_DICH_WIKI = danhSach(LOAI_DICH_WIKI, NHAN_LOAI_DICH_WIKI);
 export const DS_TRANG_THAI_PHAN_BO = danhSach(TRANG_THAI_PHAN_BO, NHAN_TRANG_THAI_PHAN_BO);
 export const DS_LOAI_YEU_CAU = danhSach(LOAI_YEU_CAU, NHAN_LOAI_YEU_CAU);
 export const DS_TRANG_THAI_YEU_CAU = danhSach(TRANG_THAI_YEU_CAU, NHAN_TRANG_THAI_YEU_CAU);

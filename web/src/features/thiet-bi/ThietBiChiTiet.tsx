@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { HoSoThietBi } from '@/features/wiki/HoSoThietBi';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
@@ -258,6 +259,10 @@ export function ThietBiChiTiet() {
           </Card>
         </div>
       </div>
+
+      {/* Wiki phải tự tìm đến người dùng: ai cũng mở trang thiết bị, không ai
+          nhớ vào /wiki. Cảnh báo nguy hiểm hiện thẳng ở đây. */}
+      <HoSoThietBi assetId={t.id} />
 
       <Card>
         <CardHeader>

@@ -4,7 +4,11 @@ import type {
   KieuQuanLy,
   LoaiAnh,
   LoaiCanhBao,
+  LoaiMucWiki,
+  LoaiTaiLieuWiki,
   MucDoCanhBao,
+  MucDoLuuY,
+  TrangThaiWiki,
   TrangThaiYeuCau,
   LoaiDiChuyen,
   LoaiDiemLuuTru,
@@ -510,6 +514,105 @@ export interface DuLieuTongThe {
     baoHongDangMo: number;
     thietBiQuaHan: number;
   };
+}
+
+// --- Thư viện wiki thiết bị -------------------------------------------------
+
+export interface DichWiki {
+  id: string;
+  asset: { id: string; code: string; name: string } | null;
+  category: { id: string; name: string } | null;
+  productLine: { id: string; name: string } | null;
+}
+
+export interface MucWiki {
+  id: string;
+  loai: LoaiMucWiki;
+  tieuDe: string;
+  noiDung: string | null;
+  soLuong: number | null;
+  donVi: string | null;
+  mucDo: MucDoLuuY | null;
+  assetId: string | null;
+  thuTu: number;
+  asset: { id: string; code: string; name: string; isActive: boolean } | null;
+}
+
+export interface TaiLieuWiki {
+  id: string;
+  loai: LoaiTaiLieuWiki;
+  tieuDe: string;
+  moTa: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  byteSize: number | null;
+  lienKetNgoai: string | null;
+  thuTu: number;
+  createdAt: string;
+  uploadedBy: { fullName: string } | null;
+}
+
+/** Dòng rút gọn ở trang thư viện và ở các khối gợi ý. */
+export interface BaiWikiTomTat {
+  id: string;
+  slug: string;
+  tieuDe: string;
+  tomTat: string | null;
+  status: TrangThaiWiki;
+  updatedAt: string;
+  coverPhotoId: string | null;
+  updatedBy: { fullName: string } | null;
+  _count: { docs: number; links: number; items: number };
+}
+
+export interface BaiWiki {
+  id: string;
+  slug: string;
+  tieuDe: string;
+  tomTat: string | null;
+  moTa: string | null;
+  huongDan: string | null;
+  status: TrangThaiWiki;
+  coverPhotoId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: { fullName: string } | null;
+  updatedBy: { fullName: string } | null;
+  links: DichWiki[];
+  items: MucWiki[];
+  docs: TaiLieuWiki[];
+  _count: { revisions: number };
+}
+
+export interface ChiTietBaiWiki {
+  ok: true;
+  bai: BaiWiki;
+  /** Bài này đang áp dụng cho bao nhiêu mã thiết bị. */
+  soMa: number;
+}
+
+export interface WikiTheoThietBi {
+  ok: true;
+  thietBi: { id: string; code: string; name: string };
+  rieng: BaiWikiTomTat[];
+  theoDong: BaiWikiTomTat[];
+  theoLoai: BaiWikiTomTat[];
+  chung: BaiWikiTomTat[];
+  canhBao: Array<{
+    id: string;
+    tieuDe: string;
+    mucDo: MucDoLuuY;
+    article: { slug: string; tieuDe: string };
+  }>;
+}
+
+export interface PhienBanWiki {
+  id: string;
+  phienBan: number;
+  lyDo: string | null;
+  createdAt: string;
+  anhChup: unknown;
+  suaBoi: { fullName: string } | null;
 }
 
 export interface CaiDatKiosk {

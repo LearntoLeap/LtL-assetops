@@ -125,6 +125,8 @@ enum PhotoKind {
   KIOSK_BACKGROUND
   /// Ảnh linh kiện lúc lấy ra khỏi kho. BẮT BUỘC với linh kiện không có mã.
   LINH_KIEN
+  /// Ảnh minh hoạ trong thư viện wiki (ảnh bìa bài viết).
+  WIKI
 }
 
 enum HandoverStatus {
@@ -205,6 +207,10 @@ model User {
   resolvedAlerts        Alert[]                 @relation("AlertResolvedBy")
   lyDoLinhKienTao       PartReplacementReason[] @relation("ReasonCreatedBy")
   phieuLinhKien         PartIssue[]             @relation("PartIssueBy")
+  wikiDaTao             WikiArticle[]           @relation("WikiCreatedBy")
+  wikiDaSua             WikiArticle[]           @relation("WikiUpdatedBy")
+  wikiTaiLieu           WikiDoc[]
+  wikiBanSua            WikiRevision[]
 
   @@index([role])
   @@index([locationId])
@@ -284,7 +290,8 @@ model ProductLine {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  assets Asset[]
+  assets    Asset[]
+  wikiLinks WikiLink[]
 
   @@map("product_lines")
 }
@@ -302,7 +309,8 @@ model AssetCategory {
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
 
-  assets Asset[]
+  assets    Asset[]
+  wikiLinks WikiLink[]
 
   @@map("asset_categories")
 }
@@ -407,6 +415,8 @@ model Asset {
   countItems    InventoryCountItem[]
   alerts        Alert[]
   partIssues    PartIssue[]
+  wikiLinks     WikiLink[]
+  wikiItems     WikiItem[]
 
   @@index([categoryId])
   @@index([productLineId])
@@ -649,6 +659,7 @@ model Photo {
   uploadedBy User                @relation(fields: [uploadedById], references: [id])
 
   kioskSettings KioskSetting[]
+  wikiAnhBia    WikiArticle[]
 
   @@index([assetId, createdAt])
   @@index([requestId])
@@ -867,4 +878,199 @@ model AuditLog {
   @@index([action, createdAt])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ===========================================================================
+// THƯ VIỆN WIKI THIẾT BỊ
+// ===========================================================================
+//
+// Một bài wiki mô tả một KIỂU thiết bị, không phải một con cụ thể. Nếu gắn bài
+// thẳng vào từng mã thì 12 con UGOT phải viết 12 lần, sửa một chỗ là lệch nhau
+// ngay. Nên bài nối tới đích qua `wiki_links`, và một bài nối được nhiều đích:
+// cả một dòng giải pháp, cả một loại tài sản, một nhóm mã cụ thể, hoặc không
+// nối gì (bài chung như "An toàn khi sạc pin LiPo").
+//
+// Cách này KHÔNG đụng vào `assets` đã duyệt — chỉ thêm bảng mới.
+//
+// KHÔNG có trường GIÁ ở bất cứ đâu trong nhóm bảng này, và trang wiki không
+// đọc `assets.value`: wiki là tri thức hướng dẫn, mọi vai trò đọc được, nên
+// thông tin thương mại không được lọt vào.
+
+/// Loại mục có cấu trúc trong bài. Bốn loại dùng CHUNG một bảng thay vì bốn
+/// bảng riêng: cùng hình dạng (tiêu đề + nội dung + thứ tự), khác nhau vài cột
+/// tuỳ chọn. Đổi lại phải kiểm ràng buộc theo loại ở tầng zod chứ không phải ở
+/// CSDL — đánh đổi này đáng cho một wiki nội bộ.
+enum WikiItemKind {
+  /// Thành phần của bộ thiết bị; `soLuong` + `assetId` (mã trong kho) có nghĩa.
+  THANH_PHAN
+  /// Lưu ý / cảnh báo; `mucDo` có nghĩa.
+  LUU_Y
+  /// Lỗi thường gặp: `tieuDe` là triệu chứng, `noiDung` là cách xử lý.
+  LOI_THUONG_GAP
+  /// Thông số kỹ thuật: `tieuDe` là tên thông số, `noiDung` là giá trị.
+  THONG_SO
+}
+
+/// Mức độ của một lưu ý. Quyết định màu và thứ tự hiển thị — NGUY_HIEM luôn
+/// được đẩy lên đầu trang, vì người mở trang thường đang đứng trước máy hỏng.
+enum WikiNoteLevel {
+  THONG_TIN
+  CAN_THAN
+  NGUY_HIEM
+}
+
+/// Tài liệu nói về cái gì — quan trọng hơn định dạng file khi đi tìm: người ta
+/// tìm "sơ đồ mạch", không tìm "file Word".
+enum WikiDocKind {
+  HUONG_DAN_HANG
+  HUONG_DAN_NOI_BO
+  SO_DO_MACH
+  PHAN_MEM_FIRMWARE
+  BAO_HANH
+  DAO_TAO
+  KHAC
+}
+
+enum WikiStatus {
+  BAN_NHAP
+  DA_DANG
+}
+
+model WikiArticle {
+  id       String @id @default(cuid()) @db.VarChar(30)
+  /// Đường dẫn thân thiện, vd "ugot-explorer-kit" — link chia sẻ đọc được.
+  slug     String @unique @db.VarChar(191)
+  tieuDe   String @db.VarChar(191)
+  /// 1–3 câu, hiện ở thẻ thư viện và ở kết quả tìm kiếm.
+  tomTat   String? @db.VarChar(500)
+  /// Markdown. Thiết bị này là gì, dùng để làm gì.
+  moTa     String? @db.Text
+  /// Markdown. Các bước sử dụng.
+  huongDan String? @db.Text
+
+  coverPhotoId String?    @map("cover_photo_id") @db.VarChar(30)
+  status       WikiStatus @default(BAN_NHAP)
+
+  /// Bản CHỮ THƯỜNG, BỎ DẤU của tiêu đề + tóm tắt + mô tả + hướng dẫn + các mục.
+  /// Người Việt gõ tìm kiếm không dấu ("luu y ugot"), cột này để LIKE khớp được
+  /// mà không cần thư viện nào. Server ghi lại cột này mỗi lần lưu bài.
+  timKiem String @map("tim_kiem") @db.Text
+
+  createdById String?  @map("created_by_id") @db.VarChar(30)
+  updatedById String?  @map("updated_by_id") @db.VarChar(30)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  coverPhoto Photo? @relation(fields: [coverPhotoId], references: [id], onDelete: SetNull)
+  createdBy  User?  @relation("WikiCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy  User?  @relation("WikiUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  links     WikiLink[]
+  items     WikiItem[]
+  docs      WikiDoc[]
+  revisions WikiRevision[]
+
+  @@index([status, updatedAt])
+  @@map("wiki_articles")
+}
+
+/// Bài này áp dụng cho cái gì. ĐÚNG MỘT trong ba cột đích khác null — kiểm ở
+/// tầng dịch vụ. Dùng ba khoá ngoại thật thay vì một cột `dichId` chung để giữ
+/// được ràng buộc xoá: xoá một loại tài sản thì liên kết wiki biến theo, không
+/// để lại dòng trỏ vào hư không.
+model WikiLink {
+  id            String  @id @default(cuid()) @db.VarChar(30)
+  articleId     String  @map("article_id") @db.VarChar(30)
+  assetId       String? @map("asset_id") @db.VarChar(30)
+  categoryId    String? @map("category_id") @db.VarChar(30)
+  productLineId String? @map("product_line_id") @db.VarChar(30)
+
+  article     WikiArticle    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  asset       Asset?         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  category    AssetCategory? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  productLine ProductLine?   @relation(fields: [productLineId], references: [id], onDelete: Cascade)
+
+  // MySQL coi các NULL là khác nhau trong khoá duy nhất, nên mỗi khoá dưới đây
+  // chỉ chặn trùng trên đúng loại đích của nó — vừa đúng ý.
+  @@unique([articleId, assetId])
+  @@unique([articleId, categoryId])
+  @@unique([articleId, productLineId])
+  @@index([assetId])
+  @@index([categoryId])
+  @@index([productLineId])
+  @@map("wiki_links")
+}
+
+model WikiItem {
+  id        String       @id @default(cuid()) @db.VarChar(30)
+  articleId String       @map("article_id") @db.VarChar(30)
+  loai      WikiItemKind
+  tieuDe    String       @db.VarChar(191)
+  noiDung   String?      @db.Text
+  /// Chỉ có nghĩa với THANH_PHAN.
+  soLuong   Int?         @map("so_luong")
+  donVi     String?      @map("don_vi") @db.VarChar(32)
+  /// Chỉ có nghĩa với LUU_Y.
+  mucDo     WikiNoteLevel?
+  /// Thành phần này ứng với mã nào trong kho — để bấm một cái là sang form lấy
+  /// linh kiện, khỏi gõ tay tên linh kiện. Xoá mã thì vẫn giữ dòng, chỉ mất liên kết.
+  assetId   String?      @map("asset_id") @db.VarChar(30)
+  thuTu     Int          @default(0) @map("thu_tu")
+
+  article WikiArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  asset   Asset?      @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@index([articleId, loai, thuTu])
+  @@index([assetId])
+  @@map("wiki_items")
+}
+
+/// Tài liệu đính kèm: HOẶC một file trên đĩa VPS, HOẶC một link ngoài (catalogue
+/// 800MB của hãng thì để trên Drive, đừng nhồi vào ổ đĩa kho).
+model WikiDoc {
+  id        String      @id @default(cuid()) @db.VarChar(30)
+  articleId String      @map("article_id") @db.VarChar(30)
+  loai      WikiDocKind @default(KHAC)
+  tieuDe    String      @db.VarChar(191)
+  /// Bắt buộc lúc tải lên: nói về cái gì, để người sau biết có đáng mở file
+  /// bốn mươi trang không.
+  moTa      String?     @db.Text
+
+  filePath String? @map("file_path") @db.VarChar(255)
+  fileName String? @map("file_name") @db.VarChar(191)
+  mimeType String? @map("mime_type") @db.VarChar(128)
+  byteSize Int?    @map("byte_size")
+  checksum String? @db.VarChar(64)
+
+  lienKetNgoai String? @map("lien_ket_ngoai") @db.VarChar(1000)
+
+  uploadedById String   @map("uploaded_by_id") @db.VarChar(30)
+  createdAt    DateTime @default(now()) @map("created_at")
+  thuTu        Int      @default(0) @map("thu_tu")
+
+  article    WikiArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  uploadedBy User        @relation(fields: [uploadedById], references: [id])
+
+  @@index([articleId, thuTu])
+  @@map("wiki_docs")
+}
+
+/// Ảnh chụp toàn bài mỗi lần lưu. Sửa nhầm "không cắm nguồn 12V" thành "24V" là
+/// cháy máy — phải xem được ai đổi gì và quay lại được.
+model WikiRevision {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  articleId String   @map("article_id") @db.VarChar(30)
+  phienBan  Int      @map("phien_ban")
+  /// Toàn bộ nội dung bài tại thời điểm lưu (kể cả các mục và danh sách đích).
+  anhChup   Json     @map("anh_chup")
+  lyDo      String?  @map("ly_do") @db.VarChar(255)
+  suaBoiId  String?  @map("sua_boi_id") @db.VarChar(30)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  article WikiArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  suaBoi  User?       @relation(fields: [suaBoiId], references: [id], onDelete: SetNull)
+
+  @@unique([articleId, phienBan])
+  @@index([articleId, createdAt])
+  @@map("wiki_revisions")
 }

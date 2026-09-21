@@ -28,6 +28,8 @@ const luocDo = z.object({
   UPLOAD_DIR: z.string().default('./uploads'),
   UPLOAD_MAX_BYTES: soNguyenDuong(10 * 1024 * 1024),
   UPLOAD_MAX_EDGE: soNguyenDuong(1600),
+  /// Tài liệu wiki to hơn ảnh (PDF hướng dẫn của hãng vài chục trang).
+  UPLOAD_DOC_MAX_BYTES: soNguyenDuong(25 * 1024 * 1024),
 
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 

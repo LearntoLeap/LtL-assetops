@@ -27,6 +27,9 @@ function TrangMacDinh() {
   return <TongQuan />;
 }
 const TongThe = lazy(() => import('@/features/tong-the/TongThe').then((m) => ({ default: m.TongThe })));
+const ThuVienWiki = lazy(() => import('@/features/wiki/ThuVienWiki').then((m) => ({ default: m.ThuVienWiki })));
+const BaiWiki = lazy(() => import('@/features/wiki/BaiWiki').then((m) => ({ default: m.BaiWiki })));
+const SuaBaiWiki = lazy(() => import('@/features/wiki/SuaBaiWiki').then((m) => ({ default: m.SuaBaiWiki })));
 const DoiMatKhau = lazy(() => import('@/features/auth/DoiMatKhau').then((m) => ({ default: m.DoiMatKhau })));
 const ThietBiList = lazy(() => import('@/features/thiet-bi/ThietBiList').then((m) => ({ default: m.ThietBiList })));
 const ThietBiChiTiet = lazy(() => import('@/features/thiet-bi/ThietBiChiTiet').then((m) => ({ default: m.ThietBiChiTiet })));
@@ -254,6 +257,30 @@ export default function App() {
             điểm trường mở trang này chỉ thấy số của trường mình.
           */}
           <Route path="tong-the" element={<TongThe />} />
+
+          {/*
+            Thư viện wiki: ĐỌC không giới hạn vai trò — wiki là tri thức hướng
+            dẫn, và trong đó không có thông tin giá nào để cần che. VIẾT thì
+            giới hạn ba vai trò; máy chủ kiểm lại bằng middleware.
+          */}
+          <Route path="wiki" element={<ThuVienWiki />} />
+          <Route
+            path="wiki/moi"
+            element={
+              <CanDangNhap vaiTro={['ADMIN', 'VAN_HANH', 'KHO']}>
+                <SuaBaiWiki />
+              </CanDangNhap>
+            }
+          />
+          <Route
+            path="wiki/:slug/sua"
+            element={
+              <CanDangNhap vaiTro={['ADMIN', 'VAN_HANH', 'KHO']}>
+                <SuaBaiWiki />
+              </CanDangNhap>
+            }
+          />
+          <Route path="wiki/:slug" element={<BaiWiki />} />
 
           <Route path="dia-diem" element={<DiaDiemList />} />
           <Route

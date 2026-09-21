@@ -90,8 +90,34 @@ export const LOAI_ANH = [
   'BBBG',
   'KIOSK_BACKGROUND',
   'LINH_KIEN',
+  'WIKI',
 ] as const;
 export type LoaiAnh = (typeof LOAI_ANH)[number];
+
+// --- Thư viện wiki thiết bị -------------------------------------------------
+
+export const LOAI_MUC_WIKI = ['THANH_PHAN', 'LUU_Y', 'LOI_THUONG_GAP', 'THONG_SO'] as const;
+export type LoaiMucWiki = (typeof LOAI_MUC_WIKI)[number];
+
+export const MUC_DO_LUU_Y = ['THONG_TIN', 'CAN_THAN', 'NGUY_HIEM'] as const;
+export type MucDoLuuY = (typeof MUC_DO_LUU_Y)[number];
+
+export const LOAI_TAI_LIEU_WIKI = [
+  'HUONG_DAN_HANG',
+  'HUONG_DAN_NOI_BO',
+  'SO_DO_MACH',
+  'PHAN_MEM_FIRMWARE',
+  'BAO_HANH',
+  'DAO_TAO',
+  'KHAC',
+] as const;
+export type LoaiTaiLieuWiki = (typeof LOAI_TAI_LIEU_WIKI)[number];
+
+export const TRANG_THAI_WIKI = ['BAN_NHAP', 'DA_DANG'] as const;
+export type TrangThaiWiki = (typeof TRANG_THAI_WIKI)[number];
+
+export const LOAI_DICH_WIKI = ['THIET_BI', 'LOAI_TAI_SAN', 'DONG_GIAI_PHAP'] as const;
+export type LoaiDichWiki = (typeof LOAI_DICH_WIKI)[number];
 
 export const TRANG_THAI_BBBG = ['BAN_NHAP', 'CHO_XAC_NHAN', 'DA_XAC_NHAN', 'TU_CHOI'] as const;
 export type TrangThaiBBBG = (typeof TRANG_THAI_BBBG)[number];
