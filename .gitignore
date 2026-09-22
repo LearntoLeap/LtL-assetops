@@ -24,3 +24,6 @@ api/logs/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+
+# Ban sao luu chua du lieu that — khong bao gio commit
+sao-luu/

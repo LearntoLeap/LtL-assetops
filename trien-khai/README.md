@@ -218,3 +218,80 @@ Rồi mở web, đăng nhập bằng tài khoản quản trị vừa đặt.
 > **Tài khoản kho bị khoá theo vị trí.** Vào *Thêm → Khoá vị trí kho* bằng tài
 > khoản quản trị để đặt toạ độ và bán kính của kho thật trước khi giao máy cho
 > nhân viên kho. Máy chủ tính khoảng cách và quyết định, không phải trình duyệt.
+
+---
+
+## Xoá dữ liệu để nhập bộ dữ liệu thật
+
+Ba script đi cùng nhau. **Luôn chạy trên VPS, từ thư mục gốc của repo.**
+
+| Script | Việc |
+|---|---|
+| `sao-luu.sh` | Kết xuất CSDL + đóng gói ảnh/tài liệu vào `sao-luu/<mốc>/`. Đây là cái duy nhất cho phép hoàn tác. |
+| `xoa-du-lieu.sh <mức>` | Xoá dữ liệu. Tự sao lưu trước nếu chưa có bản nào trong 30 phút, và bắt gõ đúng tên CSDL. |
+| `hoan-tac.sh [mốc]` | Trả về đúng một bản sao lưu. Không tham số thì liệt kê các bản có sẵn. |
+
+### Ba mức xoá
+
+```bash
+bash trien-khai/xoa-du-lieu.sh nghiep-vu       # mặc định
+bash trien-khai/xoa-du-lieu.sh tru-tai-khoan
+bash trien-khai/xoa-du-lieu.sh toan-bo
+```
+
+- **`nghiep-vu`** — xoá thiết bị, nhật ký di chuyển, yêu cầu, ảnh, tài liệu, biên bản,
+  kiểm kê, báo hỏng, phiếu linh kiện, wiki, audit log, số chứng từ.
+  **Giữ** tài khoản, điểm lưu trữ, danh mục, lý do thay linh kiện.
+  → Dùng khi danh mục và điểm trường đã đúng, chỉ cần thay danh sách thiết bị.
+- **`tru-tai-khoan`** — xoá thêm điểm lưu trữ, danh mục, dòng giải pháp, lý do.
+  **Giữ** tài khoản.
+  → Dùng khi muốn dựng lại toàn bộ danh mục theo dữ liệu của mình.
+- **`toan-bo`** — xoá sạch mọi bảng kể cả tài khoản, rồi tự nạp lại **bộ nền**
+  (`SEED_CHI_NEN=1`: danh mục + điểm lưu trữ + 5 tài khoản, **không** có thiết bị mẫu).
+  Bước nạp lại là bắt buộc: hệ thống không có trang tự đăng ký, mất hết tài khoản
+  là không còn đường đăng nhập.
+
+### Những điều script tự lo
+
+- **Không xoá khi chưa có bản sao lưu.** Chưa có bản nào trong 30 phút thì tự chạy
+  `sao-luu.sh` trước.
+- **Bắt gõ đúng tên CSDL** mới xoá — gõ "y" hay Enter đều không chạy.
+- **Ảnh và tài liệu trên đĩa được DỜI, không xoá**, sang `sao-luu/<mốc>/uploads-da-doi-ra/`.
+- **Hoàn tác cũng hoàn tác lại được**: `hoan-tac.sh` tự sao lưu trạng thái hiện tại
+  trước khi ghi đè, rồi in ra mốc để quay lại.
+- Mật khẩu CSDL truyền qua file cấu hình tạm `chmod 600`, không đặt trên dòng lệnh
+  (dòng lệnh hiện trong `ps` cho mọi người trên máy thấy).
+
+### Trình tự nên làm
+
+```bash
+cd /opt/ltl-assetops
+bash trien-khai/sao-luu.sh                     # 1. chốt một bản để lùi về
+bash trien-khai/xoa-du-lieu.sh nghiep-vu       # 2. xoá, gõ tên CSDL để xác nhận
+cd api && pm2 reload ecosystem.config.cjs --update-env && cd ..   # 3. nạp lại API
+# 4. nhập dữ liệu thật qua trang "Nhập hàng loạt" (Excel) hoặc thêm từng mã
+```
+
+Sai thì:
+
+```bash
+bash trien-khai/hoan-tac.sh          # xem các bản có sẵn
+bash trien-khai/hoan-tac.sh <mốc>    # lùi về bản đó
+```
+
+### Dựng hệ thống mới cho dữ liệu thật ngay từ đầu
+
+```bash
+SEED_CHI_NEN=1 npm run seed
+```
+
+Có danh mục, điểm lưu trữ và tài khoản để đăng nhập, nhưng danh sách thiết bị để
+trống — không phải đi xoá 30 thiết bị mẫu.
+
+### Đã kiểm thật
+
+Chạy đủ vòng trên CSDL thật (MySQL, 27 bảng, 34 thiết bị, 25 ảnh, 2 bài wiki):
+sao lưu → xoá `toan-bo` → hoàn tác. Đối chiếu **bằm SHA-256 nội dung từng bảng**,
+không chỉ đếm dòng: **27/27 bảng khớp tuyệt đối**, 27 file ảnh/tài liệu khớp SHA tổng.
+Gõ sai tên CSDL thì không bảng nào bị chạm. Sau khi xoá, đăng nhập và cả 9 endpoint
+chính đều trả 200 trên CSDL rỗng.

@@ -346,12 +346,35 @@ async function ghiAuditLog(ketQua: KetQuaTaiSan, taiKhoan: Map<string, string>):
   });
 }
 
+/**
+ * CHỈ NẠP BỘ NỀN, không nạp thiết bị mẫu — bật bằng `SEED_CHI_NEN=1`.
+ *
+ * Dùng khi dựng hệ thống cho dữ liệu THẬT: vẫn cần danh mục, điểm lưu trữ, lý
+ * do thay linh kiện và tài khoản để đăng nhập (hệ thống không có trang tự đăng
+ * ký, không có tài khoản là không vào được), nhưng KHÔNG muốn 30 thiết bị mẫu
+ * lẫn vào danh sách thật rồi phải đi xoá từng cái.
+ */
+function chiNen(): boolean {
+  const v = process.env['SEED_CHI_NEN']?.trim().toLowerCase();
+  return v === '1' || v === 'true';
+}
+
 async function chay(): Promise<void> {
-  viet('Nạp dữ liệu mẫu — LtL Quản lý Tài sản');
+  const nen = chiNen();
+  viet(nen ? 'Nạp BỘ NỀN — LtL Quản lý Tài sản' : 'Nạp dữ liệu mẫu — LtL Quản lý Tài sản');
   await napDanhMuc();
   await napLyDoLinhKien();
   const diemLuuTru = await napDiemLuuTru();
   const taiKhoan = await napTaiKhoan(diemLuuTru);
+
+  if (nen) {
+    viet('  • Thiết bị mẫu: BỎ QUA (SEED_CHI_NEN=1)');
+    viet('');
+    viet('Xong. Danh mục, điểm lưu trữ và tài khoản đã có; danh sách thiết bị để trống');
+    viet('cho dữ liệu thật — nhập qua trang "Nhập hàng loạt" hoặc thêm từng mã.');
+    return;
+  }
+
   const ketQua = await napTaiSan(diemLuuTru, taiKhoan);
   await ghiAuditLog(ketQua, taiKhoan);
   await inTonKho();
