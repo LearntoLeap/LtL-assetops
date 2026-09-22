@@ -82,7 +82,15 @@ export function ThietBiChiTiet() {
 
   async function xoa(): Promise<void> {
     if (!duLieu) return;
-    if (!window.confirm(`Xoá hẳn thiết bị ${duLieu.thietBi.code}?`)) return;
+    // Đây là chuyển vào thùng rác, không phải xoá hẳn — nói đúng việc sắp xảy ra.
+    if (
+      !window.confirm(
+        `Chuyển thiết bị ${duLieu.thietBi.code} vào thùng rác?\n\n` +
+          'Khôi phục lại được ở Thiết bị → Thùng rác.',
+      )
+    ) {
+      return;
+    }
     try {
       await goiApi(`/api/thiet-bi/${duLieu.thietBi.id}`, { method: 'DELETE' });
       dieuHuong('/thiet-bi', { replace: true });

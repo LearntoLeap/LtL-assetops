@@ -206,6 +206,8 @@ export async function tao(
 
   const taiSan = await prisma.asset.findMany({
     where: {
+      // Không đưa thiết bị đã xoá vào phiếu kiểm kê — đếm cái đã xoá là vô nghĩa.
+      deletedAt: null,
       id: { in: idTaiSan },
       isActive: true,
       holderUserId: null,

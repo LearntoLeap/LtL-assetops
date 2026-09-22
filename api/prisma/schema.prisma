@@ -189,6 +189,7 @@ model User {
   createdUsers          User[]                  @relation("UserCreatedBy")
   refreshTokens         RefreshToken[]
   createdAssets         Asset[]                 @relation("AssetCreatedBy")
+  deletedAssets         Asset[]                 @relation("AssetDeletedBy")
   heldAssets            Asset[]                 @relation("AssetHolder")
   createdRequests       Request[]               @relation("RequestCreatedBy")
   approvedRequests      Request[]               @relation("RequestApprovedBy")
@@ -408,6 +409,14 @@ model Asset {
   /// Ghi chú chi tiết theo bộ (thành phần, phụ kiện kèm theo…).
   note              String?          @db.Text
   isActive          Boolean          @default(true) @map("is_active")
+  /// XOÁ MỀM. Khác `isActive`:
+  ///   - `isActive = false` = "ngừng theo dõi": thiết bị vẫn còn, vẫn tính tồn,
+  ///     chỉ không hiện ở danh sách mặc định;
+  ///   - `deletedAt != null` = ĐÃ XOÁ: biến khỏi mọi danh sách, mọi báo cáo, và
+  ///     KHÔNG còn tính vào tồn kho — nhưng bản ghi cùng toàn bộ nhật ký di
+  ///     chuyển, ảnh, chứng từ vẫn nguyên để khôi phục được nếu xoá nhầm.
+  deletedAt         DateTime?        @map("deleted_at")
+  deletedById       String?          @map("deleted_by_id") @db.VarChar(30)
   createdById       String?          @map("created_by_id") @db.VarChar(30)
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
@@ -417,6 +426,7 @@ model Asset {
   currentLocation Location?     @relation("AssetCurrentLocation", fields: [currentLocationId], references: [id], onDelete: SetNull)
   holder          User?         @relation("AssetHolder", fields: [holderUserId], references: [id], onDelete: SetNull)
   createdBy       User?         @relation("AssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  deletedBy       User?         @relation("AssetDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
 
   movements     Movement[]
   requestItems  RequestItem[]
@@ -436,6 +446,8 @@ model Asset {
   @@index([purpose])
   @@index([holderUserId])
   @@index([dueReturnAt])
+  /// Mọi truy vấn danh sách đều lọc `deleted_at IS NULL` nên cột này phải có chỉ mục.
+  @@index([deletedAt])
   @@map("assets")
 }
 

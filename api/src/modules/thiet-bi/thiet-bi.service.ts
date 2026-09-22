@@ -207,10 +207,21 @@ export async function tao(
   ctx: BoiCanhGoi,
 ): Promise<ReturnType<typeof donDong>> {
   const [daCo, loai, diem] = await Promise.all([
-    prisma.asset.findUnique({ where: { code: duLieu.code }, select: { id: true } }),
+    prisma.asset.findUnique({
+      where: { code: duLieu.code },
+      select: { id: true, deletedAt: true },
+    }),
     prisma.assetCategory.findUnique({ where: { id: duLieu.categoryId }, select: { id: true } }),
     prisma.location.findUnique({ where: { id: duLieu.nhapVeLocationId }, select: { id: true } }),
   ]);
+  // Thiết bị ở THÙNG RÁC vẫn giữ mã của nó trong khoá duy nhất, nên báo trùng mà
+  // người dùng tìm khắp danh sách không thấy đâu. Nói rõ nó ở đâu và làm gì tiếp.
+  if (daCo?.deletedAt) {
+    throw loi409(
+      `Mã ${duLieu.code} đang thuộc một thiết bị trong THÙNG RÁC. Vào Thiết bị → Thùng rác để khôi phục, hoặc xoá vĩnh viễn rồi mới tạo lại mã này.`,
+      { truong: 'code', maLoi: 'MA_O_THUNG_RAC', thietBiId: daCo.id },
+    );
+  }
   if (daCo) throw loi409(`Mã thiết bị ${duLieu.code} đã tồn tại.`, { truong: 'code' });
   if (!loai) throw loi400('Loại tài sản không tồn tại.', 'LOAI_KHONG_TON_TAI');
   if (!diem) throw loi400('Điểm nhập về không tồn tại.', 'DIEM_KHONG_TON_TAI');
@@ -366,43 +377,142 @@ export async function sua(
 }
 
 /**
- * Xoá thiết bị — chỉ khi CHƯA phát sinh nghiệp vụ gì (mới tạo, nhập sai mã).
- * Thiết bị đã có lịch sử thì dùng "Ngừng theo dõi" (isActive = false) để giữ
- * nguyên nhật ký di chuyển và các chứng từ liên quan.
+ * XOÁ MỀM một thiết bị — LUÔN cho xoá, ở bất kỳ tình trạng và trạng thái phân bổ nào.
  *
- * "Nghiệp vụ" ở đây là: movement khác NHAP_BAN_DAU, dòng yêu cầu, dòng biên bản
- * bàn giao, dòng kiểm kê. ẢNH thì KHÔNG — ảnh đi theo thiết bị (cascade) nên xoá
- * thiết bị là xoá cả ảnh và file trên đĩa.
+ * Trước đây hàm này xoá hẳn và chặn khi thiết bị đã phát sinh nghiệp vụ, nên
+ * thiết bị đang cho mượn hay đã phân bổ về trường thì không xoá được — nhập sai
+ * một mã là mắc luôn ở đó. Giờ đổi thành xoá mềm:
+ *
+ *   - bản ghi thiết bị, nhật ký di chuyển, ảnh, chứng từ đều GIỮ NGUYÊN;
+ *   - thiết bị biến khỏi mọi danh sách, mọi báo cáo, và không còn tính vào tồn
+ *     kho (phép lọc nằm ở `dieuKienTaiSan` và ở `lib/ton-kho.ts`);
+ *   - khôi phục lại được nguyên trạng nếu xoá nhầm.
+ *
+ * Đánh đổi phải biết: MÃ thiết bị vẫn bị giữ trong khoá duy nhất khi còn ở thùng
+ * rác, nên tạo lại đúng mã đó sẽ báo trùng — `tao()` nói rõ mã đang ở thùng rác
+ * để người dùng chọn khôi phục hay xoá vĩnh viễn.
  */
 export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<void> {
   const truoc = await prisma.asset.findUnique({
     where: { id },
-    select: { id: true, code: true, name: true },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      deletedAt: true,
+      allocationStatus: true,
+      condition: true,
+    },
   });
   if (!truoc) throw loi404('Không tìm thấy thiết bị.');
+  if (truoc.deletedAt) throw loi409('Thiết bị này đã ở trong thùng rác.');
 
-  // ẢNH KHÔNG PHẢI NGHIỆP VỤ nên không nằm trong danh sách chặn: `Photo.assetId`
-  // khai `onDelete: Cascade`, tức ảnh là phần thân của bản ghi thiết bị chứ không
-  // phải chứng từ độc lập. Đếm ảnh vào đây khiến MỌI thiết bị thêm nhanh (luồng
-  // đó bắt buộc có ảnh) không bao giờ xoá được — đúng lỗi người dùng báo.
+  // Đếm nghiệp vụ KHÔNG để chặn nữa, chỉ để ghi vào nhật ký: sau này xem lại
+  // biết lúc xoá thiết bị đang dính những gì.
   const [soMovement, yeuCau, bbbg, kiemKe] = await Promise.all([
     prisma.movement.count({ where: { assetId: id, type: { not: 'NHAP_BAN_DAU' } } }),
     prisma.requestItem.count({ where: { assetId: id } }),
     prisma.handoverNoteItem.count({ where: { assetId: id } }),
     prisma.inventoryCountItem.count({ where: { assetId: id } }),
   ]);
-  const rangBuoc = { diChuyen: soMovement, yeuCau, bienBan: bbbg, kiemKe };
-  const tong = Object.values(rangBuoc).reduce((s, n) => s + n, 0);
 
-  if (tong > 0) {
+  await prisma.$transaction(async (tx) => {
+    await ghiAudit(
+      {
+        actor,
+        action: 'asset.soft_delete',
+        entityType: 'asset',
+        entityId: id,
+        beforeValue: {
+          code: truoc.code,
+          name: truoc.name,
+          allocationStatus: truoc.allocationStatus,
+          condition: truoc.condition,
+          nghiepVu: { diChuyen: soMovement, yeuCau, bienBan: bbbg, kiemKe },
+        },
+        note: 'Chuyển vào thùng rác — khôi phục được.',
+        ...ctx,
+      },
+      tx,
+    );
+    await tx.asset.update({
+      where: { id },
+      data: { deletedAt: new Date(), deletedById: actor.id },
+    });
+  });
+}
+
+/** Danh sách thiết bị trong THÙNG RÁC, mới xoá lên trước. */
+export async function thungRac(gioiHan = 200) {
+  const muc = await prisma.asset.findMany({
+    where: { deletedAt: { not: null } },
+    select: {
+      ...CHON_DONG,
+      deletedAt: true,
+      deletedBy: { select: { id: true, fullName: true } },
+    },
+    orderBy: { deletedAt: 'desc' },
+    take: gioiHan,
+  });
+  return { muc: muc.map((t) => ({ ...donDong(t), deletedAt: t.deletedAt, deletedBy: t.deletedBy })), tong: muc.length };
+}
+
+/** Khôi phục một thiết bị từ thùng rác về đúng nguyên trạng trước khi xoá. */
+export async function khoiPhuc(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi) {
+  const truoc = await prisma.asset.findUnique({
+    where: { id },
+    select: { id: true, code: true, name: true, deletedAt: true },
+  });
+  if (!truoc) throw loi404('Không tìm thấy thiết bị.');
+  const lucXoa = truoc.deletedAt;
+  if (!lucXoa) throw loi409('Thiết bị này không ở trong thùng rác.');
+
+  const sau = await prisma.$transaction(async (tx) => {
+    await ghiAudit(
+      {
+        actor,
+        action: 'asset.restore',
+        entityType: 'asset',
+        entityId: id,
+        beforeValue: { code: truoc.code, deletedAt: lucXoa.toISOString() },
+        note: 'Khôi phục từ thùng rác.',
+        ...ctx,
+      },
+      tx,
+    );
+    return tx.asset.update({
+      where: { id },
+      data: { deletedAt: null, deletedById: null },
+      select: CHON_DONG,
+    });
+  });
+  return donDong(sau);
+}
+
+/**
+ * XOÁ VĨNH VIỄN khỏi thùng rác — không khôi phục lại được.
+ *
+ * Cần có vì mã thiết bị là khoá duy nhất: thiết bị còn nằm ở thùng rác thì mã của
+ * nó vẫn bị giữ, không tạo lại được đúng mã đó. Khi nạp bộ dữ liệu thật mà trùng
+ * mã cũ thì phải dọn hẳn.
+ *
+ * Chỉ nhận thiết bị ĐÃ ở thùng rác — bắt buộc đi qua hai bước (xoá mềm rồi mới
+ * xoá hẳn) để không có đường nào mất dữ liệu bằng một cú bấm.
+ */
+export async function xoaVinhVien(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<void> {
+  const truoc = await prisma.asset.findUnique({
+    where: { id },
+    select: { id: true, code: true, name: true, deletedAt: true },
+  });
+  if (!truoc) throw loi404('Không tìm thấy thiết bị.');
+  if (!truoc.deletedAt) {
     throw loi409(
-      'Thiết bị đã phát sinh nghiệp vụ nên không xoá được (nhật ký và chứng từ phải giữ nguyên). Hãy dùng "Ngừng theo dõi".',
-      rangBuoc,
+      'Chỉ xoá vĩnh viễn được thiết bị đang ở thùng rác. Hãy xoá thiết bị trước, rồi vào thùng rác xoá hẳn.',
     );
   }
 
-  // Lấy đường dẫn file TRƯỚC khi xoá: sau transaction thì bản ghi ảnh đã bị
-  // cascade mất, không còn đường nào tìm lại file trên đĩa nữa.
+  // Lấy đường dẫn ảnh TRƯỚC khi xoá: sau đó bản ghi ảnh đã cascade mất, không
+  // còn chỗ nào tìm lại file trên đĩa.
   const anhCanDonDia = await prisma.photo.findMany({
     where: { assetId: id },
     select: { filePath: true },
@@ -412,21 +522,24 @@ export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Pro
     await ghiAudit(
       {
         actor,
-        action: 'asset.delete',
+        action: 'asset.hard_delete',
         entityType: 'asset',
         entityId: id,
         beforeValue: { code: truoc.code, name: truoc.name },
-        note: 'Xoá thiết bị chưa phát sinh nghiệp vụ.',
+        note: 'Xoá vĩnh viễn khỏi thùng rác — không khôi phục được.',
         ...ctx,
       },
       tx,
     );
+    // Các bảng dưới đây khai khoá ngoài RESTRICT nên phải xoá tay theo thứ tự,
+    // không cascade được như ảnh.
+    await tx.inventoryCountItem.deleteMany({ where: { assetId: id } });
+    await tx.handoverNoteItem.deleteMany({ where: { assetId: id } });
+    await tx.requestItem.deleteMany({ where: { assetId: id } });
     await tx.movement.deleteMany({ where: { assetId: id } });
     await tx.asset.delete({ where: { id } });
   });
 
-  // Đặt ngoài transaction: CSDL đã chốt xong thì mới dọn đĩa, và lỗi dọn đĩa
-  // (file bị xoá tay, quyền ghi…) không được phép làm hỏng lượt xoá đã thành công.
   for (const a of anhCanDonDia) await xoaFileAnh(a.filePath);
 }
 

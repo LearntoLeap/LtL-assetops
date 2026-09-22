@@ -35,10 +35,21 @@ interface NhanIn {
 
 export function InNhanQR() {
   const [thamSo] = useSearchParams();
-  const maBanDau = thamSo.get('ma');
+  /**
+   * Nhận NHIỀU mã: `?ma=A,B,C` hoặc lặp `?ma=A&ma=B`.
+   *
+   * Trước đây chỉ đọc một mã, nên từ danh sách thiết bị muốn in mười nhãn thì
+   * phải vào đây tick lại từng cái. Giờ tick ở danh sách rồi bấm In nhãn là
+   * sang đây đã chọn sẵn đúng những mã đó.
+   */
+  const maBanDau = thamSo
+    .getAll('ma')
+    .flatMap((x) => x.split(','))
+    .map((x) => x.trim().toUpperCase())
+    .filter(Boolean);
 
   const [thietBi, datThietBi] = useState<ThietBi[]>([]);
-  const [daChon, datDaChon] = useState<Set<string>>(new Set(maBanDau ? [maBanDau] : []));
+  const [daChon, datDaChon] = useState<Set<string>>(new Set(maBanDau));
   const [tuKhoa, datTuKhoa] = useState('');
   const [coNhan, datCoNhan] = useState<CoNhan>('vua');
   const [soBanMoiMa, datSoBanMoiMa] = useState('1');

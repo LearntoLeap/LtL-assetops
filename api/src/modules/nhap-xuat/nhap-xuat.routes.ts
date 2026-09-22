@@ -313,6 +313,9 @@ nhapXuatRouter.get(
   batAsync(async (_req, res) => {
     const [thietBi, ton, diem] = await Promise.all([
       prisma.asset.findMany({
+        // File xuất ra là ảnh chụp danh sách thiết bị ĐANG có — không kèm thiết
+        // bị đã xoá, nếu không thì nhập lại file đó là dựng lại cả cái đã xoá.
+        where: { deletedAt: null },
         orderBy: { code: 'asc' },
         include: {
           category: { select: { code: true, name: true } },

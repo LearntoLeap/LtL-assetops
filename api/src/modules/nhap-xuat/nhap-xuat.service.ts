@@ -149,6 +149,10 @@ async function dungTraCuu(): Promise<TraCuu> {
     prisma.assetCategory.findMany({ select: { id: true, code: true } }),
     prisma.productLine.findMany({ select: { id: true, code: true } }),
     prisma.location.findMany({ select: { id: true, code: true } }),
+    // CỐ Ý KHÔNG lọc `deletedAt: null` ở đây. Thiết bị trong thùng rác vẫn giữ mã
+    // của nó trong khoá duy nhất, nên nếu bỏ nó ra khỏi danh sách "mã đã có" thì
+    // file nhập liệu trùng mã sẽ qua được bước soát rồi vỡ ở bước ghi với lỗi khoá
+    // duy nhất của CSDL — thông điệp đó người dùng không hiểu gì.
     prisma.asset.findMany({ select: { code: true } }),
   ]);
   return {

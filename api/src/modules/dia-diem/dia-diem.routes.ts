@@ -369,7 +369,7 @@ diaDiemRouter.delete(
     if (!truoc) throw loi404('Không tìm thấy điểm lưu trữ.');
 
     const [thietBi, diChuyen, taiKhoan, yeuCau, bbbg, kiemKe] = await Promise.all([
-      prisma.asset.count({ where: { currentLocationId: id } }),
+      prisma.asset.count({ where: { currentLocationId: id, deletedAt: null } }),
       prisma.movement.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
       prisma.user.count({ where: { locationId: id } }),
       prisma.request.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),

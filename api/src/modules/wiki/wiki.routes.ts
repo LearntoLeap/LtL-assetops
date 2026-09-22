@@ -193,7 +193,10 @@ wikiRouter.get(
   batAsync(async (req, res) => {
     const { tuKhoa } = z.object({ tuKhoa: z.string().trim().min(1).max(64) }).parse(req.query);
     const muc = await prisma.asset.findMany({
-      where: { OR: [{ code: { contains: tuKhoa } }, { name: { contains: tuKhoa } }] },
+      where: {
+        deletedAt: null,
+        OR: [{ code: { contains: tuKhoa } }, { name: { contains: tuKhoa } }],
+      },
       // Không lấy `value`: wiki không hiển thị thông tin giá ở bất kỳ đâu.
       select: { id: true, code: true, name: true },
       orderBy: { code: 'asc' },

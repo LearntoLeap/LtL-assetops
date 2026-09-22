@@ -41,12 +41,21 @@ export function phamViCua(nguoiDung: NguoiDungDaXacThuc): PhamVi {
   }
 }
 
-/** Điều kiện `where` cho danh sách thiết bị. */
+/**
+ * Điều kiện `where` cho danh sách thiết bị.
+ *
+ * LUÔN loại thiết bị ĐÃ XOÁ MỀM (`deletedAt != null`), kể cả với ADMIN. Gộp phép
+ * lọc đó vào đây chứ không rải ở từng truy vấn: hàm này đã được mọi chỗ đọc danh
+ * sách thiết bị dùng rồi (nguyên tắc bất biến #6), nên bỏ sót một chỗ là thiết bị
+ * "đã xoá" lại hiện ra ở đúng chỗ đó — loại lỗi rất khó thấy.
+ *
+ * Trang Thùng rác cố ý KHÔNG dùng hàm này; nó lọc `deletedAt != null` riêng.
+ */
 export function dieuKienTaiSan(nguoiDung: NguoiDungDaXacThuc): Prisma.AssetWhereInput {
   const pv = phamViCua(nguoiDung);
-  if (pv.toanBoKho) return {};
-  if (pv.diaDiem) return { currentLocationId: { in: [...pv.diaDiem] } };
-  return { holderUserId: nguoiDung.id };
+  if (pv.toanBoKho) return { deletedAt: null };
+  if (pv.diaDiem) return { deletedAt: null, currentLocationId: { in: [...pv.diaDiem] } };
+  return { deletedAt: null, holderUserId: nguoiDung.id };
 }
 
 /** Điều kiện `where` cho danh sách điểm lưu trữ. */

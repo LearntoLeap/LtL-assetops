@@ -86,6 +86,8 @@ kioskRouter.get(
     const nguoiDung = nguoiDungHienTai(req);
     const muc = await prisma.asset.findMany({
       where: {
+        // Thiết bị đã xoá mềm không hiện trên màn hình kho.
+        deletedAt: null,
         ...dieuKienTaiSan(nguoiDung),
         purpose: 'CO_DINH_TAI_KHO',
         isActive: true,

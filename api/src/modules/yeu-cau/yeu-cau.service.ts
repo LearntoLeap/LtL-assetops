@@ -176,7 +176,9 @@ async function doiMaThanhTaiSan(
   }
 
   const taiSan = await prisma.asset.findMany({
-    where: { code: { in: ma } },
+    // Thiết bị đã xoá thì không lập yêu cầu cho nó được — coi như không tồn tại,
+    // và thông điệp "không tìm thấy mã" bên dưới nói đúng điều đó.
+    where: { code: { in: ma }, deletedAt: null },
     select: { id: true, code: true, isActive: true, trackingType: true },
   });
   const bang = new Map(taiSan.map((t) => [t.code, t]));

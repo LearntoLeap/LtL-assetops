@@ -33,6 +33,7 @@ const SuaBaiWiki = lazy(() => import('@/features/wiki/SuaBaiWiki').then((m) => (
 const DoiMatKhau = lazy(() => import('@/features/auth/DoiMatKhau').then((m) => ({ default: m.DoiMatKhau })));
 const ThietBiList = lazy(() => import('@/features/thiet-bi/ThietBiList').then((m) => ({ default: m.ThietBiList })));
 const ThietBiChiTiet = lazy(() => import('@/features/thiet-bi/ThietBiChiTiet').then((m) => ({ default: m.ThietBiChiTiet })));
+const ThungRacThietBi = lazy(() => import('@/features/thiet-bi/ThungRacThietBi').then((m) => ({ default: m.ThungRacThietBi })));
 const FormThietBi = lazy(() => import('@/features/thiet-bi/FormThietBi').then((m) => ({ default: m.FormThietBi })));
 const DiaDiemList = lazy(() => import('@/features/dia-diem/DiaDiemList').then((m) => ({ default: m.DiaDiemList })));
 const DanhMucHome = lazy(() => import('@/features/danh-muc/DanhMucHome').then((m) => ({ default: m.DanhMucHome })));
@@ -158,6 +159,18 @@ export default function App() {
             element={
               <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
                 <FormThietBi />
+              </CanDangNhap>
+            }
+          />
+          {/*
+            Thùng rác: chỉ ADMIN. Phải khai TRƯỚC "thiet-bi/:id" — React Router
+            ưu tiên đường dẫn cụ thể hơn, nhưng để gần nhau cho dễ đọc.
+          */}
+          <Route
+            path="thiet-bi/thung-rac"
+            element={
+              <CanDangNhap vaiTro={['ADMIN']}>
+                <ThungRacThietBi />
               </CanDangNhap>
             }
           />

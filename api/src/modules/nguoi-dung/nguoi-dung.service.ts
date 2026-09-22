@@ -328,7 +328,8 @@ export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Pro
     prisma.photo.count({ where: { uploadedById: id } }),
     prisma.inventoryCount.count({ where: { createdById: id } }),
     prisma.handoverNote.count({ where: { createdById: id } }),
-    prisma.asset.count({ where: { holderUserId: id } }),
+    // Thiết bị đã xoá không được tính là "đang giữ" để chặn xoá tài khoản.
+    prisma.asset.count({ where: { holderUserId: id, deletedAt: null } }),
   ]);
   const rangBuoc = { movement, yeuCau, duyet, anh, kiemKe, bbbg, taiSanGiu };
   const tong = Object.values(rangBuoc).reduce((s, n) => s + n, 0);

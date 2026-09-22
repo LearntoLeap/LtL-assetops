@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Download, Plus, QrCode, RefreshCw, Search, Trash2, Upload } from 'lucide-react';
+import { Download, Plus, QrCode, RefreshCw, Search, Trash2, Undo2, Upload } from 'lucide-react';
 import {
   DS_MUC_DICH_SU_DUNG,
   DS_TINH_TRANG,
@@ -68,6 +68,11 @@ export function ThietBiList() {
   const laAdmin = nguoiDung?.role === 'ADMIN';
 
   const [muc, datMuc] = useState<ThietBi[]>([]);
+  /**
+   * Mã đang tick để in nhãn. Giữ theo MÃ chứ không theo id: mã chính là nội dung
+   * của nhãn QR và cũng là tham số truyền sang trang in, nên khỏi tra ngược.
+   */
+  const [maDaChon, datMaDaChon] = useState<Set<string>>(new Set());
   const [tong, datTong] = useState(0);
   const [trang, datTrang] = useState(1);
   const [dangTai, datDangTai] = useState(true);
@@ -132,6 +137,26 @@ export function ThietBiList() {
 
   const soTrang = Math.max(1, Math.ceil(tong / MOI_TRANG));
 
+  const doiChon = (code: string): void =>
+    datMaDaChon((cu) => {
+      const moi = new Set(cu);
+      if (moi.has(code)) moi.delete(code);
+      else moi.add(code);
+      return moi;
+    });
+
+  // Tick ở đầu bảng: chọn/bỏ chọn mọi dòng ĐANG HIỆN (không chạm các trang khác).
+  const trangDaChonHet = muc.length > 0 && muc.every((t) => maDaChon.has(t.code));
+  const doiChonCaTrang = (): void =>
+    datMaDaChon((cu) => {
+      const moi = new Set(cu);
+      for (const t of muc) {
+        if (trangDaChonHet) moi.delete(t.code);
+        else moi.add(t.code);
+      }
+      return moi;
+    });
+
   /**
    * Xoá hẳn một thiết bị ngay tại danh sách.
    *
@@ -142,7 +167,17 @@ export function ThietBiList() {
    * để người dùng biết nên chuyển sang "Ngừng theo dõi".
    */
   async function xoaThietBi(t: ThietBi): Promise<void> {
-    if (!window.confirm(`Xoá hẳn thiết bị ${t.code} — ${t.name}?\n\nKhông thể hoàn lại.`)) return;
+    // Lời xác nhận phải nói đúng việc sắp xảy ra: đây là chuyển vào thùng rác,
+    // KHÔNG phải xoá hẳn. Ghi "không thể hoàn lại" như trước là nói sai.
+    if (
+      !window.confirm(
+        `Chuyển thiết bị ${t.code} — ${t.name} vào thùng rác?\n\n` +
+          'Thiết bị sẽ biến khỏi mọi danh sách và không còn tính vào tồn kho, ' +
+          'nhưng khôi phục lại được ở Thiết bị → Thùng rác.',
+      )
+    ) {
+      return;
+    }
     datLoi(null);
     try {
       await goiApi(`/api/thiet-bi/${t.id}`, { method: 'DELETE' });
@@ -194,6 +229,14 @@ export function ThietBiList() {
                   In nhãn QR
                 </Link>
               </Button>
+              {laAdmin ? (
+                <Button variant="outline" asChild>
+                  <Link to="/thiet-bi/thung-rac">
+                    <Undo2 aria-hidden />
+                    Thùng rác
+                  </Link>
+                </Button>
+              ) : null}
               <Button variant="outline" asChild>
                 <Link to="/nhap-lieu">
                   <Upload aria-hidden />
@@ -320,9 +363,34 @@ export function ThietBiList() {
             </p>
           ) : (
             <>
+              {/* Thanh này chỉ hiện khi đã tick — không chiếm chỗ lúc chưa dùng. */}
+              {maDaChon.size > 0 ? (
+                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5">
+                  <span className="text-sm font-medium">Đã chọn {maDaChon.size} mã</span>
+                  <Button size="sm" asChild>
+                    <Link to={`/thiet-bi/in-nhan?ma=${[...maDaChon].map(encodeURIComponent).join(',')}`}>
+                      <QrCode aria-hidden />
+                      In nhãn {maDaChon.size} mã
+                    </Link>
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => datMaDaChon(new Set())}>
+                    Bỏ chọn
+                  </Button>
+                </div>
+              ) : null}
+
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <input
+                        type="checkbox"
+                        checked={trangDaChonHet}
+                        onChange={doiChonCaTrang}
+                        aria-label="Chọn mọi thiết bị đang hiện"
+                        className="size-4 cursor-pointer accent-primary"
+                      />
+                    </TableHead>
                     <TableHead>Mã / Tên</TableHead>
                     <TableHead>Loại</TableHead>
                     <TableHead>Vị trí hiện tại</TableHead>
@@ -330,12 +398,39 @@ export function ThietBiList() {
                     <TableHead>Phân bổ</TableHead>
                     <TableHead>Quản lý</TableHead>
                     <TableHead className="text-right">Giá trị (VND)</TableHead>
-                    {laAdmin ? <TableHead className="w-10 sr-only">Xoá</TableHead> : null}
+                    {laAdmin ? (
+                      /*
+                       * Hai điều phải đúng cùng lúc ở ô tiêu đề này, đã đo thật
+                       * mới ra:
+                       *
+                       * 1. KHÔNG đặt `sr-only` lên chính thẻ <th> — lớp đó gán
+                       *    `position: absolute`, ô tiêu đề bị bốc khỏi hàng của
+                       *    bảng, thoát khỏi khung cuộn ngang và kéo cả trang rộng
+                       *    909px trên màn 390px.
+                       * 2. <th> phải có `relative`. Đưa `sr-only` vào <span> bên
+                       *    trong vẫn chưa đủ: span vẫn `position: absolute`, mà
+                       *    không có tổ tiên nào được định vị thì nó neo vào khung
+                       *    chứa ban đầu — lại thoát ra ngoài, trang còn 882px.
+                       *    Có `relative` thì span neo vào đúng ô và nằm im trong bảng.
+                       */
+                      <TableHead className="relative w-10">
+                        <span className="sr-only">Xoá</span>
+                      </TableHead>
+                    ) : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {muc.map((t) => (
                     <TableRow key={t.id}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={maDaChon.has(t.code)}
+                          onChange={() => doiChon(t.code)}
+                          aria-label={`Chọn ${t.code} để in nhãn`}
+                          className="size-4 cursor-pointer accent-primary"
+                        />
+                      </TableCell>
                       <TableCell>
                         <Link
                           to={`/thiet-bi/${t.id}`}
@@ -374,7 +469,7 @@ export function ThietBiList() {
                             className="text-destructive-dam hover:bg-destructive/10"
                             onClick={() => void xoaThietBi(t)}
                             aria-label={`Xoá thiết bị ${t.code}`}
-                            title="Xoá thiết bị"
+                            title="Chuyển vào thùng rác"
                           >
                             <Trash2 aria-hidden />
                           </Button>

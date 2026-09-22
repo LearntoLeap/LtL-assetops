@@ -58,6 +58,22 @@ thietBiRouter.get(
   }),
 );
 
+/**
+ * THÙNG RÁC — thiết bị đã xoá, còn khôi phục được.
+ *
+ * PHẢI khai TRƯỚC `GET /:id`: Express so khớp theo thứ tự khai báo, để sau thì
+ * "thung-rac" bị hiểu là một id và trả về 404 "không tìm thấy thiết bị".
+ *
+ * Chỉ ADMIN: đây là nơi duy nhất thấy được dữ liệu đã bị xoá khỏi mọi danh sách.
+ */
+thietBiRouter.get(
+  '/thung-rac',
+  yeuCauAdmin,
+  batAsync(async (_req, res) => {
+    res.json({ ok: true, ...(await dv.thungRac()) });
+  }),
+);
+
 thietBiRouter.get(
   '/:id',
   batAsync(async (req, res) => {
@@ -104,13 +120,44 @@ thietBiRouter.patch(
   }),
 );
 
-/** Xoá hẳn: chỉ ADMIN, và chỉ khi thiết bị chưa phát sinh nghiệp vụ. */
+/**
+ * XOÁ MỀM: chỉ ADMIN, nhưng LUÔN cho xoá — ở bất kỳ tình trạng và trạng thái
+ * phân bổ nào. Thiết bị vào thùng rác, khôi phục lại được.
+ */
 thietBiRouter.delete(
   '/:id',
   yeuCauAdmin,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoa(String(req.params['id']), actor, boiCanh(req));
-    res.json({ ok: true, thongDiep: 'Đã xoá thiết bị.' });
+    res.json({
+      ok: true,
+      thongDiep: 'Đã chuyển thiết bị vào thùng rác. Khôi phục được ở Thiết bị → Thùng rác.',
+    });
+  }),
+);
+
+/** Khôi phục từ thùng rác: chỉ ADMIN. */
+thietBiRouter.post(
+  '/:id/khoi-phuc',
+  yeuCauAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const thietBi = await dv.khoiPhuc(String(req.params['id']), actor, boiCanh(req));
+    res.json({ ok: true, thietBi, thongDiep: 'Đã khôi phục thiết bị.' });
+  }),
+);
+
+/**
+ * XOÁ VĨNH VIỄN khỏi thùng rác: chỉ ADMIN, và service chỉ nhận thiết bị ĐÃ ở
+ * thùng rác — bắt buộc hai bước để không có đường nào mất dữ liệu bằng một cú bấm.
+ */
+thietBiRouter.delete(
+  '/:id/vinh-vien',
+  yeuCauAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    await dv.xoaVinhVien(String(req.params['id']), actor, boiCanh(req));
+    res.json({ ok: true, thongDiep: 'Đã xoá vĩnh viễn. Không khôi phục lại được.' });
   }),
 );

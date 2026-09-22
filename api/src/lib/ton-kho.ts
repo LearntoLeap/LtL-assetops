@@ -13,6 +13,11 @@
  *
  * SQL bên dưới cố ý viết theo chuẩn chung (không backtick, không hàm riêng của
  * MySQL) để đổi sang PostgreSQL không phải sửa gì.
+ *
+ * MỌI truy vấn ở đây đều nối sang `assets` và bỏ thiết bị ĐÃ XOÁ MỀM. Thiếu phép
+ * nối đó thì movements của thiết bị đã xoá vẫn cộng vào tồn — xoá xong mà kho vẫn
+ * báo còn hàng, và con số đó không có cách nào đối chiếu vì thiết bị đã biến khỏi
+ * mọi danh sách. Đây là chỗ DUY NHẤT tính tồn nên lọc ở đây là đủ cho toàn hệ thống.
  */
 import { Prisma } from '@prisma/client';
 import { prisma, type PrismaTx } from '../prisma.js';
@@ -70,6 +75,7 @@ export async function tonTatCa(db: PrismaTx = prisma): Promise<TonTheoDiaDiem[]>
               FROM movements
              WHERE from_location_id IS NOT NULL
            ) AS buoc
+      JOIN assets ts ON ts.id = buoc.asset_id AND ts.deleted_at IS NULL
      GROUP BY buoc.asset_id, buoc.location_id
     HAVING SUM(buoc.delta) <> 0
   `);
@@ -94,6 +100,7 @@ export async function tonCuaTaiSan(
               FROM movements
              WHERE from_location_id IS NOT NULL AND asset_id = ${assetId}
            ) AS buoc
+      JOIN assets ts ON ts.id = buoc.asset_id AND ts.deleted_at IS NULL
      GROUP BY buoc.asset_id, buoc.location_id
     HAVING SUM(buoc.delta) <> 0
   `);
@@ -122,6 +129,7 @@ export async function tonTaiDiaDiem(
               FROM movements
              WHERE asset_id = ${assetId} AND from_location_id = ${locationId}
            ) AS buoc
+      JOIN assets ts ON ts.id = ${assetId} AND ts.deleted_at IS NULL
   `);
   return veSo(dong[0]?.ton);
 }
@@ -142,6 +150,7 @@ export async function tonTheoDiaDiem(
               FROM movements
              WHERE from_location_id = ${locationId}
            ) AS buoc
+      JOIN assets ts ON ts.id = buoc.asset_id AND ts.deleted_at IS NULL
      GROUP BY buoc.asset_id
     HAVING SUM(buoc.delta) <> 0
   `);
