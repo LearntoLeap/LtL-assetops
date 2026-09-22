@@ -128,6 +128,10 @@ export async function xemMot(nguoiDung: NguoiDungDaXacThuc, id: string) {
         conditionBefore: true,
         conditionAfter: true,
         performedAt: true,
+        // Tên người ở kho tự khai lúc xuất/nhập — với loại không quét mã thì đây
+        // là bản ghi bằng chữ duy nhất của thứ đã mang ra, phải hiện ra mới đối
+        // chiếu được với ảnh khi nhập lại.
+        declaredName: true,
         note: true,
         fromLocation: { select: { id: true, name: true } },
         toLocation: { select: { id: true, name: true } },

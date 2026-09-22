@@ -42,6 +42,12 @@ const luocDoDongGiaiPhap = z.object({
 
 const luocDoLoaiTaiSan = luocDoDongGiaiPhap.extend({
   defaultTrackingType: z.enum(KIEU_QUAN_LY).default('DON_VI'),
+  /**
+   * Loại này có bắt buộc quét/gõ đúng mã thiết bị khi xuất–nhập kho hay không.
+   * Chỉ nên bật cho loại có dán nhãn mã trên từng cái (robot); loại còn lại khai
+   * TÊN + SỐ LƯỢNG kèm ảnh, vì thùng 200 quyển vở không có nhãn nào để quét.
+   */
+  yeuCauQuetMa: z.boolean().default(false),
 });
 
 // ---------------------------------------------------------------- dòng giải pháp
@@ -205,6 +211,7 @@ danhMucRouter.patch(
         ...(duLieu.defaultTrackingType === undefined
           ? {}
           : { defaultTrackingType: duLieu.defaultTrackingType }),
+        ...(duLieu.yeuCauQuetMa === undefined ? {} : { yeuCauQuetMa: duLieu.yeuCauQuetMa }),
       },
     });
     await ghiAudit({
@@ -212,8 +219,16 @@ danhMucRouter.patch(
       action: 'asset_category.update',
       entityType: 'asset_category',
       entityId: id,
-      beforeValue: { name: truoc.name, defaultTrackingType: truoc.defaultTrackingType },
-      afterValue: { name: sau.name, defaultTrackingType: sau.defaultTrackingType },
+      beforeValue: {
+        name: truoc.name,
+        defaultTrackingType: truoc.defaultTrackingType,
+        yeuCauQuetMa: truoc.yeuCauQuetMa,
+      },
+      afterValue: {
+        name: sau.name,
+        defaultTrackingType: sau.defaultTrackingType,
+        yeuCauQuetMa: sau.yeuCauQuetMa,
+      },
       ...boiCanh(req),
     });
     res.json({ ok: true, muc: sau });

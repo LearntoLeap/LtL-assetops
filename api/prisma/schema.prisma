@@ -303,6 +303,16 @@ model AssetCategory {
   name                String       @db.VarChar(191)
   /// Kiểu quản lý mặc định khi tạo tài sản thuộc loại này (có thể ghi đè).
   defaultTrackingType TrackingType @default(DON_VI) @map("default_tracking_type")
+  /// Loại này có BẮT BUỘC quét/gõ đúng mã thiết bị khi xuất–nhập kho hay không.
+  ///
+  /// Mặc định TẮT. Chỉ những loại có dán nhãn mã trên từng cái — robot — mới bật,
+  /// vì với thùng 200 quyển vở hay một túi ốc vít thì không có nhãn nào để quét,
+  /// đòi quét chỉ tạo ra thao tác giả. Loại TẮT thì thay bằng khai TÊN + SỐ LƯỢNG.
+  ///
+  /// Để đây chứ không so tên loại bằng chuỗi "Robot" trong mã nguồn: đổi tên loại
+  /// là lặng lẽ tắt mất phép kiểm, không ai biết. Đây là công tắc ADMIN bật/tắt
+  /// được ở trang Danh mục.
+  yeuCauQuetMa        Boolean      @default(false) @map("yeu_cau_quet_ma")
   note                String?      @db.Text
   sortOrder           Int          @default(0) @map("sort_order")
   isActive            Boolean      @default(true) @map("is_active")
@@ -513,6 +523,10 @@ model Movement {
   quantity        Int             @default(1)
   conditionBefore AssetCondition? @map("condition_before")
   conditionAfter  AssetCondition? @map("condition_after")
+  /// Tên thiết bị do người ở kho TỰ KHAI lúc xuất/nhập — bắt buộc với loại
+  /// không yêu cầu quét mã, để vẫn có bản ghi bằng chữ của thứ đã mang ra,
+  /// đối chiếu được với ảnh khi nhập lại.
+  declaredName    String?         @map("ten_da_khai") @db.VarChar(191)
   performedById   String          @map("performed_by_id") @db.VarChar(30)
   performedAt     DateTime        @default(now()) @map("performed_at")
   note            String?         @db.Text

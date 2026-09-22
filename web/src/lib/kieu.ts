@@ -95,6 +95,8 @@ export interface DanhMuc {
   sortOrder: number;
   isActive: boolean;
   defaultTrackingType?: KieuQuanLy;
+  /** Chỉ có ở loại tài sản: loại này có bắt buộc quét mã khi xuất–nhập hay không. */
+  yeuCauQuetMa?: boolean;
   _count?: { assets: number };
 }
 
@@ -158,6 +160,8 @@ export interface DongYeuCau {
     condition: TinhTrang;
     allocationStatus: TrangThaiPhanBo;
     currentLocation: { id: string; name: string } | null;
+    /** `yeuCauQuetMa` quyết định dòng này phải quét mã hay khai tên + số lượng. */
+    category: { id: string; name: string; yeuCauQuetMa: boolean };
   };
 }
 

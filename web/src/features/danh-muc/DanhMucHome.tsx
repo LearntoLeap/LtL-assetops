@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Layers, Package, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { Layers, Package, PenLine, Plus, QrCode, RefreshCw, Trash2, X } from 'lucide-react';
 import { DS_KIEU_QUAN_LY, NHAN_KIEU_QUAN_LY, type KieuQuanLy } from '@ltl/taisan-shared';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -86,6 +86,26 @@ function KhoiDanhMuc({
       await goiApi(`/api/danh-muc/${nhom}/${d.id}`, {
         method: 'PATCH',
         than: { isActive: !d.isActive },
+      });
+      await tai();
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Cập nhật thất bại.');
+    }
+  }
+
+  /**
+   * Bật/tắt yêu cầu quét mã cho một loại tài sản.
+   *
+   * Bật với loại có dán nhãn mã trên từng cái (robot): xuất–nhập phải quét đúng
+   * mã. Tắt thì thay bằng khai TÊN + SỐ LƯỢNG kèm ảnh — thùng 200 quyển vở
+   * không có nhãn nào để quét. Ảnh thì luôn bắt buộc, không phụ thuộc cờ này.
+   */
+  async function doiQuetMa(d: DanhMuc): Promise<void> {
+    datLoi(null);
+    try {
+      await goiApi(`/api/danh-muc/${nhom}/${d.id}`, {
+        method: 'PATCH',
+        than: { yeuCauQuetMa: !d.yeuCauQuetMa },
       });
       await tai();
     } catch (e) {
@@ -185,6 +205,7 @@ function KhoiDanhMuc({
               <TableHead>Mã</TableHead>
               <TableHead>Tên</TableHead>
               {coKieuQuanLy ? <TableHead>Kiểu mặc định</TableHead> : null}
+              {coKieuQuanLy ? <TableHead>Xuất–nhập kho</TableHead> : null}
               <TableHead className="text-right">Thiết bị</TableHead>
               <TableHead className="text-right">Thao tác</TableHead>
             </TableRow>
@@ -204,6 +225,38 @@ function KhoiDanhMuc({
                 {coKieuQuanLy ? (
                   <TableCell className="text-muted-foreground">
                     {d.defaultTrackingType ? NHAN_KIEU_QUAN_LY[d.defaultTrackingType] : '—'}
+                  </TableCell>
+                ) : null}
+                {coKieuQuanLy ? (
+                  <TableCell>
+                    {duocSua ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void doiQuetMa(d)}
+                        title={
+                          d.yeuCauQuetMa
+                            ? 'Đang bắt quét mã — bấm để đổi sang khai tên + số lượng'
+                            : 'Đang khai tên + số lượng — bấm để bắt quét mã'
+                        }
+                      >
+                        {d.yeuCauQuetMa ? (
+                          <>
+                            <QrCode aria-hidden />
+                            Quét mã
+                          </>
+                        ) : (
+                          <>
+                            <PenLine aria-hidden />
+                            Tên + số lượng
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        {d.yeuCauQuetMa ? 'Quét mã' : 'Tên + số lượng'}
+                      </span>
+                    )}
                   </TableCell>
                 ) : null}
                 <TableCell className="text-right tabular-nums text-muted-foreground">

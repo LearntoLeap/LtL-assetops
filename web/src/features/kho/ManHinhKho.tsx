@@ -23,14 +23,24 @@ import type { DiaDiem, DongYeuCau, TrangDuLieu, YeuCau } from '@/lib/kieu';
 /**
  * Màn hình XUẤT / NHẬP KHO — nơi hai chốt chặn gặp nhau.
  *
- * Mỗi dòng thiết bị chỉ "xong" khi có ĐỦ HAI thứ:
- *   1. MÃ ĐÃ QUÉT khớp mã thiết bị trong yêu cầu (quét QR hoặc gõ tay);
- *   2. ÍT NHẤT MỘT ẢNH chụp thực tế thiết bị.
+ * ẢNH luôn bắt buộc cho mọi dòng, cả chiều xuất và chiều nhập.
+ *
+ * Cách NHẬN DẠNG thiết bị thì tuỳ loại tài sản (`category.yeuCauQuetMa`):
+ *   - loại BẬT (robot — có nhãn mã dán trên từng cái): phải quét/gõ đúng mã;
+ *   - loại TẮT (ấn phẩm, phụ kiện, máy tính…): khai TÊN thiết bị mang ra và
+ *     SỐ LƯỢNG. Thùng 200 quyển vở không có nhãn nào để quét, đòi quét chỉ tạo
+ *     thao tác giả; tên + số lượng + ảnh mới là bản ghi dùng được để đối chiếu
+ *     lúc nhập lại.
+ *
  * Nút hoàn tất chỉ bật khi mọi dòng đều xong — và dù có cố gọi thẳng API thì
  * máy chủ vẫn kiểm lại y hệt rồi từ chối.
  */
 interface TrangThaiDong {
   maDaQuet: string;
+  /** Tên thiết bị tự khai — dùng cho dòng không phải quét mã. */
+  tenDaKhai: string;
+  /** Số lượng mang ra — dùng cho dòng không phải quét mã. */
+  soLuong: string;
   anh: AnhDaTai[];
   tinhTrang: TinhTrang;
   ghiChu: string;
@@ -59,7 +69,16 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
           Object.fromEntries(
             kq.yeuCau.items.map((m) => [
               m.asset.id,
-              { maDaQuet: '', anh: [], tinhTrang: m.asset.condition, ghiChu: '' },
+              {
+                maDaQuet: '',
+                // Điền sẵn tên và số lượng theo yêu cầu để người ở kho XÁC NHẬN
+                // hoặc sửa, chứ không phải gõ lại từ đầu — gõ lại thì hay gõ sai.
+                tenDaKhai: m.asset.category.yeuCauQuetMa ? '' : m.asset.name,
+                soLuong: String(m.quantity),
+                anh: [],
+                tinhTrang: m.asset.condition,
+                ghiChu: '',
+              },
             ]),
           ),
         );
@@ -83,12 +102,19 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
     });
   }, []);
 
-  /** Một dòng xong khi mã khớp VÀ có ảnh. */
+  /**
+   * Một dòng xong khi có ẢNH, cộng với phần nhận dạng đúng theo loại:
+   * loại quét mã thì mã phải khớp; loại còn lại thì phải có tên và số lượng ≥ 1.
+   */
   const dongXong = useCallback(
     (m: DongYeuCau): boolean => {
       const t = dong[m.asset.id];
-      if (!t) return false;
-      return t.maDaQuet.trim().toUpperCase() === m.asset.code && t.anh.length > 0;
+      if (!t || t.anh.length === 0) return false;
+      if (m.asset.category.yeuCauQuetMa) {
+        return t.maDaQuet.trim().toUpperCase() === m.asset.code;
+      }
+      const sl = Number(t.soLuong);
+      return t.tenDaKhai.trim().length >= 2 && Number.isInteger(sl) && sl >= 1 && sl <= m.quantity;
     },
     [dong],
   );
@@ -106,11 +132,15 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
     try {
       const muc = yeuCau.items.map((m) => {
         const t = dong[m.asset.id];
+        const quetMa = m.asset.category.yeuCauQuetMa;
         return {
           assetId: m.asset.id,
-          maDaQuet: (t?.maDaQuet ?? '').trim().toUpperCase(),
+          // Chỉ gửi đúng thứ loại này cần — gửi cả hai làm mờ ý nghĩa của bản ghi.
+          ...(quetMa
+            ? { maDaQuet: (t?.maDaQuet ?? '').trim().toUpperCase() }
+            : { tenDaKhai: (t?.tenDaKhai ?? '').trim() }),
           anhIds: (t?.anh ?? []).map((a) => a.id),
-          quantity: m.quantity,
+          quantity: quetMa ? m.quantity : Number(t?.soLuong ?? m.quantity),
           ...(t?.ghiChu ? { ghiChu: t.ghiChu } : {}),
           ...(laXuat ? {} : { tinhTrang: t?.tinhTrang ?? m.asset.condition }),
         };
@@ -182,13 +212,17 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
 
       <Alert variant="info" tieuDe="Mỗi thiết bị cần đủ hai bước">
         <span className="inline-flex items-center gap-1">
-          <ScanLine className="size-4" aria-hidden /> Quét (hoặc gõ) mã trên nhãn
+          <ScanLine className="size-4" aria-hidden /> Nhận dạng thiết bị
         </span>{' '}
         và{' '}
         <span className="inline-flex items-center gap-1">
-          <Camera className="size-4" aria-hidden /> chụp ảnh thực tế thiết bị
+          <Camera className="size-4" aria-hidden /> chụp ảnh thực tế
         </span>
-        . Ảnh nên thấy rõ nhãn mã — đó là bằng chứng của lần {laXuat ? 'xuất' : 'nhập'} này.
+        . Robot thì quét (hoặc gõ) mã trên nhãn; loại không dán nhãn mã thì ghi tên
+        thiết bị và số lượng {laXuat ? 'mang ra' : 'nhận về'}. Ảnh thì{' '}
+        <strong>bắt buộc với mọi loại</strong> — đó là bằng chứng của lần{' '}
+        {laXuat ? 'xuất' : 'nhập'} này, và là thứ để đối chiếu khi{' '}
+        {laXuat ? 'nhập lại' : 'so với lúc xuất'}.
       </Alert>
 
       {!laXuat ? (
@@ -224,6 +258,12 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
           const maLech =
             (t?.maDaQuet ?? '').trim() !== '' &&
             (t?.maDaQuet ?? '').trim().toUpperCase() !== m.asset.code;
+          // Chỉ nhắc khi người dùng ĐÃ gõ gì đó — nhắc ngay lúc ô còn trống thì
+          // mỗi dòng mở ra là một câu báo đỏ, đọc thành nhiễu.
+          const soLuongKhai = Number(t?.soLuong ?? '');
+          const soLuongVuot = (t?.soLuong ?? '') !== '' && soLuongKhai > m.quantity;
+          const tenQuaNgan =
+            (t?.tenDaKhai ?? '') !== '' && (t?.tenDaKhai ?? '').trim().length < 2;
 
           return (
             <li key={m.id}>
@@ -249,30 +289,74 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
                   )}
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`ma-${m.id}`}>Bước 1 — Mã trên nhãn *</Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Input
-                        id={`ma-${m.id}`}
-                        className="min-w-44 flex-1 font-mono"
-                        placeholder="Quét QR hoặc gõ mã"
-                        spellCheck={false}
-                        value={t?.maDaQuet ?? ''}
-                        onChange={(su) => dat(m.asset.id, { maDaQuet: su.target.value })}
-                        aria-label={`Mã đã quét cho ${m.asset.code}`}
-                      />
-                      <NutQuetQR
-                        nhan="Quét QR"
-                        onQuetDuoc={(ma) => dat(m.asset.id, { maDaQuet: ma })}
-                      />
+                  {/* Bước 1 đổi theo loại: quét mã với robot, khai tên + số lượng
+                      với loại không có nhãn mã dán trên từng cái. */}
+                  {m.asset.category.yeuCauQuetMa ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`ma-${m.id}`}>Bước 1 — Mã trên nhãn *</Label>
+                      <div className="flex flex-wrap gap-2">
+                        <Input
+                          id={`ma-${m.id}`}
+                          className="min-w-44 flex-1 font-mono"
+                          placeholder="Quét QR hoặc gõ mã"
+                          spellCheck={false}
+                          value={t?.maDaQuet ?? ''}
+                          onChange={(su) => dat(m.asset.id, { maDaQuet: su.target.value })}
+                          aria-label={`Mã đã quét cho ${m.asset.code}`}
+                        />
+                        <NutQuetQR
+                          nhan="Quét QR"
+                          onQuetDuoc={(ma) => dat(m.asset.id, { maDaQuet: ma })}
+                        />
+                      </div>
+                      {maLech ? (
+                        <p className="text-sm text-destructive-dam">
+                          Mã quét được không khớp. Yêu cầu này là <strong>{m.asset.code}</strong> —
+                          kiểm tra lại xem có cầm nhầm thiết bị không.
+                        </p>
+                      ) : null}
                     </div>
-                    {maLech ? (
-                      <p className="text-sm text-destructive-dam">
-                        Mã quét được không khớp. Yêu cầu này là <strong>{m.asset.code}</strong> —
-                        kiểm tra lại xem có cầm nhầm thiết bị không.
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor={`ten-${m.id}`}>
+                        Bước 1 — Tên thiết bị {laXuat ? 'mang ra' : 'nhận về'} và số lượng *
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Loại &ldquo;{m.asset.category.name}&rdquo; không dán nhãn mã trên từng
+                        cái nên không quét mã. Ghi rõ tên và đếm đúng số lượng.
                       </p>
-                    ) : null}
-                  </div>
+                      <div className="grid gap-2 sm:grid-cols-[1fr_9rem]">
+                        <Input
+                          id={`ten-${m.id}`}
+                          placeholder="vd: Poster giới thiệu chương trình STEM (A1)"
+                          value={t?.tenDaKhai ?? ''}
+                          onChange={(su) => dat(m.asset.id, { tenDaKhai: su.target.value })}
+                          aria-label={`Tên thiết bị cho ${m.asset.code}`}
+                        />
+                        <Input
+                          inputMode="numeric"
+                          placeholder="Số lượng"
+                          value={t?.soLuong ?? ''}
+                          onChange={(su) =>
+                            dat(m.asset.id, { soLuong: su.target.value.replace(/\D/g, '') })
+                          }
+                          aria-label={`Số lượng ${laXuat ? 'mang ra' : 'nhận về'} cho ${m.asset.code}`}
+                          className="tabular-nums"
+                        />
+                      </div>
+                      {soLuongVuot ? (
+                        <p className="text-sm text-destructive-dam">
+                          Yêu cầu chỉ được duyệt <strong>{m.quantity}</strong>. Muốn lấy thêm thì
+                          lập yêu cầu mới — máy chủ cũng chặn y như vậy.
+                        </p>
+                      ) : null}
+                      {tenQuaNgan ? (
+                        <p className="text-sm text-warning-dam">
+                          Ghi rõ tên thiết bị (ít nhất 2 ký tự) để sau còn đối chiếu được.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
 
                   <div className="space-y-1.5">
                     <Label>Bước 2 — Ảnh chụp thực tế *</Label>
@@ -281,7 +365,11 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
                       assetId={m.asset.id}
                       anh={t?.anh ?? []}
                       onDoiAnh={(anh) => dat(m.asset.id, { anh })}
-                      moTa="Chụp sao cho thấy rõ thiết bị và nhãn mã dán trên đó."
+                      moTa={
+                        m.asset.category.yeuCauQuetMa
+                          ? 'Chụp sao cho thấy rõ thiết bị và nhãn mã dán trên đó.'
+                          : `Chụp sao cho thấy rõ thiết bị và đếm được số lượng ${laXuat ? 'mang ra' : 'nhận về'}.`
+                      }
                     />
                   </div>
 
@@ -358,10 +446,10 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
               {dangGui ? <Loader2 className="animate-spin" aria-hidden /> : <CheckCircle2 aria-hidden />}
               {tatCaXong
                 ? `Hoàn tất ${laXuat ? 'xuất' : 'nhập'} kho`
-                : `Còn ${yeuCau.items.length - soXong} thiết bị chưa đủ mã/ảnh`}
+                : `Còn ${yeuCau.items.length - soXong} thiết bị chưa đủ thông tin/ảnh`}
             </Button>
             <span className="text-sm text-muted-foreground">
-              {soXong}/{yeuCau.items.length} thiết bị đã đủ mã và ảnh
+              {soXong}/{yeuCau.items.length} thiết bị đã đủ thông tin và ảnh
             </span>
           </div>
         </CardContent>

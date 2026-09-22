@@ -70,18 +70,27 @@ export const luocDoDuyet = z.object({
 /**
  * Hoàn tất XUẤT KHO — luồng A.
  *
- * Mỗi dòng thiết bị phải có ĐỦ HAI thứ:
- *   - `maDaQuet`: mã đọc được từ nhãn (quét QR hoặc gõ tay) — server đối chiếu
- *     đúng mã mới cho qua, tránh cầm nhầm thiết bị;
- *   - `anhIds`: ít nhất một ảnh chụp thực tế thiết bị, thấy được nhãn mã.
- * Thiếu một trong hai thì API từ chối hoàn tất (nguyên tắc bất biến #3).
+ * ẢNH luôn bắt buộc, mọi loại thiết bị, cả chiều xuất và chiều nhập — ảnh là
+ * bằng chứng của lần giao dịch (nguyên tắc bất biến #3).
+ *
+ * Cách NHẬN DẠNG thiết bị thì tuỳ loại, quyết định bởi `asset_categories.
+ * yeu_cau_quet_ma` và kiểm ở service vì chỉ ở đó mới biết loại:
+ *   - loại BẬT (robot — có nhãn mã dán trên từng cái): phải `maDaQuet` khớp
+ *     đúng mã, chặn cầm nhầm thiết bị;
+ *   - loại TẮT (ấn phẩm, phụ kiện, máy tính…): phải khai `tenDaKhai` và
+ *     `quantity`. Thùng 200 quyển vở không có nhãn nào để quét, đòi quét chỉ
+ *     tạo ra thao tác giả; ghi tên và số lượng kèm ảnh mới là bản ghi dùng được.
+ *
+ * Vì thế `maDaQuet` ở đây là TUỲ CHỌN — bắt buộc hay không do service xác định.
  */
 export const luocDoXuatKho = z.object({
   muc: z
     .array(
       z.object({
         assetId: z.string().trim().min(1).max(30),
-        maDaQuet: z.string().trim().toUpperCase().min(1, 'Chưa quét/nhập mã thiết bị.').max(64),
+        maDaQuet: z.string().trim().toUpperCase().max(64).optional(),
+        /** Tên thiết bị người ở kho tự khai — bắt buộc với loại không quét mã. */
+        tenDaKhai: z.string().trim().max(191).optional(),
         anhIds: z
           .array(z.string().trim().min(1).max(30))
           .min(1, 'Phải có ít nhất một ảnh chụp thiết bị lúc xuất.'),
@@ -96,8 +105,11 @@ export type DuLieuXuatKho = z.infer<typeof luocDoXuatKho>;
 
 /**
  * Hoàn tất NHẬP KHO / TRẢ VỀ KHO — luồng B.
- * Ngoài mã và ảnh còn phải khai TÌNH TRẠNG lúc trả; khác lúc xuất thì hệ thống
- * tự sinh cảnh báo cho quản trị.
+ *
+ * Cùng quy tắc nhận dạng như lúc xuất (quét mã với robot, khai tên + số lượng
+ * với loại còn lại), và ẢNH cũng bắt buộc — để đối chiếu được thứ trả về với
+ * thứ đã mang ra. Ngoài ra còn phải khai TÌNH TRẠNG lúc trả; khác lúc xuất thì
+ * hệ thống tự sinh cảnh báo cho quản trị.
  */
 export const luocDoNhapKho = z.object({
   veLocationId: z.string().trim().min(1, 'Chưa chọn kho nhận hàng về.').max(30),
@@ -105,7 +117,8 @@ export const luocDoNhapKho = z.object({
     .array(
       z.object({
         assetId: z.string().trim().min(1).max(30),
-        maDaQuet: z.string().trim().toUpperCase().min(1, 'Chưa quét/nhập mã thiết bị.').max(64),
+        maDaQuet: z.string().trim().toUpperCase().max(64).optional(),
+        tenDaKhai: z.string().trim().max(191).optional(),
         anhIds: z
           .array(z.string().trim().min(1).max(30))
           .min(1, 'Phải có ít nhất một ảnh chụp thiết bị lúc nhận.'),

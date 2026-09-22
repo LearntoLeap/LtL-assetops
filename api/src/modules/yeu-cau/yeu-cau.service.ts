@@ -16,6 +16,7 @@ import { loi400, loi403, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
 import { dieuKienYeuCau, phamViCua } from '../../lib/pham-vi.js';
+import { tonTaiDiaDiem } from '../../lib/ton-kho.js';
 import {
   phatChoDiaDiem,
   phatChoKho,
@@ -67,6 +68,8 @@ const CHON_YEU_CAU = {
           condition: true,
           allocationStatus: true,
           currentLocation: { select: { id: true, name: true } },
+          // `yeuCauQuetMa` quyết định dòng này phải quét mã hay khai tên + số lượng.
+          category: { select: { id: true, name: true, yeuCauQuetMa: true } },
         },
       },
     },
@@ -525,6 +528,8 @@ interface DongDaSoat {
   code: string;
   soLuong: number;
   anhIds: string[];
+  /** Tên người ở kho tự khai — null với dòng phải quét mã. */
+  tenDaKhai: string | null;
   ghiChu: string | null;
   currentLocationId: string | null;
   condition: AssetCondition;
@@ -541,7 +546,8 @@ async function soatDongThucHien(
   yeuCau: YeuCauDayDu,
   muc: ReadonlyArray<{
     assetId: string;
-    maDaQuet: string;
+    maDaQuet?: string | undefined;
+    tenDaKhai?: string | undefined;
     anhIds: string[];
     quantity?: number | undefined;
     ghiChu?: string | null | undefined;
@@ -549,6 +555,9 @@ async function soatDongThucHien(
   loaiAnh: 'ANH_XUAT' | 'ANH_NHAN',
 ): Promise<DongDaSoat[]> {
   const theoAsset = new Map(yeuCau.items.map((i) => [i.asset.id, i]));
+  // Thông điệp phải nói đúng chiều: lúc nhận hàng về mà báo "mang ra" thì người
+  // đọc tưởng mình đang ở sai màn hình.
+  const chieu = loaiAnh === 'ANH_XUAT' ? 'mang ra' : 'nhận về';
 
   const thua = muc.filter((m) => !theoAsset.has(m.assetId)).map((m) => m.assetId);
   if (thua.length > 0) {
@@ -568,10 +577,30 @@ async function soatDongThucHien(
     );
   }
 
-  // --- Đối chiếu mã quét được với mã thiết bị (chặn cầm nhầm thiết bị)
-  const lechMa = muc
-    .filter((m) => theoAsset.get(m.assetId)?.asset.code !== m.maDaQuet)
-    .map((m) => ({ maDaQuet: m.maDaQuet, maDung: theoAsset.get(m.assetId)?.asset.code ?? '?' }));
+  // --- Nhận dạng thiết bị: QUÉT MÃ hoặc KHAI TÊN + SỐ LƯỢNG, tuỳ loại tài sản
+  //
+  // Chỉ loại bật `yeuCauQuetMa` (robot) mới đòi quét đúng mã — đó là loại có nhãn
+  // dán trên từng cái. Thùng 200 quyển vở hay túi phụ kiện thì không có nhãn nào
+  // để quét, nên thay bằng khai TÊN thiết bị mang ra và SỐ LƯỢNG; ảnh vẫn bắt
+  // buộc ở cả hai chiều (kiểm ngay bên dưới) nên vẫn có bằng chứng để đối chiếu.
+  const lechMa: Array<{ maDaQuet: string; maDung: string }> = [];
+  const thieuKhai: string[] = [];
+  const thieuSoLuong: string[] = [];
+  for (const m of muc) {
+    const dong = theoAsset.get(m.assetId);
+    if (!dong) continue;
+    if (dong.asset.category.yeuCauQuetMa) {
+      const quet = (m.maDaQuet ?? '').trim().toUpperCase();
+      if (quet !== dong.asset.code) {
+        lechMa.push({ maDaQuet: quet || '(chưa quét)', maDung: dong.asset.code });
+      }
+    } else {
+      if ((m.tenDaKhai ?? '').trim().length < 2) thieuKhai.push(dong.asset.code);
+      // Loại không quét mã thì SỐ LƯỢNG phải khai rõ, không lấy ngầm theo yêu cầu:
+      // người ở kho phải tự xác nhận đã mang ra đúng bao nhiêu cái.
+      if (m.quantity === undefined) thieuSoLuong.push(dong.asset.code);
+    }
+  }
   if (lechMa.length > 0) {
     throw loi422(
       `Mã quét được không khớp thiết bị trong yêu cầu: ${lechMa
@@ -579,6 +608,20 @@ async function soatDongThucHien(
         .join('; ')}.`,
       'MA_KHONG_KHOP',
       { lech: lechMa },
+    );
+  }
+  if (thieuKhai.length > 0) {
+    throw loi422(
+      `Chưa khai TÊN thiết bị ${chieu} cho: ${thieuKhai.join(', ')}. Loại này không quét mã nên phải ghi tên.`,
+      'THIEU_TEN_KHAI',
+      { ma: thieuKhai },
+    );
+  }
+  if (thieuSoLuong.length > 0) {
+    throw loi422(
+      `Chưa khai SỐ LƯỢNG ${chieu} cho: ${thieuSoLuong.join(', ')}.`,
+      'THIEU_SO_LUONG',
+      { ma: thieuSoLuong },
     );
   }
 
@@ -631,12 +674,29 @@ async function soatDongThucHien(
         'SO_LUONG_SAI',
       );
     }
+    const soLuong = m.quantity ?? dong.quantity;
+    // KHÔNG ĐƯỢC MANG RA NHIỀU HƠN SỐ ĐÃ DUYỆT.
+    //
+    // Thiếu phép kiểm này thì con số người ở kho gõ vào đi thẳng vào movement, mà
+    // tồn kho suy ra từ movements (nguyên tắc bất biến #5) — nên gõ sai một số là
+    // sai tồn kho, không có chỗ nào chặn. Đã dựng lại thật trước khi thêm: yêu cầu
+    // duyệt 2 đơn vị, khai 5000 → API trả 200 và tồn kho LTL-AP-0003 tại kho văn
+    // phòng tụt xuống −4920, tức âm, tức không thể có thật.
+    if (soLuong > dong.quantity) {
+      throw loi422(
+        `Thiết bị ${dong.asset.code}: khai ${chieu} ${soLuong} nhưng yêu cầu chỉ được duyệt ${dong.quantity}. Muốn lấy thêm thì lập yêu cầu mới.`,
+        'VUOT_SO_DA_DUYET',
+        { ma: dong.asset.code, khai: soLuong, daDuyet: dong.quantity },
+      );
+    }
     return {
       requestItemId: dong.id,
       assetId: dong.asset.id,
       code: dong.asset.code,
-      soLuong: m.quantity ?? dong.quantity,
+      soLuong,
       anhIds: m.anhIds,
+      // Dòng phải quét mã thì mã đã là bằng chứng nhận dạng, không cần khai tên.
+      tenDaKhai: dong.asset.category.yeuCauQuetMa ? null : (m.tenDaKhai ?? '').trim() || null,
       ghiChu: m.ghiChu ?? null,
       currentLocationId: dong.asset.currentLocation?.id ?? null,
       condition: dong.asset.condition,
@@ -699,6 +759,25 @@ export async function xuatKho(
   const bayGio = new Date();
 
   const sau = await prisma.$transaction(async (tx) => {
+    // KHÔNG ĐƯỢC XUẤT NHIỀU HƠN SỐ ĐANG CÓ Ở KHO.
+    //
+    // Kiểm TRONG transaction để hai lượt xuất chạy song song không cùng đọc một
+    // con số tồn rồi cùng cho qua. Trước khi có phép kiểm này, tồn kho suy ra từ
+    // movements có thể xuống ÂM — đã dựng lại thật: xuất 5000 từ một kho chỉ có
+    // 80 đơn vị, API trả 200, tồn còn −4920. Tồn âm nghĩa là sổ sách nói kho đang
+    // nợ hàng cho chính mình, mọi báo cáo từ đó trở đi đều sai.
+    for (const d of dong) {
+      if (!d.currentLocationId) continue;
+      const dangCo = await tonTaiDiaDiem(d.assetId, d.currentLocationId, tx);
+      if (d.soLuong > dangCo) {
+        throw loi422(
+          `Thiết bị ${d.code}: khai mang ra ${d.soLuong} nhưng kho chỉ còn ${dangCo}. Kiểm lại số lượng hoặc kiểm kê trước khi xuất.`,
+          'KHONG_DU_TON',
+          { ma: d.code, khai: d.soLuong, conLai: dangCo },
+        );
+      }
+    }
+
     for (const d of dong) {
       let movementId: string | null = null;
 
@@ -716,6 +795,7 @@ export async function xuatKho(
             quantity: d.soLuong,
             conditionBefore: d.condition,
             conditionAfter: d.condition,
+            declaredName: d.tenDaKhai,
             performedById: actor.id,
             performedAt: bayGio,
             note: d.ghiChu,
@@ -859,6 +939,7 @@ export async function nhapKho(
           quantity: d.soLuong,
           conditionBefore: d.condition,
           conditionAfter: tinhTrangMoi,
+          declaredName: d.tenDaKhai,
           performedById: actor.id,
           performedAt: bayGio,
           note: d.ghiChu,
