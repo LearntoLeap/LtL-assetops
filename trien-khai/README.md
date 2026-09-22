@@ -295,3 +295,80 @@ sao lưu → xoá `toan-bo` → hoàn tác. Đối chiếu **bằm SHA-256 nội
 không chỉ đếm dòng: **27/27 bảng khớp tuyệt đối**, 27 file ảnh/tài liệu khớp SHA tổng.
 Gõ sai tên CSDL thì không bảng nào bị chạm. Sau khi xoá, đăng nhập và cả 9 endpoint
 chính đều trả 200 trên CSDL rỗng.
+
+---
+
+## Nạp một bản kết xuất AssetOps từ máy khác
+
+Khi đã nhập liệu ở một bản AssetOps khác và muốn đẩy toàn bộ sang VPS:
+
+```bash
+cd /opt/ltl-assetops
+bash trien-khai/nap-csdl.sh /duong/dan/csdl.sql.gz
+cd api && pm2 reload ecosystem.config.cjs --update-env && cd ..
+```
+
+Script tự làm, theo thứ tự:
+
+1. **Soi file trước khi chạm vào CSDL** — đếm bảng, kiểm 5 bảng dấu hiệu
+   (`users`, `assets`, `locations`, `movements`, `asset_categories`). Không đủ thì
+   **từ chối ngay**, không nạp một file lạ vào rồi hỏng mà không biết vì sao.
+2. In trạng thái hiện tại và **danh sách tài khoản đang có**, kèm cảnh báo là
+   chúng sắp bị thay.
+3. **Sao lưu** trạng thái hiện tại (đường lùi).
+4. Bắt gõ đúng tên CSDL.
+5. **Xoá sạch bảng cũ** rồi mới nạp — xem lý do ở dưới.
+6. Chạy `migrate deploy` để nâng lược đồ lên bản mới nhất nếu file kết xuất cũ hơn
+   mã nguồn.
+7. In danh sách tài khoản **đăng nhập được sau khi nạp**.
+
+### Vì sao phải xoá sạch bảng cũ trước khi nạp
+
+`mysqldump` chỉ sinh `DROP TABLE` cho những bảng **có trong file**. Bảng nào đang
+tồn tại trên máy mà file không có thì sống sót — và hậu quả không chỉ là dữ liệu cũ
+lẫn vào:
+
+> Nạp một bản kết xuất cũ (chưa có nhóm bảng `wiki_*`) vào máy đã có wiki →
+> 5 bảng wiki còn nguyên, nhưng `_prisma_migrations` lấy theo file lại ghi là
+> migration wiki **chưa** chạy → `migrate deploy` đi tạo `wiki_articles` → lỗi
+> MySQL 1050 *"Table already exists"* → CSDL rơi vào **trạng thái migration thất
+> bại, chặn mọi lần cập nhật về sau**.
+
+Đã dựng lại đúng lỗi này trong lúc thử rồi mới thêm bước xoá. Sau khi xoá sạch,
+file tự dựng lại đúng các bảng của nó, `_prisma_migrations` khớp với lược đồ thật,
+và `migrate deploy` áp đúng những migration còn thiếu.
+
+### Tài khoản sau khi nạp
+
+Bản kết xuất thay **toàn bộ** các bảng, **kể cả `users`**. Nên sau khi nạp, tài
+khoản đăng nhập là tài khoản **của bản kết xuất**, không phải tài khoản đang có
+trên VPS. Không giữ lại được một bên: mọi bảng đều trỏ khoá ngoại tới `users.id`
+của bản kết xuất.
+
+## Đặt lại mật khẩu khi không ai đăng nhập được
+
+```bash
+bash trien-khai/dat-lai-mat-khau.sh                                  # xem danh sách
+bash trien-khai/dat-lai-mat-khau.sh admin@learntoleap.vn 'MatKhau2026'
+```
+
+Đây là **lối vào cuối cùng**: hệ thống không có trang tự đăng ký, không có "quên
+mật khẩu" qua email, và endpoint đặt lại trong trang quản trị đòi phải đăng nhập
+được trước. Mất mật khẩu ADMIN là mất hẳn đường vào nếu không có script này.
+
+- Dùng đúng hàm băm của ứng dụng (bcrypt 12 vòng) nên mật khẩu đặt ở đây đăng nhập
+  được y như đặt trong giao diện.
+- Cùng chính sách mật khẩu với giao diện: tối thiểu 8 ký tự, có cả chữ và số.
+- **Mở khoá** tài khoản luôn nếu đang bị khoá, và **thu hồi mọi phiên cũ**.
+- Đổi mật khẩu lại trong giao diện sau khi vào được — mật khẩu gõ trên dòng lệnh
+  nằm trong lịch sử shell của máy chủ.
+
+### Đã kiểm thật
+
+- Nạp file lạ (không phải AssetOps) → **từ chối**, không chạm vào CSDL.
+- Nạp bản kết xuất **cũ hơn** (22 bảng, chưa có wiki) → xoá 27 bảng cũ, nạp,
+  `migrate deploy` áp migration wiki → 27 bảng, `migrate status` báo *up to date*,
+  dữ liệu của bản kết xuất còn nguyên (5 tài khoản, 34 thiết bị), bảng wiki mới
+  tạo và rỗng, 9/9 endpoint trả 200.
+- Đặt lại mật khẩu → mật khẩu mới đăng nhập được (200), mật khẩu cũ bị từ chối (401).
+- CSDL đang ở trạng thái migration thất bại → `hoan-tac.sh` cứu lại được.
