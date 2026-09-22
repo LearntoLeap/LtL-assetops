@@ -125,3 +125,16 @@ export const luocDoLocThietBi = z.object({
   moiTrang: z.coerce.number().int().positive().max(200).default(50),
 });
 export type DuLieuLocThietBi = z.infer<typeof luocDoLocThietBi>;
+
+/**
+ * Danh sách id cho các thao tác HÀNG LOẠT (xoá nhiều, khôi phục nhiều, xoá hẳn
+ * nhiều). Chặn ở 500 để một lần bấm không kéo theo hàng vạn bản ghi — cần nhiều
+ * hơn thì chia lượt, hoặc dùng script `trien-khai/xoa-du-lieu.sh` cho cả kho.
+ */
+export const luocDoNhieuId = z.object({
+  ids: z
+    .array(z.string().trim().min(1).max(30))
+    .min(1, 'Chưa chọn thiết bị nào.')
+    .max(500, 'Mỗi lần tối đa 500 thiết bị.'),
+});
+export type DuLieuNhieuId = z.infer<typeof luocDoNhieuId>;

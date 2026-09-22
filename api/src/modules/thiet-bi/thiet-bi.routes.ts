@@ -10,6 +10,7 @@ import {
 } from '../../middleware/xac-thuc.js';
 import {
   luocDoLocThietBi,
+  luocDoNhieuId,
   luocDoSuaThietBi,
   luocDoTaoNhanhThietBi,
   luocDoTaoThietBi,
@@ -106,6 +107,55 @@ thietBiRouter.post(
     const duLieu = luocDoTaoNhanhThietBi.parse(req.body);
     const thietBi = await dv.taoNhanh(duLieu, actor, boiCanh(req));
     res.status(201).json({ ok: true, thietBi });
+  }),
+);
+
+/**
+ * BA THAO TÁC HÀNG LOẠT cho các thiết bị đã tick ở danh sách / thùng rác.
+ * Chỉ ADMIN, y như bản một-thiết-bị.
+ *
+ * Trả về `soThanhCong` và `boQua` (kèm mã + lý do) chứ không phải chỉ ok/lỗi:
+ * lô 30 cái mà 2 cái vướng thì người dùng cần biết đúng 2 cái nào và vì sao,
+ * không thể báo "thất bại" rồi để họ tự dò.
+ */
+thietBiRouter.post(
+  '/xoa-nhieu',
+  yeuCauAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuId.parse(req.body);
+    const kq = await dv.xoaNhieu(ids, actor, boiCanh(req));
+    res.json({
+      ok: true,
+      ...kq,
+      thongDiep: `Đã chuyển ${kq.soThanhCong} thiết bị vào thùng rác.`,
+    });
+  }),
+);
+
+thietBiRouter.post(
+  '/khoi-phuc-nhieu',
+  yeuCauAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuId.parse(req.body);
+    const kq = await dv.khoiPhucNhieu(ids, actor, boiCanh(req));
+    res.json({ ok: true, ...kq, thongDiep: `Đã khôi phục ${kq.soThanhCong} thiết bị.` });
+  }),
+);
+
+thietBiRouter.post(
+  '/xoa-vinh-vien-nhieu',
+  yeuCauAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuId.parse(req.body);
+    const kq = await dv.xoaVinhVienNhieu(ids, actor, boiCanh(req));
+    res.json({
+      ok: true,
+      ...kq,
+      thongDiep: `Đã xoá vĩnh viễn ${kq.soThanhCong} thiết bị. Không khôi phục lại được.`,
+    });
   }),
 );
 

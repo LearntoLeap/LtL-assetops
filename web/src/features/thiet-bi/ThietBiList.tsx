@@ -57,6 +57,18 @@ export function tienVN(so: number | null): string {
 }
 
 const MOI_TRANG = 25;
+/**
+ * Số dòng mỗi lượt khi "chọn tất cả" — bằng đúng trần `moiTrang` của API
+ * (`luocDoLocThietBi`: `.max(200)`). Gửi lớn hơn thì server trả 400 và nút "chọn
+ * tất cả" không chọn được gì.
+ */
+const MOI_LUOT_CHON = 200;
+/**
+ * Trần một lượt xoá/khôi phục hàng loạt — bằng đúng `luocDoNhieuId`
+ * (`.max(500)`). Chọn quá số này rồi bấm xoá thì API từ chối cả lô, nên thà chỉ
+ * chọn tới đây và nói thẳng là còn dư.
+ */
+const TOI_DA_MOT_LUOT = 500;
 
 export function ThietBiList() {
   const { nguoiDung } = useAuth();
@@ -69,10 +81,16 @@ export function ThietBiList() {
 
   const [muc, datMuc] = useState<ThietBi[]>([]);
   /**
-   * Mã đang tick để in nhãn. Giữ theo MÃ chứ không theo id: mã chính là nội dung
-   * của nhãn QR và cũng là tham số truyền sang trang in, nên khỏi tra ngược.
+   * Thiết bị đang tick, giữ dạng MÃ → ID.
+   *
+   * Cần cả hai: in nhãn truyền MÃ sang trang in, xoá hàng loạt gửi ID cho API.
+   * Và phải giữ sẵn trong này chứ không tra ngược từ `muc`, vì `muc` chỉ là
+   * trang đang xem — chọn xuyên nhiều trang thì tra không ra.
    */
-  const [maDaChon, datMaDaChon] = useState<Set<string>>(new Set());
+  const [daChon, datDaChon] = useState<Map<string, string>>(new Map());
+  const [dangXoaLo, datDangXoaLo] = useState(false);
+  /** Lời nhắc không phải lỗi — ví dụ "chọn tất cả" bị chặn ở trần một lượt. */
+  const [ghiChu, datGhiChu] = useState<string | null>(null);
   const [tong, datTong] = useState(0);
   const [trang, datTrang] = useState(1);
   const [dangTai, datDangTai] = useState(true);
@@ -88,17 +106,31 @@ export function ThietBiList() {
   const [loaiTaiSan, datLoaiTaiSan] = useState<DanhMuc[]>([]);
   const [diaDiem, datDiaDiem] = useState<DiaDiem[]>([]);
 
+  /**
+   * Dựng tham số truy vấn từ bộ lọc đang chọn.
+   *
+   * Tách ra vì có HAI nơi cần đúng bộ lọc này: nạp trang đang xem, và "chọn tất
+   * cả" (gọi lại API với moiTrang lớn). Viết hai lần thì sớm muộn lệch nhau, và
+   * lúc đó "chọn tất cả" sẽ chọn cả những thứ không khớp bộ lọc đang hiện.
+   */
+  const layThamSo = useCallback((): URLSearchParams => {
+    const q = new URLSearchParams();
+    if (tuKhoa.trim()) q.set('tuKhoa', tuKhoa.trim());
+    if (locLoai) q.set('categoryId', locLoai);
+    if (locDiem) q.set('locationId', locDiem);
+    if (locTinhTrang) q.set('condition', locTinhTrang);
+    if (locPhanBo) q.set('allocationStatus', locPhanBo);
+    if (locMucDich) q.set('purpose', locMucDich);
+    return q;
+  }, [tuKhoa, locLoai, locDiem, locTinhTrang, locPhanBo, locMucDich]);
+
   const tai = useCallback(async () => {
     datDangTai(true);
     datLoi(null);
     try {
-      const q = new URLSearchParams({ trang: String(trang), moiTrang: String(MOI_TRANG) });
-      if (tuKhoa.trim()) q.set('tuKhoa', tuKhoa.trim());
-      if (locLoai) q.set('categoryId', locLoai);
-      if (locDiem) q.set('locationId', locDiem);
-      if (locTinhTrang) q.set('condition', locTinhTrang);
-      if (locPhanBo) q.set('allocationStatus', locPhanBo);
-      if (locMucDich) q.set('purpose', locMucDich);
+      const q = layThamSo();
+      q.set('trang', String(trang));
+      q.set('moiTrang', String(MOI_TRANG));
       const kq = await goiApi<TrangDuLieu<ThietBi>>(`/api/thiet-bi?${q.toString()}`);
       datMuc(kq.muc);
       datTong(kq.tong);
@@ -107,7 +139,7 @@ export function ThietBiList() {
     } finally {
       datDangTai(false);
     }
-  }, [trang, tuKhoa, locLoai, locDiem, locTinhTrang, locPhanBo, locMucDich]);
+  }, [trang, layThamSo]);
 
   useEffect(() => {
     void tai();
@@ -129,33 +161,128 @@ export function ThietBiList() {
     void taiDanhMuc();
   }, []);
 
-  // Đổi bộ lọc thì quay về trang 1, tránh rơi vào trang trống.
+  /**
+   * Đổi bộ lọc: quay về trang 1 và BỎ HẾT TICK.
+   *
+   * Giữ tick qua các trang là cố ý (chọn tất cả rồi xoá cả lô). Nhưng giữ tick
+   * qua các BỘ LỌC KHÁC NHAU thì nguy: tick cả 300 thiết bị, lọc lại còn 3 dòng
+   * trên màn, rồi bấm xoá — cái bị xoá là 300 chứ không phải 3. Đổi bộ lọc thì
+   * coi như chọn lại từ đầu.
+   */
   const doiLoc = (dat: (v: string) => void) => (v: string) => {
     dat(v);
     datTrang(1);
+    datDaChon(new Map());
+    datGhiChu(null);
   };
 
   const soTrang = Math.max(1, Math.ceil(tong / MOI_TRANG));
 
-  const doiChon = (code: string): void =>
-    datMaDaChon((cu) => {
-      const moi = new Set(cu);
-      if (moi.has(code)) moi.delete(code);
-      else moi.add(code);
+  const doiChon = (t: ThietBi): void =>
+    datDaChon((cu) => {
+      const moi = new Map(cu);
+      if (moi.has(t.code)) moi.delete(t.code);
+      else moi.set(t.code, t.id);
       return moi;
     });
 
   // Tick ở đầu bảng: chọn/bỏ chọn mọi dòng ĐANG HIỆN (không chạm các trang khác).
-  const trangDaChonHet = muc.length > 0 && muc.every((t) => maDaChon.has(t.code));
+  const trangDaChonHet = muc.length > 0 && muc.every((t) => daChon.has(t.code));
   const doiChonCaTrang = (): void =>
-    datMaDaChon((cu) => {
-      const moi = new Set(cu);
+    datDaChon((cu) => {
+      const moi = new Map(cu);
       for (const t of muc) {
         if (trangDaChonHet) moi.delete(t.code);
-        else moi.add(t.code);
+        else moi.set(t.code, t.id);
       }
       return moi;
     });
+
+  /**
+   * Chọn HẾT thiết bị khớp bộ lọc hiện tại, không chỉ trang đang xem.
+   *
+   * Phải gọi lại API vì trang này chỉ nạp 25 dòng một lần. Cần cho đúng việc
+   * "chọn tất cả rồi xoá" — bắt người dùng lật từng trang rồi tick lại thì
+   * không khác gì bấm xoá từng cái.
+   *
+   * Lật NHIỀU LƯỢT chứ không xin một lần thật lớn: API chặn `moiTrang` ở 200, xin
+   * 500 là bị trả 400 và nút này không chọn được gì (đã gặp đúng lỗi đó).
+   */
+  async function chonTatCa(): Promise<void> {
+    datLoi(null);
+    datGhiChu(null);
+    try {
+      const gop = new Map<string, string>();
+      for (let t = 1; gop.size < TOI_DA_MOT_LUOT; t++) {
+        const q = layThamSo();
+        q.set('trang', String(t));
+        q.set('moiTrang', String(MOI_LUOT_CHON));
+        const kq = await goiApi<TrangDuLieu<ThietBi>>(`/api/thiet-bi?${q.toString()}`);
+        for (const tb of kq.muc) {
+          if (gop.size >= TOI_DA_MOT_LUOT) break;
+          gop.set(tb.code, tb.id);
+        }
+        // Hết dòng, hoặc đã gom đủ tổng mà server báo — thì dừng, đừng gọi thêm.
+        if (kq.muc.length < MOI_LUOT_CHON || gop.size >= kq.tong) {
+          if (kq.tong > gop.size) {
+            datGhiChu(
+              `Chỉ chọn được ${gop.size} thiết bị một lượt (giới hạn của hệ thống), ` +
+                `trong khi bộ lọc đang khớp ${kq.tong}. Xử lý xong ${gop.size} cái này ` +
+                'rồi bấm "Chọn tất cả" lần nữa cho phần còn lại.',
+            );
+          }
+          datDaChon(gop);
+          return;
+        }
+      }
+      datGhiChu(
+        `Chỉ chọn được ${TOI_DA_MOT_LUOT} thiết bị một lượt (giới hạn của hệ thống). ` +
+          `Xử lý xong rồi bấm "Chọn tất cả" lần nữa cho phần còn lại.`,
+      );
+      datDaChon(gop);
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Không chọn được tất cả.');
+    }
+  }
+
+  /** Xoá hàng loạt các thiết bị đã tick — chuyển vào thùng rác, khôi phục được. */
+  async function xoaLoDaChon(): Promise<void> {
+    const ids = [...daChon.values()];
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Chuyển ${ids.length} thiết bị đã chọn vào thùng rác?\n\n` +
+          'Chúng sẽ biến khỏi mọi danh sách và không còn tính vào tồn kho, nhưng ' +
+          'khôi phục lại được ở Thiết bị → Thùng rác.',
+      )
+    ) {
+      return;
+    }
+    datLoi(null);
+    datGhiChu(null);
+    datDangXoaLo(true);
+    try {
+      const kq = await goiApi<{
+        ok: true;
+        soThanhCong: number;
+        boQua: Array<{ ma: string | null; lyDo: string }>;
+        thongDiep: string;
+      }>('/api/thiet-bi/xoa-nhieu', { method: 'POST', than: { ids } });
+      datDaChon(new Map());
+      await tai();
+      // Báo cả phần bỏ sót: lô 30 cái mà 2 cái vướng thì phải biết đúng 2 cái nào.
+      if (kq.boQua.length > 0) {
+        datLoi(
+          `${kq.thongDiep} Bỏ qua ${kq.boQua.length}: ` +
+            kq.boQua.map((b) => `${b.ma ?? '?'} (${b.lyDo})`).join('; '),
+        );
+      }
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Xoá hàng loạt thất bại.');
+    } finally {
+      datDangXoaLo(false);
+    }
+  }
 
   /**
    * Xoá hẳn một thiết bị ngay tại danh sách.
@@ -266,6 +393,7 @@ export function ThietBiList() {
       </div>
 
       {loi ? <Alert variant="destructive">{loi}</Alert> : null}
+      {ghiChu ? <Alert variant="warning">{ghiChu}</Alert> : null}
 
       <Card>
         <CardHeader>
@@ -364,16 +492,40 @@ export function ThietBiList() {
           ) : (
             <>
               {/* Thanh này chỉ hiện khi đã tick — không chiếm chỗ lúc chưa dùng. */}
-              {maDaChon.size > 0 ? (
-                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5">
-                  <span className="text-sm font-medium">Đã chọn {maDaChon.size} mã</span>
+              {daChon.size > 0 ? (
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5 sm:gap-3">
+                  <span className="text-sm font-medium">Đã chọn {daChon.size} thiết bị</span>
                   <Button size="sm" asChild>
-                    <Link to={`/thiet-bi/in-nhan?ma=${[...maDaChon].map(encodeURIComponent).join(',')}`}>
+                    <Link
+                      to={`/thiet-bi/in-nhan?ma=${[...daChon.keys()].map(encodeURIComponent).join(',')}`}
+                    >
                       <QrCode aria-hidden />
-                      In nhãn {maDaChon.size} mã
+                      In nhãn {daChon.size} mã
                     </Link>
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => datMaDaChon(new Set())}>
+                  {/* Xoá hàng loạt: chỉ ADMIN, khớp `yeuCauAdmin` ở API. */}
+                  {laAdmin ? (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => void xoaLoDaChon()}
+                      disabled={dangXoaLo}
+                    >
+                      <Trash2 aria-hidden />
+                      {dangXoaLo ? 'Đang xoá…' : `Xoá ${daChon.size} thiết bị`}
+                    </Button>
+                  ) : null}
+                  {/*
+                   * "Chọn tất cả" chỉ có nghĩa khi còn thứ chưa được chọn ngoài
+                   * trang đang xem. Nạp 25 dòng một trang, mà muốn xoá cả 300
+                   * thiết bị thì không thể bắt lật 12 trang rồi tick tay.
+                   */}
+                  {tong > daChon.size ? (
+                    <Button variant="outline" size="sm" onClick={() => void chonTatCa()}>
+                      Chọn tất cả {tong} thiết bị
+                    </Button>
+                  ) : null}
+                  <Button variant="ghost" size="sm" onClick={() => datDaChon(new Map())}>
                     Bỏ chọn
                   </Button>
                 </div>
@@ -425,9 +577,9 @@ export function ThietBiList() {
                       <TableCell>
                         <input
                           type="checkbox"
-                          checked={maDaChon.has(t.code)}
-                          onChange={() => doiChon(t.code)}
-                          aria-label={`Chọn ${t.code} để in nhãn`}
+                          checked={daChon.has(t.code)}
+                          onChange={() => doiChon(t)}
+                          aria-label={`Chọn ${t.code}`}
                           className="size-4 cursor-pointer accent-primary"
                         />
                       </TableCell>

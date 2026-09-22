@@ -543,6 +543,84 @@ export async function xoaVinhVien(id: string, actor: NguoiThaoTac, ctx: BoiCanhG
   for (const a of anhCanDonDia) await xoaFileAnh(a.filePath);
 }
 
+/** Một dòng bị bỏ qua trong thao tác hàng loạt, kèm lý do để hiện lại cho người dùng. */
+export interface DongBoQua {
+  id: string;
+  ma: string | null;
+  lyDo: string;
+}
+
+export interface KetQuaHangLoat {
+  soThanhCong: number;
+  boQua: DongBoQua[];
+}
+
+/**
+ * Chạy một thao tác cho từng id, KHÔNG gộp vào một transaction.
+ *
+ * Cố ý để mỗi thiết bị là một giao dịch riêng: gộp cả lô thì một thiết bị lỗi là
+ * cuốn theo 32 cái đã làm đúng, mà thao tác hàng loạt thì người dùng muốn "làm
+ * được cái nào thì làm" rồi xem lại phần bỏ sót. Hàm trả về đúng danh sách bỏ
+ * qua kèm lý do để giao diện hiện nguyên văn.
+ */
+async function chayTungCai(
+  ids: readonly string[],
+  viec: (id: string) => Promise<unknown>,
+): Promise<KetQuaHangLoat> {
+  const boQua: DongBoQua[] = [];
+  let soThanhCong = 0;
+  // Lấy mã trước để thông điệp lỗi gọi tên thiết bị chứ không phải id cuid.
+  const ma = new Map(
+    (
+      await prisma.asset.findMany({
+        where: { id: { in: [...ids] } },
+        select: { id: true, code: true },
+      })
+    ).map((t) => [t.id, t.code]),
+  );
+
+  for (const id of ids) {
+    try {
+      await viec(id);
+      soThanhCong += 1;
+    } catch (loi) {
+      boQua.push({
+        id,
+        ma: ma.get(id) ?? null,
+        lyDo: loi instanceof Error ? loi.message : 'Lỗi không rõ.',
+      });
+    }
+  }
+  return { soThanhCong, boQua };
+}
+
+/** Xoá mềm NHIỀU thiết bị đã chọn. */
+export async function xoaNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoat> {
+  return chayTungCai(ids, (id) => xoa(id, actor, ctx));
+}
+
+/** Khôi phục NHIỀU thiết bị từ thùng rác. */
+export async function khoiPhucNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoat> {
+  return chayTungCai(ids, (id) => khoiPhuc(id, actor, ctx));
+}
+
+/** Xoá VĨNH VIỄN nhiều thiết bị khỏi thùng rác — không khôi phục lại được. */
+export async function xoaVinhVienNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoat> {
+  return chayTungCai(ids, (id) => xoaVinhVien(id, actor, ctx));
+}
+
 /**
  * TẠO NHANH thiết bị khi lập yêu cầu mà mã chưa có trong kho.
  *
