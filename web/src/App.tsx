@@ -36,6 +36,7 @@ const ThietBiChiTiet = lazy(() => import('@/features/thiet-bi/ThietBiChiTiet').t
 const ThungRacThietBi = lazy(() => import('@/features/thiet-bi/ThungRacThietBi').then((m) => ({ default: m.ThungRacThietBi })));
 const FormThietBi = lazy(() => import('@/features/thiet-bi/FormThietBi').then((m) => ({ default: m.FormThietBi })));
 const DiaDiemList = lazy(() => import('@/features/dia-diem/DiaDiemList').then((m) => ({ default: m.DiaDiemList })));
+const ThungRacDiaDiem = lazy(() => import('@/features/dia-diem/ThungRacDiaDiem').then((m) => ({ default: m.ThungRacDiaDiem })));
 const DanhMucHome = lazy(() => import('@/features/danh-muc/DanhMucHome').then((m) => ({ default: m.DanhMucHome })));
 const NhapLieuHangLoat = lazy(() => import('@/features/nhap-xuat/NhapLieuHangLoat').then((m) => ({ default: m.NhapLieuHangLoat })));
 const InNhanQR = lazy(() => import('@/features/qr/InNhanQR').then((m) => ({ default: m.InNhanQR })));
@@ -295,6 +296,15 @@ export default function App() {
           />
           <Route path="wiki/:slug" element={<BaiWiki />} />
 
+          {/* Thùng rác điểm lưu trữ: chỉ ADMIN. Khai TRƯỚC "dia-diem" cho dễ đọc. */}
+          <Route
+            path="dia-diem/thung-rac"
+            element={
+              <CanDangNhap vaiTro={['ADMIN']}>
+                <ThungRacDiaDiem />
+              </CanDangNhap>
+            }
+          />
           <Route path="dia-diem" element={<DiaDiemList />} />
           <Route
             path="danh-muc"

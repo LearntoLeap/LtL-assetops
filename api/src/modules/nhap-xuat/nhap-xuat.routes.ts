@@ -104,7 +104,7 @@ nhapXuatRouter.get(
         select: { code: true, name: true },
       }),
       prisma.location.findMany({
-        where: { isActive: true },
+        where: { isActive: true, deletedAt: null },
         orderBy: { name: 'asc' },
         select: { code: true, name: true, type: true },
       }),
@@ -407,6 +407,8 @@ nhapXuatRouter.get(
   '/xuat/dia-diem',
   batAsync(async (_req, res) => {
     const diem = await prisma.location.findMany({
+      // Bản xuất là ảnh chụp danh sách đang dùng, không kèm thùng rác.
+      where: { deletedAt: null },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
       include: { _count: { select: { assets: true } } },
     });

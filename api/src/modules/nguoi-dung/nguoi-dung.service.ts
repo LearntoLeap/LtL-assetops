@@ -57,7 +57,8 @@ async function kiemDiemLuuTru(role: UserRole, locationId: string | null): Promis
   }
 
   const diem = await prisma.location.findFirst({
-    where: { id: locationId, type: batBuoc },
+    // Điểm trong thùng rác thì không gắn thêm gì mới vào nó được nữa.
+    where: { id: locationId, type: batBuoc, deletedAt: null },
     select: { id: true },
   });
   if (!diem) {

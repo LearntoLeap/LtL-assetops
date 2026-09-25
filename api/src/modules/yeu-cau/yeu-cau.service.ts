@@ -916,11 +916,13 @@ export async function nhapKho(
     );
   }
 
-  const kho = await prisma.location.findUnique({
-    where: { id: duLieu.veLocationId },
+  const kho = await prisma.location.findFirst({
+    // `deletedAt: null`: không nhập hàng về một điểm đã nằm trong thùng rác —
+    // nhập được thì thiết bị nằm ở một nơi không còn hiện ở đâu cả.
+    where: { id: duLieu.veLocationId, deletedAt: null },
     select: { id: true, name: true, type: true },
   });
-  if (!kho) throw loi400('Kho nhận hàng về không tồn tại.', 'KHO_KHONG_TON_TAI');
+  if (!kho) throw loi400('Kho nhận hàng về không tồn tại hoặc đã bị xoá.', 'KHO_KHONG_TON_TAI');
 
   const dong = await soatDongThucHien(yeuCau, duLieu.muc, 'ANH_NHAN');
   const tinhTrangTheoAsset = new Map(duLieu.muc.map((m) => [m.assetId, m.tinhTrang]));

@@ -176,6 +176,7 @@ model User {
   refreshTokens         RefreshToken[]
   createdAssets         Asset[]                 @relation("AssetCreatedBy")
   deletedAssets         Asset[]                 @relation("AssetDeletedBy")
+  deletedLocations      Location[]              @relation("LocationDeletedBy")
   heldAssets            Asset[]                 @relation("AssetHolder")
   createdRequests       Request[]               @relation("RequestCreatedBy")
   approvedRequests      Request[]               @relation("RequestApprovedBy")
@@ -380,9 +381,21 @@ model Location {
   gpsRequired  Boolean      @default(false) @map("gps_required")
   note         String?      @db.Text
   isActive     Boolean      @default(true) @map("is_active")
+  /// XOÁ MỀM. Khác `isActive` đúng như ở thiết bị:
+  ///   - `isActive = false` = "ngừng dùng": điểm vẫn còn, vẫn hiện ở trang quản
+  ///     lý, chỉ không nằm trong các ô chọn nơi đến;
+  ///   - `deletedAt != null` = ĐÃ XOÁ: biến khỏi mọi danh sách và mọi ô chọn —
+  ///     nhưng bản ghi vẫn nguyên nên lịch sử xuất–nhập kho, biên bản, kiểm kê
+  ///     cũ vẫn đọc được TÊN của điểm, và khôi phục lại được nếu xoá nhầm.
+  ///
+  /// Cố ý KHÔNG xoá cứng: `movements` trỏ vào điểm bằng khoá ngoại, xoá cứng là
+  /// mất luôn nghĩa của toàn bộ nhật ký xuất–nhập đã ghi ở đó.
+  deletedAt    DateTime?    @map("deleted_at")
+  deletedById  String?      @map("deleted_by_id") @db.VarChar(30)
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
+  deletedBy        User?             @relation("LocationDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   users            User[]
   assets           Asset[]           @relation("AssetCurrentLocation")
   movementsFrom    Movement[]        @relation("MovementFrom")
@@ -395,6 +408,8 @@ model Location {
   partIssuesFrom   PartIssue[]       @relation("PartIssueFrom")
 
   @@index([type])
+  /// Mọi truy vấn danh sách đều lọc `deleted_at IS NULL` nên cột này phải có chỉ mục.
+  @@index([deletedAt])
   @@map("locations")
 }
 

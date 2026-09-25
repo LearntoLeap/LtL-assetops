@@ -215,7 +215,11 @@ export async function tao(
       select: { id: true, deletedAt: true },
     }),
     prisma.assetCategory.findUnique({ where: { id: duLieu.categoryId }, select: { id: true } }),
-    prisma.location.findUnique({ where: { id: duLieu.nhapVeLocationId }, select: { id: true } }),
+    // `deletedAt: null`: không nhập thiết bị mới về một điểm đã nằm trong thùng rác.
+    prisma.location.findFirst({
+      where: { id: duLieu.nhapVeLocationId, deletedAt: null },
+      select: { id: true },
+    }),
     prisma.assetOrigin.findUnique({ where: { id: duLieu.originId }, select: { id: true } }),
     prisma.assetPurpose.findUnique({ where: { id: duLieu.purposeId }, select: { id: true } }),
   ]);
@@ -229,7 +233,7 @@ export async function tao(
   }
   if (daCo) throw loi409(`Mã thiết bị ${duLieu.code} đã tồn tại.`, { truong: 'code' });
   if (!loai) throw loi400('Loại tài sản không tồn tại.', 'LOAI_KHONG_TON_TAI');
-  if (!diem) throw loi400('Điểm nhập về không tồn tại.', 'DIEM_KHONG_TON_TAI');
+  if (!diem) throw loi400('Điểm nhập về không tồn tại hoặc đã bị xoá.', 'DIEM_KHONG_TON_TAI');
   // Kiểm tường minh thay vì để khoá ngoại tự đổ: lỗi khoá ngoại của Prisma là
   // một dòng tiếng Anh về ràng buộc, người dùng đọc không hiểu mình sai ô nào.
   // Hay gặp nhất là nguồn gốc vừa bị ADMIN xoá trong lúc form đang mở.

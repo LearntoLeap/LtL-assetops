@@ -61,10 +61,14 @@ export function dieuKienTaiSan(nguoiDung: NguoiDungDaXacThuc): Prisma.AssetWhere
 /** Điều kiện `where` cho danh sách điểm lưu trữ. */
 export function dieuKienDiaDiem(nguoiDung: NguoiDungDaXacThuc): Prisma.LocationWhereInput {
   const pv = phamViCua(nguoiDung);
-  if (pv.toanBoKho) return {};
-  if (pv.diaDiem) return { id: { in: [...pv.diaDiem] } };
+  // `deletedAt: null` ở CẢ BA nhánh, không phải chỉ nhánh đầu: điểm trong thùng
+  // rác phải biến khỏi mọi danh sách với mọi vai trò. Đặt ở đây — chỗ duy nhất
+  // mọi truy vấn danh sách điểm đều đi qua — thay vì rải ở từng tuyến, vì rải
+  // thì chỉ cần quên một chỗ là điểm đã xoá lại hiện ra.
+  if (pv.toanBoKho) return { deletedAt: null };
+  if (pv.diaDiem) return { deletedAt: null, id: { in: [...pv.diaDiem] } };
   // NHAN_SU không cần duyệt kho: chỉ thấy điểm đang giữ thiết bị của mình.
-  return { assets: { some: { holderUserId: nguoiDung.id } } };
+  return { deletedAt: null, assets: { some: { holderUserId: nguoiDung.id } } };
 }
 
 /** Điều kiện `where` cho danh sách yêu cầu. */

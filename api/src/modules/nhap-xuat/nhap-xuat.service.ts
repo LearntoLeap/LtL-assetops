@@ -170,7 +170,8 @@ async function dungTraCuu(): Promise<TraCuu> {
   const [loai, dong, diem, taiSan, nguonGoc, mucDich] = await Promise.all([
     prisma.assetCategory.findMany({ select: { id: true, code: true } }),
     prisma.productLine.findMany({ select: { id: true, code: true } }),
-    prisma.location.findMany({ select: { id: true, code: true } }),
+    // Chỉ điểm CHƯA xoá: file nhập liệu không được đưa thiết bị về thùng rác.
+    prisma.location.findMany({ where: { deletedAt: null }, select: { id: true, code: true } }),
     // CỐ Ý KHÔNG lọc `deletedAt: null` ở đây. Thiết bị trong thùng rác vẫn giữ mã
     // của nó trong khoá duy nhất, nên nếu bỏ nó ra khỏi danh sách "mã đã có" thì
     // file nhập liệu trùng mã sẽ qua được bước soát rồi vỡ ở bước ghi với lỗi khoá

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Download, MapPin, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Download, MapPin, Pencil, Plus, RefreshCw, Trash2, Undo2, X } from 'lucide-react';
 import { DS_LOAI_DIEM_LUU_TRU, NHAN_LOAI_DIEM_LUU_TRU, type LoaiDiemLuuTru } from '@ltl/taisan-shared';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -124,11 +125,26 @@ export function DiaDiemList() {
   }
 
   async function xoa(d: DiaDiem): Promise<void> {
-    if (!window.confirm(`Xoá hẳn điểm ${d.name}?`)) return;
+    // Lời xác nhận phải nói đúng việc sắp xảy ra: đây là chuyển vào thùng rác,
+    // KHÔNG phải xoá hẳn. Ghi "Xoá hẳn" như trước là nói sai.
+    if (
+      !window.confirm(
+        `Chuyển điểm ${d.name} vào thùng rác?\n\n` +
+          'Điểm sẽ biến khỏi mọi danh sách và mọi ô chọn nơi đến. Thiết bị đang ở ' +
+          'đây cùng toàn bộ lịch sử xuất–nhập kho vẫn nguyên, và khôi phục lại ' +
+          'được ở Điểm lưu trữ → Thùng rác.',
+      )
+    ) {
+      return;
+    }
     datLoi(null);
     try {
-      await goiApi(`/api/dia-diem/${d.id}`, { method: 'DELETE' });
-      datThongBao(`Đã xoá ${d.name}.`);
+      const kq = await goiApi<{ ok: true; thongDiep: string }>(`/api/dia-diem/${d.id}`, {
+        method: 'DELETE',
+      });
+      // Dùng nguyên thông điệp của server: nó kể luôn lúc xoá điểm còn giữ những
+      // gì ("21 thiết bị đang ở đây, 51 lượt xuất–nhập kho đã ghi").
+      datThongBao(kq.thongDiep);
       await tai();
     } catch (e) {
       datLoi(e instanceof LoiApi ? e.message : 'Xoá thất bại.');
@@ -156,6 +172,14 @@ export function DiaDiemList() {
             <Download aria-hidden />
             Xuất Excel
           </Button>
+          {laAdmin ? (
+            <Button variant="outline" asChild>
+              <Link to="/dia-diem/thung-rac">
+                <Undo2 aria-hidden />
+                Thùng rác
+              </Link>
+            </Button>
+          ) : null}
           {duocSua ? (
             <Button onClick={moTao}>
               <Plus aria-hidden />

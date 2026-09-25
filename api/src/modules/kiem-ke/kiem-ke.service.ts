@@ -181,11 +181,17 @@ export async function tao(
   actor: NguoiThaoTac,
   ctx: BoiCanhGoi,
 ): Promise<KiemKeDayDu> {
-  const diaDiem = await prisma.location.findUnique({
-    where: { id: duLieu.locationId },
+  const diaDiem = await prisma.location.findFirst({
+    // `deletedAt: null`: không mở đợt kiểm kê ở một điểm đã nằm trong thùng rác.
+    where: { id: duLieu.locationId, deletedAt: null },
     select: { id: true, name: true },
   });
-  if (!diaDiem) throw loi400('Địa điểm kiểm kê không tồn tại.', 'DIA_DIEM_KHONG_TON_TAI');
+  if (!diaDiem) {
+    throw loi400(
+      'Địa điểm kiểm kê không tồn tại hoặc đã bị xoá.',
+      'DIA_DIEM_KHONG_TON_TAI',
+    );
+  }
 
   const dangMo = await prisma.inventoryCount.findFirst({
     where: { locationId: diaDiem.id, status: { in: ['BAN_NHAP', 'DANG_KIEM', 'CHO_CHOT'] } },

@@ -97,6 +97,9 @@ diaDiemRouter.get(
     const loc = luocDoLoc.parse(req.query);
     const muc = await prisma.location.findMany({
       where: {
+        // Tuyến này KHÔNG qua `dieuKienDiaDiem` (cố ý: ai cũng cần thấy mọi nơi
+        // đến để lập yêu cầu), nên phải tự chặn điểm đã xoá ở đây.
+        deletedAt: null,
         ...(loc.type ? { type: loc.type } : {}),
         ...(loc.chiHoatDong === 'true' ? { isActive: true } : {}),
       },
@@ -249,6 +252,28 @@ function donDiaDiem<T extends { latitude: unknown; longitude: unknown }>(d: T) {
   };
 }
 
+/**
+ * THÙNG RÁC — chỉ ADMIN. Phải khai TRƯỚC `/:id` vì Express khớp tuyến theo thứ
+ * tự khai báo, để sau thì "thung-rac" bị nuốt thành một id.
+ */
+diaDiemRouter.get(
+  '/thung-rac',
+  yeuCauAdmin,
+  batAsync(async (_req, res) => {
+    const muc = await prisma.location.findMany({
+      where: { deletedAt: { not: null } },
+      select: {
+        ...CHON,
+        deletedAt: true,
+        deletedBy: { select: { id: true, fullName: true } },
+        _count: { select: { assets: true } },
+      },
+      orderBy: { deletedAt: 'desc' },
+    });
+    res.json({ ok: true, muc, tong: muc.length });
+  }),
+);
+
 diaDiemRouter.get(
   '/:id',
   batAsync(async (req, res) => {
@@ -273,10 +298,19 @@ diaDiemRouter.post(
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoTaoDiaDiem.parse(req.body);
+    // CỐ Ý không lọc `deletedAt: null`: mã của điểm trong thùng rác VẪN nằm
+    // trong khoá duy nhất, nên phải báo trùng — nhưng nói rõ nó ở đâu, vì người
+    // dùng tìm khắp danh sách sẽ không thấy đâu cả.
     const daCo = await prisma.location.findUnique({
       where: { code: duLieu.code },
-      select: { id: true },
+      select: { id: true, deletedAt: true },
     });
+    if (daCo?.deletedAt) {
+      throw loi409(
+        `Mã ${duLieu.code} đang thuộc một điểm trong THÙNG RÁC. Vào Điểm lưu trữ → Thùng rác để khôi phục, hoặc xoá vĩnh viễn rồi mới tạo lại mã này.`,
+        { truong: 'code', maLoi: 'MA_O_THUNG_RAC', diaDiemId: daCo.id },
+      );
+    }
     if (daCo) throw loi409(`Mã điểm ${duLieu.code} đã tồn tại.`, { truong: 'code' });
 
     const diaDiem = await prisma.location.create({
@@ -355,7 +389,54 @@ diaDiemRouter.patch(
   }),
 );
 
-/** Xoá điểm: chỉ ADMIN, và chỉ khi không còn gì tham chiếu tới nó. */
+/**
+ * Đếm những gì đang trỏ vào một điểm — dùng cho cả xoá mềm lẫn xoá vĩnh viễn.
+ *
+ * Xoá mềm thì con số này chỉ để CẢNH BÁO và ghi vào nhật ký kiểm toán (vẫn cho
+ * xoá). Xoá vĩnh viễn thì nó là điều kiện CHẶN thật, vì lúc đó bản ghi biến mất
+ * và mọi khoá ngoại trỏ vào nó sẽ gãy.
+ */
+async function demRangBuoc(id: string): Promise<{
+  rangBuoc: Record<string, number>;
+  tong: number;
+  keRa: string;
+}> {
+  const [thietBi, diChuyen, taiKhoan, yeuCau, bbbg, kiemKe] = await Promise.all([
+    prisma.asset.count({ where: { currentLocationId: id, deletedAt: null } }),
+    prisma.movement.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
+    prisma.user.count({ where: { locationId: id } }),
+    prisma.request.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
+    prisma.handoverNote.count({ where: { receiverLocationId: id } }),
+    prisma.inventoryCount.count({ where: { locationId: id } }),
+  ]);
+  const rangBuoc = { thietBi, diChuyen, taiKhoan, yeuCau, bienBan: bbbg, kiemKe };
+  const NHAN: Record<keyof typeof rangBuoc, string> = {
+    thietBi: 'thiết bị đang ở đây',
+    diChuyen: 'lượt xuất–nhập kho đã ghi',
+    taiKhoan: 'tài khoản gắn với điểm này',
+    yeuCau: 'yêu cầu',
+    bienBan: 'biên bản bàn giao',
+    kiemKe: 'đợt kiểm kê',
+  };
+  const keRa = (Object.keys(rangBuoc) as Array<keyof typeof rangBuoc>)
+    .filter((k) => rangBuoc[k] > 0)
+    .map((k) => `${rangBuoc[k]} ${NHAN[k]}`)
+    .join(', ');
+  return { rangBuoc, tong: Object.values(rangBuoc).reduce((a, b) => a + b, 0), keRa };
+}
+
+
+/**
+ * XOÁ MỀM một điểm lưu trữ — LUÔN cho xoá, kể cả khi đang có thiết bị và lịch sử.
+ *
+ * Trước đây chặn cứng khi còn bất cứ thứ gì trỏ vào, mà điểm lưu trữ thì gần
+ * như luôn có một lượt xuất–nhập nào đó, nên trên thực tế không xoá được điểm
+ * nào cả. Nay xoá được ở mọi tình trạng nhưng KHÔNG mất gì: bản ghi vẫn nguyên,
+ * lịch sử cũ vẫn đọc được tên điểm, khôi phục lại được nguyên trạng.
+ *
+ * Số ràng buộc vẫn đếm — không để chặn nữa, mà để ghi vào nhật ký kiểm toán:
+ * sáu tháng sau nhìn lại còn biết lúc xoá điểm đó đang giữ bao nhiêu thiết bị.
+ */
 diaDiemRouter.delete(
   '/:id',
   yeuCauAdmin,
@@ -364,24 +445,102 @@ diaDiemRouter.delete(
     const id = String(req.params['id']);
     const truoc = await prisma.location.findUnique({
       where: { id },
-      select: { id: true, code: true, name: true },
+      select: { id: true, code: true, name: true, deletedAt: true },
     });
     if (!truoc) throw loi404('Không tìm thấy điểm lưu trữ.');
+    if (truoc.deletedAt) throw loi409('Điểm này đã nằm trong thùng rác rồi.');
 
-    const [thietBi, diChuyen, taiKhoan, yeuCau, bbbg, kiemKe] = await Promise.all([
-      prisma.asset.count({ where: { currentLocationId: id, deletedAt: null } }),
-      prisma.movement.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
-      prisma.user.count({ where: { locationId: id } }),
-      prisma.request.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
-      prisma.handoverNote.count({ where: { receiverLocationId: id } }),
-      prisma.inventoryCount.count({ where: { locationId: id } }),
-    ]);
-    const rangBuoc = { thietBi, diChuyen, taiKhoan, yeuCau, bienBan: bbbg, kiemKe };
-    const tong = Object.values(rangBuoc).reduce((s, n) => s + n, 0);
+    const { rangBuoc, tong, keRa } = await demRangBuoc(id);
 
+    await prisma.$transaction(async (tx) => {
+      await tx.location.update({
+        where: { id },
+        data: { deletedAt: new Date(), deletedById: actor.id },
+      });
+      await ghiAudit(
+        {
+          actor,
+          action: 'location.delete',
+          entityType: 'location',
+          entityId: id,
+          beforeValue: { code: truoc.code, name: truoc.name, ...rangBuoc },
+          ...boiCanh(req),
+        },
+        tx,
+      );
+    });
+
+    res.json({
+      ok: true,
+      thongDiep:
+        tong > 0
+          ? `Đã chuyển điểm "${truoc.name}" vào thùng rác (lúc xoá còn ${keRa}). Khôi phục lại được ở Điểm lưu trữ → Thùng rác.`
+          : `Đã chuyển điểm "${truoc.name}" vào thùng rác. Khôi phục lại được ở Điểm lưu trữ → Thùng rác.`,
+      rangBuoc,
+    });
+  }),
+);
+
+/** Khôi phục một điểm từ thùng rác về nguyên trạng. */
+diaDiemRouter.post(
+  '/:id/khoi-phuc',
+  yeuCauAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const id = String(req.params['id']);
+    const truoc = await prisma.location.findUnique({
+      where: { id },
+      select: { id: true, code: true, name: true, deletedAt: true },
+    });
+    if (!truoc) throw loi404('Không tìm thấy điểm lưu trữ.');
+    if (!truoc.deletedAt) throw loi409('Điểm này không nằm trong thùng rác.');
+
+    await prisma.$transaction(async (tx) => {
+      await tx.location.update({ where: { id }, data: { deletedAt: null, deletedById: null } });
+      await ghiAudit(
+        {
+          actor,
+          action: 'location.restore',
+          entityType: 'location',
+          entityId: id,
+          afterValue: { code: truoc.code, name: truoc.name },
+          ...boiCanh(req),
+        },
+        tx,
+      );
+    });
+
+    res.json({ ok: true, thongDiep: `Đã khôi phục điểm "${truoc.name}".` });
+  }),
+);
+
+/**
+ * XOÁ VĨNH VIỄN — đường duy nhất làm mất hẳn một điểm lưu trữ.
+ *
+ * Ở đây ràng buộc CHẶN thật, khác hẳn xoá mềm: bản ghi biến mất nên mọi khoá
+ * ngoại trỏ vào nó sẽ gãy. Cố ý KHÔNG tự dọn hộ (xoá lây nhật ký di chuyển,
+ * yêu cầu, biên bản) — đó là xoá mất lịch sử của những thiết bị chẳng liên quan
+ * gì tới việc người dùng muốn bỏ một cái tên khỏi danh sách.
+ */
+diaDiemRouter.delete(
+  '/:id/vinh-vien',
+  yeuCauAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const id = String(req.params['id']);
+    const truoc = await prisma.location.findUnique({
+      where: { id },
+      select: { id: true, code: true, name: true, deletedAt: true },
+    });
+    if (!truoc) throw loi404('Không tìm thấy điểm lưu trữ.');
+    if (!truoc.deletedAt) {
+      throw loi409('Phải chuyển điểm vào thùng rác trước khi xoá vĩnh viễn.');
+    }
+
+    const { rangBuoc, tong, keRa } = await demRangBuoc(id);
     if (tong > 0) {
       throw loi409(
-        'Điểm này đang được tham chiếu nên không xoá được. Hãy đặt Ngừng dùng thay vì xoá.',
+        `Không xoá vĩnh viễn được điểm "${truoc.name}" vì còn ${keRa} trỏ vào nó — xoá hẳn là mất luôn phần lịch sử đó. Cứ để trong thùng rác: điểm đã biến khỏi mọi danh sách và ô chọn rồi.`,
         rangBuoc,
       );
     }
@@ -390,7 +549,7 @@ diaDiemRouter.delete(
       await ghiAudit(
         {
           actor,
-          action: 'location.delete',
+          action: 'location.purge',
           entityType: 'location',
           entityId: id,
           beforeValue: { code: truoc.code, name: truoc.name },
@@ -400,6 +559,6 @@ diaDiemRouter.delete(
       );
       await tx.location.delete({ where: { id } });
     });
-    res.json({ ok: true, thongDiep: 'Đã xoá điểm lưu trữ.' });
+    res.json({ ok: true, thongDiep: `Đã xoá vĩnh viễn điểm "${truoc.name}".` });
   }),
 );
