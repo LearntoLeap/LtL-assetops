@@ -13,6 +13,7 @@ import { boiCanh, ghiAudit } from '../../lib/audit.js';
 import { loi404, loi409 } from '../../lib/loi-http.js';
 import { dieuKienDiaDiem } from '../../lib/pham-vi.js';
 import { toaDoHopLe } from '../../lib/khoang-cach.js';
+import { xoaFileAnh } from '../../lib/luu-anh.js';
 import {
   chuoiSua,
   chuoiTuyChon,
@@ -515,12 +516,31 @@ diaDiemRouter.post(
 );
 
 /**
- * XOÁ VĨNH VIỄN — đường duy nhất làm mất hẳn một điểm lưu trữ.
+ * XOÁ VĨNH VIỄN — xoá luôn, KHÔNG điều kiện.
  *
- * Ở đây ràng buộc CHẶN thật, khác hẳn xoá mềm: bản ghi biến mất nên mọi khoá
- * ngoại trỏ vào nó sẽ gãy. Cố ý KHÔNG tự dọn hộ (xoá lây nhật ký di chuyển,
- * yêu cầu, biên bản) — đó là xoá mất lịch sử của những thiết bị chẳng liên quan
- * gì tới việc người dùng muốn bỏ một cái tên khỏi danh sách.
+ * Quyết định của LtL: xoá hẳn là xoá hẳn. Thiết bị KHÔNG mất, chỉ trống ô "vị
+ * trí hiện tại" để điền lại.
+ *
+ * PHẢI XOÁ TAY `movements` tại điểm này, không được để khoá ngoại tự SET NULL.
+ * Lý do là nguyên tắc bất biến #5 (xem `lib/ton-kho.ts`): tồn được suy ra từ
+ * movements, và ở đó `to_location_id = NULL` mang nghĩa RIÊNG là "hàng ra khỏi
+ * hệ thống". Nên nếu để SET NULL:
+ *
+ *   - một lượt điều chuyển `từ Kho VP → điểm bị xoá` biến thành "hàng rời khỏi
+ *     hệ thống từ Kho VP", tồn của KHO VP — một điểm chẳng liên quan — tụt đi
+ *     đúng số đó mà không ai biết;
+ *   - một lượt nhập ban đầu `NULL → điểm bị xoá` thành `NULL → NULL`, cộng vào
+ *     tồn số 0, thiết bị tự nhiên mất tồn.
+ *
+ * Xoá hẳn dòng movement thì sổ tự khớp trở lại: lượt điều chuyển coi như chưa
+ * từng xảy ra nên hàng "quay về" Kho VP đúng bằng số đã chuyển đi; còn thiết bị
+ * chỉ từng nằm ở mỗi điểm bị xoá thì về tồn 0 và trống vị trí — đúng là "trống
+ * phần kho để điền lại".
+ *
+ * Các bảng còn lại (thiết bị, tài khoản, yêu cầu, biên bản, xuất linh kiện) đã
+ * khai SET NULL ở khoá ngoại nên bản ghi sống nguyên, chỉ trống ô địa điểm.
+ * `inventory_counts` khai NOT NULL + RESTRICT nên phải xoá tay (dòng kiểm kê
+ * cascade theo). `gps_override_codes` đã cascade sẵn.
  */
 diaDiemRouter.delete(
   '/:id/vinh-vien',
@@ -537,13 +557,18 @@ diaDiemRouter.delete(
       throw loi409('Phải chuyển điểm vào thùng rác trước khi xoá vĩnh viễn.');
     }
 
-    const { rangBuoc, tong, keRa } = await demRangBuoc(id);
-    if (tong > 0) {
-      throw loi409(
-        `Không xoá vĩnh viễn được điểm "${truoc.name}" vì còn ${keRa} trỏ vào nó — xoá hẳn là mất luôn phần lịch sử đó. Cứ để trong thùng rác: điểm đã biến khỏi mọi danh sách và ô chọn rồi.`,
-        rangBuoc,
-      );
-    }
+    const { rangBuoc } = await demRangBuoc(id);
+
+    // Lấy đường dẫn ảnh TRƯỚC khi xoá: ảnh của movement cascade mất cùng
+    // movement, sau đó không còn chỗ nào tìm lại file trên đĩa.
+    const buocSeXoa = await prisma.movement.findMany({
+      where: { OR: [{ fromLocationId: id }, { toLocationId: id }] },
+      select: { id: true },
+    });
+    const anhCanDonDia = await prisma.photo.findMany({
+      where: { movementId: { in: buocSeXoa.map((b) => b.id) } },
+      select: { filePath: true },
+    });
 
     await prisma.$transaction(async (tx) => {
       await ghiAudit(
@@ -552,13 +577,37 @@ diaDiemRouter.delete(
           action: 'location.purge',
           entityType: 'location',
           entityId: id,
-          beforeValue: { code: truoc.code, name: truoc.name },
+          beforeValue: { code: truoc.code, name: truoc.name, ...rangBuoc },
+          note: `Xoá vĩnh viễn — xoá theo ${buocSeXoa.length} lượt xuất–nhập kho và ${rangBuoc['kiemKe']} đợt kiểm kê tại điểm này. Thiết bị giữ nguyên, chỉ trống vị trí.`,
           ...boiCanh(req),
         },
         tx,
       );
+      await tx.inventoryCount.deleteMany({ where: { locationId: id } });
+      await tx.movement.deleteMany({
+        where: { OR: [{ fromLocationId: id }, { toLocationId: id }] },
+      });
       await tx.location.delete({ where: { id } });
     });
-    res.json({ ok: true, thongDiep: `Đã xoá vĩnh viễn điểm "${truoc.name}".` });
+
+    for (const a of anhCanDonDia) await xoaFileAnh(a.filePath);
+
+    // Nói HẾT những gì vừa mất, kể cả phần người dùng không bấm trực tiếp.
+    const keoTheo: string[] = [];
+    if (buocSeXoa.length > 0) keoTheo.push(`${buocSeXoa.length} lượt xuất–nhập kho`);
+    if ((rangBuoc['kiemKe'] ?? 0) > 0) keoTheo.push(`${rangBuoc['kiemKe']} đợt kiểm kê`);
+    const phanThietBi =
+      (rangBuoc['thietBi'] ?? 0) > 0
+        ? ` ${rangBuoc['thietBi']} thiết bị vẫn còn nguyên, chỉ trống ô vị trí — vào Thiết bị để nhập lại kho.`
+        : '';
+    res.json({
+      ok: true,
+      thongDiep:
+        keoTheo.length > 0
+          ? `Đã xoá vĩnh viễn điểm "${truoc.name}", xoá theo ${keoTheo.join(' và ')}.${phanThietBi}`
+          : `Đã xoá vĩnh viễn điểm "${truoc.name}".${phanThietBi}`,
+      daXoaTheo: { diChuyen: buocSeXoa.length, kiemKe: rangBuoc['kiemKe'] ?? 0 },
+      rangBuoc,
+    });
   }),
 );

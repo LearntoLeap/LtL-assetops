@@ -31,11 +31,10 @@ interface DongRac extends DiaDiem {
  * vẫn nguyên: thiết bị đang ở đó, nhật ký xuất–nhập kho, biên bản và kiểm kê cũ
  * vẫn đọc được TÊN của điểm. Khôi phục là về đúng nguyên trạng.
  *
- * Khác thùng rác thiết bị ở một điểm quan trọng: "Xoá vĩnh viễn" ở đây CHỈ làm
- * được với điểm chưa có gì trỏ vào. Điểm lưu trữ bị `movements`, `requests`,
- * `handover_notes`, `inventory_counts` trỏ vào bằng khoá ngoại — xoá hẳn là mất
- * luôn lịch sử của những thiết bị chẳng liên quan gì tới việc bỏ một cái tên
- * khỏi danh sách. Server chặn thật, đây chỉ nói trước cho đỡ mất công bấm.
+ * "Xoá hẳn" thì xoá luôn, không điều kiện — và THIẾT BỊ KHÔNG MẤT: chúng chỉ
+ * trống ô vị trí để điền lại. Cái mất theo là nhật ký xuất–nhập kho và đợt kiểm
+ * kê TẠI ĐIỂM ĐÓ, nên tồn của thiết bị chỉ từng nằm ở đây sẽ về 0. Lời xác nhận
+ * phải nói rõ cả hai vế đó, không được chỉ nói "không khôi phục được".
  */
 export function ThungRacDiaDiem() {
   const [muc, datMuc] = useState<DongRac[]>([]);
@@ -79,11 +78,15 @@ export function ThungRacDiaDiem() {
 
   async function xoaVinhVien(d: DongRac): Promise<void> {
     // Bắt gõ lại mã: đây là đường duy nhất làm mất hẳn một điểm lưu trữ.
+    const soTb = d._count?.assets ?? 0;
     const goi = window.prompt(
       `XOÁ VĨNH VIỄN điểm ${d.code} — ${d.name}?\n\n` +
-        'Chỉ làm được khi KHÔNG còn thiết bị, lịch sử xuất–nhập kho, tài khoản, ' +
-        'yêu cầu, biên bản hay đợt kiểm kê nào trỏ vào điểm này. KHÔNG khôi phục ' +
-        'lại được.\n\n' +
+        (soTb > 0
+          ? `${soTb} thiết bị đang ở đây VẪN CÒN NGUYÊN, chỉ trống ô vị trí để bạn nhập lại kho.\n\n`
+          : '') +
+        'Sẽ mất hẳn: bản ghi điểm, toàn bộ nhật ký xuất–nhập kho và các đợt kiểm ' +
+        'kê TẠI ĐIỂM NÀY. Tồn kho của thiết bị chỉ từng nằm ở đây sẽ về 0 — nhập ' +
+        'lại kho là có tồn trở lại. KHÔNG khôi phục lại được.\n\n' +
         `Gõ đúng mã "${d.code}" để xác nhận:`,
     );
     if (goi === null) return;
@@ -204,13 +207,15 @@ export function ThungRacDiaDiem() {
         </CardContent>
       </Card>
 
-      <Alert variant="warning" tieuDe="Vì sao “Xoá hẳn” thường không bấm được">
+      <Alert variant="warning" tieuDe="“Xoá hẳn” mất gì và giữ gì">
         <span className="inline-flex items-center gap-1">
           <ShieldAlert className="size-4" aria-hidden />
         </span>{' '}
-        Nhật ký xuất–nhập kho, yêu cầu, biên bản và đợt kiểm kê đều trỏ vào điểm lưu trữ. Còn một
-        trong số đó thì xoá hẳn là mất luôn phần lịch sử ấy, nên hệ thống chặn. Cứ để điểm nằm
-        trong thùng rác — nó đã biến khỏi mọi danh sách và ô chọn rồi.
+        <strong>Thiết bị không mất</strong> — chúng chỉ trống ô vị trí, vào Thiết bị nhập lại kho
+        là xong. <strong>Mất hẳn</strong> là bản ghi điểm, toàn bộ nhật ký xuất–nhập kho và các
+        đợt kiểm kê tại điểm này, nên tồn kho của thiết bị chỉ từng nằm ở đây sẽ về 0. Tài khoản,
+        yêu cầu và biên bản vẫn còn, chỉ trống ô địa điểm. Không có đường lùi trong ứng dụng —
+        chỉ còn cách phục hồi từ bản sao lưu của máy chủ.
       </Alert>
     </div>
   );
