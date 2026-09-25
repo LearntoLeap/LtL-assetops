@@ -281,6 +281,9 @@ model AssetOrigin {
   id        String   @id @default(cuid()) @db.VarChar(30)
   code      String   @unique @db.VarChar(64)
   name      String   @db.VarChar(191)
+  /// VIẾT TẮT dùng để sinh mã thiết bị: {nguồn gốc}-{loại}-{dòng}-{số thứ tự}.
+  /// Chỉ chữ in hoa và số, KHÔNG có gạch ngang vì gạch ngang là dấu ngăn đoạn.
+  vietTat   String   @unique @map("viet_tat") @db.VarChar(10)
   note      String?  @db.Text
   sortOrder Int      @default(0) @map("sort_order")
   isActive  Boolean  @default(true) @map("is_active")
@@ -312,6 +315,9 @@ model ProductLine {
   id        String   @id @default(cuid()) @db.VarChar(30)
   code      String   @unique @db.VarChar(64)
   name      String   @db.VarChar(191)
+  /// VIẾT TẮT dùng để sinh mã thiết bị: {nguồn gốc}-{loại}-{dòng}-{số thứ tự}.
+  /// Chỉ chữ in hoa và số, KHÔNG có gạch ngang vì gạch ngang là dấu ngăn đoạn.
+  vietTat   String   @unique @map("viet_tat") @db.VarChar(10)
   note      String?  @db.Text
   sortOrder Int      @default(0) @map("sort_order")
   isActive  Boolean  @default(true) @map("is_active")
@@ -329,6 +335,9 @@ model AssetCategory {
   id                  String       @id @default(cuid()) @db.VarChar(30)
   code                String       @unique @db.VarChar(64)
   name                String       @db.VarChar(191)
+  /// VIẾT TẮT dùng để sinh mã thiết bị: {nguồn gốc}-{loại}-{dòng}-{số thứ tự}.
+  /// Chỉ chữ in hoa và số, KHÔNG có gạch ngang vì gạch ngang là dấu ngăn đoạn.
+  vietTat             String       @unique @map("viet_tat") @db.VarChar(10)
   /// Kiểu quản lý mặc định khi tạo tài sản thuộc loại này (có thể ghi đè).
   defaultTrackingType TrackingType @default(DON_VI) @map("default_tracking_type")
   /// Loại này có BẮT BUỘC quét/gõ đúng mã thiết bị khi xuất–nhập kho hay không.

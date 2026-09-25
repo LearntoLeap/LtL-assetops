@@ -73,6 +73,15 @@ export function FormThietBi() {
   const [loi, datLoi] = useState<string | null>(null);
   const [dangGui, datDangGui] = useState(false);
   const [dangTai, datDangTai] = useState(true);
+  /**
+   * Mã đang do hệ thống tự sinh, hay người dùng đã tự gõ?
+   *
+   * Cần cờ này vì hai việc phải cùng đúng: mã tự cập nhật khi đổi nguồn gốc /
+   * loại / dòng, NHƯNG người gõ tay mã riêng (thiết bị cũ đã dán nhãn) thì
+   * không được ghi đè cái họ vừa gõ. Chạm vào ô mã là tắt cờ.
+   */
+  const [maTuSinh, datMaTuSinh] = useState(true);
+  const [dangSinhMa, datDangSinhMa] = useState(false);
 
   useEffect(() => {
     async function tai(): Promise<void> {
@@ -108,6 +117,8 @@ export function FormThietBi() {
             dueReturnAt: t.dueReturnAt ? t.dueReturnAt.slice(0, 10) : '',
             note: t.note ?? '',
           });
+          // Đang SỬA thì mã đã cố định, không đụng vào.
+          datMaTuSinh(false);
         } else {
           datBieu((b) => ({
             ...b,
@@ -139,6 +150,40 @@ export function FormThietBi() {
   useEffect(() => {
     if (theoDonVi) datBieu((b) => (b.soLuongNhap === '1' ? b : { ...b, soLuongNhap: '1' }));
   }, [theoDonVi]);
+
+  /**
+   * Tự điền mã theo tổ hợp đang chọn.
+   *
+   * Gọi lại API mỗi lần đổi một trong ba ô thay vì ghép chuỗi ở phía web: SỐ
+   * THỨ TỰ chỉ máy chủ mới biết (phụ thuộc thiết bị đã có, kể cả thiết bị trong
+   * thùng rác vẫn giữ mã). Ghép ở đây thì hai người mở form cùng lúc sẽ thấy
+   * hai số khác nhau mà cả hai đều sai.
+   */
+  useEffect(() => {
+    if (dangSua || !maTuSinh) return;
+    if (!bieu.originId || !bieu.categoryId) return;
+    let conDung = true;
+    async function sinh(): Promise<void> {
+      datDangSinhMa(true);
+      try {
+        const q = new URLSearchParams({
+          originId: bieu.originId,
+          categoryId: bieu.categoryId,
+          ...(bieu.productLineId ? { productLineId: bieu.productLineId } : {}),
+        });
+        const kq = await goiApi<{ ok: true; ma: string }>(`/api/thiet-bi/ma-tiep-theo?${q}`);
+        if (conDung) datBieu((b) => ({ ...b, code: kq.ma }));
+      } catch {
+        // Không sinh được thì để trống cho người dùng tự gõ, đừng chặn cả form.
+      } finally {
+        if (conDung) datDangSinhMa(false);
+      }
+    }
+    void sinh();
+    return () => {
+      conDung = false;
+    };
+  }, [dangSua, maTuSinh, bieu.originId, bieu.categoryId, bieu.productLineId]);
 
   async function gui(su: FormEvent): Promise<void> {
     su.preventDefault();
@@ -230,15 +275,35 @@ export function FormThietBi() {
                 required
                 disabled={dangSua}
                 value={bieu.code}
-                onChange={(su) => dat('code')(su.target.value)}
-                placeholder="LTL-RB-0001"
+                onChange={(su) => {
+                  // Gõ tay là giành lại quyền: từ đây mã không tự đổi nữa.
+                  datMaTuSinh(false);
+                  dat('code')(su.target.value);
+                }}
+                placeholder={dangSinhMa ? 'Đang sinh mã…' : 'MUA-RB-UKIT-0001'}
                 className="font-mono"
                 spellCheck={false}
               />
               <p className="text-xs text-muted-foreground">
-                {dangSua
-                  ? 'Mã không đổi được — mọi giao dịch đã tham chiếu theo mã này.'
-                  : 'Chữ in hoa, số và các dấu . _ - Hệ thống tự chuyển thành chữ hoa.'}
+                {dangSua ? (
+                  'Mã không đổi được — mọi giao dịch đã tham chiếu theo mã này.'
+                ) : maTuSinh ? (
+                  <>
+                    Tự sinh theo <strong>nguồn gốc – loại – dòng giải pháp</strong> và số thứ tự
+                    riêng của tổ hợp đó. Gõ đè nếu thiết bị đã có mã riêng.
+                  </>
+                ) : (
+                  <>
+                    Đang dùng mã bạn tự gõ.{' '}
+                    <button
+                      type="button"
+                      className="font-medium text-primary-dam underline"
+                      onClick={() => datMaTuSinh(true)}
+                    >
+                      Quay lại mã tự sinh
+                    </button>
+                  </>
+                )}
               </p>
             </div>
 

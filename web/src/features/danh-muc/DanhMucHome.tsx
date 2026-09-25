@@ -29,6 +29,7 @@ function KhoiDanhMuc({
   icon,
   coKieuQuanLy,
   maTuDong = false,
+  coVietTat = false,
 }: {
   nhom: Nhom;
   tieuDe: string;
@@ -44,6 +45,13 @@ function KhoiDanhMuc({
    * dùng cần tự đặt cho khớp với file họ đang có.
    */
   maTuDong?: boolean;
+  /**
+   * Bảng này có viết tắt dùng để sinh mã thiết bị hay không.
+   *
+   * Nguồn gốc, loại tài sản và dòng giải pháp có — ba đoạn đầu của mã thiết bị
+   * lấy từ đó. Mục đích sử dụng không nằm trong mã nên không có.
+   */
+  coVietTat?: boolean;
 }) {
   const { nguoiDung } = useAuth();
   const duocSua = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
@@ -55,6 +63,7 @@ function KhoiDanhMuc({
   const [hienForm, datHienForm] = useState(false);
   const [code, datCode] = useState('');
   const [name, datName] = useState('');
+  const [vietTat, datVietTat] = useState('');
   const [kieu, datKieu] = useState<KieuQuanLy>('DON_VI');
 
   const tai = useCallback(async () => {
@@ -83,10 +92,13 @@ function KhoiDanhMuc({
           ...(maTuDong ? {} : { code }),
           name,
           ...(coKieuQuanLy ? { defaultTrackingType: kieu } : {}),
+          // Bỏ trống thì server tự gợi ý từ tên — không bắt người dùng nghĩ.
+          ...(coVietTat && vietTat.trim() ? { vietTat: vietTat.trim() } : {}),
         },
       });
       datCode('');
       datName('');
+      datVietTat('');
       datHienForm(false);
       await tai();
     } catch (e) {
@@ -147,8 +159,47 @@ function KhoiDanhMuc({
     }
   }
 
+  /**
+   * Đổi viết tắt. Mã thiết bị ĐÃ CẤP không đổi theo — chúng đã in ra nhãn dán
+   * trên thiết bị, sửa trong CSDL là lệch với nhãn ngoài đời.
+   */
+  async function doiVietTat(d: DanhMuc): Promise<void> {
+    const vt = window.prompt(
+      `Đổi viết tắt của "${d.name}"?\n\n` +
+        'Đoạn này nằm trong mã thiết bị. Các thiết bị ĐÃ CẤP mã giữ nguyên mã cũ ' +
+        '(nhãn đã dán trên máy), chỉ thiết bị tạo từ giờ trở đi dùng viết tắt mới.\n\n' +
+        'Chỉ chữ in hoa không dấu và số:',
+      d.vietTat ?? '',
+    );
+    if (vt === null) return;
+    const gon = vt.trim().toUpperCase();
+    if (gon === '' || gon === d.vietTat) return;
+    datLoi(null);
+    try {
+      await goiApi(`/api/danh-muc/${nhom}/${d.id}`, {
+        method: 'PATCH',
+        than: { vietTat: gon },
+      });
+      await tai();
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Đổi viết tắt thất bại.');
+    }
+  }
+
   async function xoa(d: DanhMuc): Promise<void> {
-    if (!window.confirm(`Xoá hẳn "${d.name}"?`)) return;
+    // Nói rõ xoá cái gì và hậu quả, thay vì một câu "Xoá hẳn ...?" cụt lủn.
+    const dangDung = d._count?.assets ?? 0;
+    if (
+      !window.confirm(
+        `Xoá hẳn "${d.name}" khỏi ${tieuDe.toLowerCase()}?\n\n` +
+          (dangDung > 0
+            ? `Đang có ${dangDung} thiết bị dùng mục này nên hệ thống sẽ chặn — hãy đặt Ngừng dùng thay vì xoá.\n\n`
+            : 'Mục này chưa thiết bị nào dùng nên xoá được. Thiết bị đã cấp mã giữ nguyên mã cũ.\n\n') +
+          'Không khôi phục lại được.',
+      )
+    ) {
+      return;
+    }
     datLoi(null);
     try {
       await goiApi(`/api/danh-muc/${nhom}/${d.id}`, { method: 'DELETE' });
@@ -220,6 +271,22 @@ function KhoiDanhMuc({
                 onChange={(su) => datName(su.target.value)}
               />
             </div>
+            {coVietTat ? (
+              <div className="space-y-1.5">
+                <Label htmlFor={`${nhom}-vt`}>Viết tắt (để trống = tự đặt)</Label>
+                <Input
+                  id={`${nhom}-vt`}
+                  className="font-mono uppercase"
+                  value={vietTat}
+                  onChange={(su) => datVietTat(su.target.value.toUpperCase())}
+                  placeholder="VD: RB"
+                  maxLength={10}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Đoạn này nằm trong mã thiết bị. Chỉ chữ in hoa không dấu và số.
+                </p>
+              </div>
+            ) : null}
             {coKieuQuanLy ? (
               <div className="space-y-1.5">
                 <Label htmlFor={`${nhom}-kieu`}>Kiểu quản lý mặc định</Label>
@@ -248,6 +315,7 @@ function KhoiDanhMuc({
           <TableHeader>
             <TableRow>
               <TableHead>Mã</TableHead>
+              {coVietTat ? <TableHead>Viết tắt</TableHead> : null}
               <TableHead>Tên</TableHead>
               {coKieuQuanLy ? <TableHead>Kiểu mặc định</TableHead> : null}
               {coKieuQuanLy ? <TableHead>Xuất–nhập kho</TableHead> : null}
@@ -259,6 +327,19 @@ function KhoiDanhMuc({
             {muc.map((d) => (
               <TableRow key={d.id}>
                 <TableCell className="font-mono text-xs">{d.code}</TableCell>
+                {coVietTat ? (
+                  <TableCell>
+                    <button
+                      type="button"
+                      className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-medium hover:bg-secondary disabled:cursor-default disabled:hover:bg-muted"
+                      disabled={!duocSua}
+                      onClick={() => void doiVietTat(d)}
+                      title={duocSua ? 'Đổi viết tắt' : undefined}
+                    >
+                      {d.vietTat ?? '—'}
+                    </button>
+                  </TableCell>
+                ) : null}
                 <TableCell>
                   {d.name}
                   {!d.isActive ? (
@@ -360,6 +441,7 @@ export function DanhMucHome() {
       <div className="grid gap-4 xl:grid-cols-2">
         <KhoiDanhMuc
           nhom="loai-tai-san"
+          coVietTat
           tieuDe="Loại tài sản"
           moTa="Robot, Máy tính/Laptop, Tablet, Kính VR, Sa bàn, Ấn phẩm in…"
           icon={<Package className="text-primary-dam" aria-hidden />}
@@ -367,6 +449,7 @@ export function DanhMucHome() {
         />
         <KhoiDanhMuc
           nhom="dong-giai-phap"
+          coVietTat
           tieuDe="Dòng giải pháp"
           moTa="uKit, UGOT, Stick'Em, Alpha Mini, Yanshee, Weeemake…"
           icon={<Layers className="text-primary-dam" aria-hidden />}
@@ -374,6 +457,7 @@ export function DanhMucHome() {
         />
         <KhoiDanhMuc
           nhom="nguon-goc"
+          coVietTat
           tieuDe="Nguồn gốc"
           moTa="Thiết bị từ đâu mà có. Thêm được thẳng trong form thiết bị."
           icon={<Truck className="text-primary-dam" aria-hidden />}

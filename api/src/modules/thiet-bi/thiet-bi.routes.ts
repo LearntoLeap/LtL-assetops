@@ -14,9 +14,12 @@ import {
   luocDoSuaThietBi,
   luocDoTaoNhanhThietBi,
   luocDoTaoThietBi,
+  luocDoXemTruocMa,
   maThietBi,
 } from './thiet-bi.schema.js';
 import * as dv from './thiet-bi.service.js';
+import { maKeTiepTheoId } from '../../lib/sinh-ma-thiet-bi.js';
+import { loi400 } from '../../lib/loi-http.js';
 
 export const thietBiRouter = Router();
 thietBiRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
@@ -72,6 +75,30 @@ thietBiRouter.get(
   yeuCauAdmin,
   batAsync(async (_req, res) => {
     res.json({ ok: true, ...(await dv.thungRac()) });
+  }),
+);
+
+/**
+ * XEM TRƯỚC mã sẽ được cấp, để form hiện mã ngay lúc chọn xong ba ô.
+ *
+ * Cũng phải khai TRƯỚC `GET /:id` vì lý do y hệt tuyến thùng rác.
+ *
+ * Đây chỉ là XEM TRƯỚC, KHÔNG giữ chỗ: hai người mở form cùng lúc sẽ thấy cùng
+ * một mã, và người bấm Lưu sau sẽ nhận mã kế tiếp — `tao()` sinh lại mã ngay
+ * trong lúc ghi chứ không tin con số form gửi lên.
+ */
+thietBiRouter.get(
+  '/ma-tiep-theo',
+  batAsync(async (req, res) => {
+    const loc = luocDoXemTruocMa.parse(req.query);
+    const kq = await maKeTiepTheoId(loc.originId, loc.categoryId, loc.productLineId || null);
+    if (!kq) {
+      throw loi400(
+        'Nguồn gốc, loại tài sản hoặc dòng giải pháp không tồn tại (có thể vừa bị xoá). Hãy tải lại trang.',
+        'DANH_MUC_KHONG_TON_TAI',
+      );
+    }
+    res.json({ ok: true, ma: kq.ma, tienTo: kq.tienTo });
   }),
 );
 

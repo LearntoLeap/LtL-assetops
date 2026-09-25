@@ -58,8 +58,8 @@ async function napDanhMuc(): Promise<void> {
   for (const n of NGUON_GOC_BAN_DAU) {
     await prisma.assetOrigin.upsert({
       where: { code: n.code },
-      create: { code: n.code, name: n.name, sortOrder: n.sortOrder },
-      update: { name: n.name, sortOrder: n.sortOrder },
+      create: { code: n.code, name: n.name, vietTat: n.vietTat, sortOrder: n.sortOrder },
+      update: { name: n.name, vietTat: n.vietTat, sortOrder: n.sortOrder },
     });
   }
   viet(`  • Nguồn gốc: ${NGUON_GOC_BAN_DAU.length}`);
@@ -76,8 +76,8 @@ async function napDanhMuc(): Promise<void> {
   for (const d of DONG_GIAI_PHAP) {
     await prisma.productLine.upsert({
       where: { code: d.code },
-      create: { code: d.code, name: d.name, sortOrder: d.sortOrder },
-      update: { name: d.name, sortOrder: d.sortOrder },
+      create: { code: d.code, name: d.name, vietTat: d.vietTat, sortOrder: d.sortOrder },
+      update: { name: d.name, vietTat: d.vietTat, sortOrder: d.sortOrder },
     });
   }
   viet(`  • Dòng giải pháp: ${DONG_GIAI_PHAP.length}`);
@@ -88,10 +88,16 @@ async function napDanhMuc(): Promise<void> {
       create: {
         code: l.code,
         name: l.name,
+        vietTat: l.vietTat,
         defaultTrackingType: l.defaultTrackingType,
         sortOrder: l.sortOrder,
       },
-      update: { name: l.name, defaultTrackingType: l.defaultTrackingType, sortOrder: l.sortOrder },
+      update: {
+        name: l.name,
+        vietTat: l.vietTat,
+        defaultTrackingType: l.defaultTrackingType,
+        sortOrder: l.sortOrder,
+      },
     });
   }
   viet(`  • Loại tài sản: ${LOAI_TAI_SAN.length}`);

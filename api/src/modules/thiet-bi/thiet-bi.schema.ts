@@ -61,7 +61,14 @@ export type DuLieuTaoNhanhThietBi = z.infer<typeof luocDoTaoNhanhThietBi>;
 
 export const luocDoTaoThietBi = z
   .object({
-    code: maThietBi,
+    /**
+     * Bỏ trống thì SERVER tự sinh theo dạng
+     * {nguồn gốc}-{loại}[-{dòng}]-{số thứ tự} (xem `lib/sinh-ma-thiet-bi.ts`).
+     *
+     * Vẫn cho gõ tay: nhập thiết bị cũ đã dán nhãn mã riêng thì phải giữ đúng
+     * mã trên nhãn, không thể bắt dán lại nhãn mới cho cả kho.
+     */
+    code: maThietBi.optional(),
     name: z.string().trim().min(2, 'Tên thiết bị phải có ít nhất 2 ký tự.').max(191),
     categoryId: z.string().trim().min(1, 'Chưa chọn loại tài sản.').max(30),
     productLineId: z.string().trim().max(30).optional(),
@@ -140,3 +147,10 @@ export const luocDoNhieuId = z.object({
     .max(500, 'Mỗi lần tối đa 500 thiết bị.'),
 });
 export type DuLieuNhieuId = z.infer<typeof luocDoNhieuId>;
+
+/** Tham số xem trước mã sẽ được cấp cho một tổ hợp danh mục. */
+export const luocDoXemTruocMa = z.object({
+  originId: z.string().trim().min(1, 'Chưa chọn nguồn gốc.').max(30),
+  categoryId: z.string().trim().min(1, 'Chưa chọn loại tài sản.').max(30),
+  productLineId: z.string().trim().max(30).optional(),
+});

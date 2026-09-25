@@ -5,6 +5,7 @@
  */
 import { Router } from 'express';
 import type { AssetOrigin, AssetPurpose, Prisma } from '@prisma/client';
+import { goiYVietTat, vietTatChuaDung } from '../../lib/sinh-ma-thiet-bi.js';
 import { z } from 'zod';
 import { KIEU_QUAN_LY } from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
@@ -33,9 +34,44 @@ const maDanhMuc = z
   .max(64)
   .regex(/^[A-Z0-9_]+$/, 'Mã chỉ gồm chữ in hoa, số và dấu gạch dưới.');
 
+/**
+ * Viết tắt dùng để sinh mã thiết bị. Bỏ trống thì server tự gợi ý từ tên.
+ * Chỉ chữ in hoa và số — gạch ngang là dấu ngăn đoạn trong mã nên bị cấm.
+ */
+const luocDoVietTat = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .min(1, 'Viết tắt không được để trống.')
+  .max(10, 'Viết tắt tối đa 10 ký tự.')
+  .regex(/^[A-Z0-9]+$/, 'Viết tắt chỉ gồm chữ in hoa không dấu và số.');
+
+/**
+ * Viết tắt cuối cùng cho một mục: dùng cái người dùng gõ, không có thì gợi ý từ
+ * tên; trùng thì thêm số cho tới khi trống chỗ.
+ *
+ * Cố ý KHÔNG bắt người dùng tự nghĩ: họ thêm loại mới ngay giữa lúc đang điền
+ * form thiết bị, hỏi thêm một ô nữa là đủ để có người bỏ cuộc.
+ */
+async function chotVietTat(
+  mong: string | undefined,
+  ten: string,
+  daCo: (v: string) => Promise<boolean>,
+): Promise<string> {
+  if (mong) {
+    // Người dùng gõ tay mà trùng thì phải BÁO, không tự đổi sau lưng họ.
+    if (await daCo(mong)) {
+      throw loi409(`Viết tắt ${mong} đã dùng cho mục khác.`, { truong: 'vietTat' });
+    }
+    return mong;
+  }
+  return vietTatChuaDung(goiYVietTat(ten), daCo);
+}
+
 const luocDoDongGiaiPhap = z.object({
   code: maDanhMuc,
   name: z.string().trim().min(1, 'Chưa nhập tên.').max(191),
+  vietTat: luocDoVietTat.optional(),
   note: z.string().trim().max(2000).optional(),
   sortOrder: z.coerce.number().int().min(0).max(9999).default(0),
   isActive: z.boolean().default(true),
@@ -73,8 +109,15 @@ danhMucRouter.post(
     if (await prisma.productLine.findUnique({ where: { code: duLieu.code }, select: { id: true } })) {
       throw loi409('Mã dòng giải pháp đã tồn tại.', { truong: 'code' });
     }
+    const vietTat = await chotVietTat(
+      duLieu.vietTat,
+      duLieu.name,
+      async (v) =>
+        (await prisma.productLine.findUnique({ where: { vietTat: v }, select: { id: true } })) !==
+        null,
+    );
     const muc = await prisma.productLine.create({
-      data: { ...duLieu, note: duLieu.note ?? null },
+      data: { ...duLieu, vietTat, note: duLieu.note ?? null },
     });
     await ghiAudit({
       actor,
@@ -98,9 +141,20 @@ danhMucRouter.patch(
     const truoc = await prisma.productLine.findUnique({ where: { id } });
     if (!truoc) throw loi404('Không tìm thấy dòng giải pháp.');
 
+    if (duLieu.vietTat !== undefined) {
+      const trung = await prisma.productLine.findUnique({
+        where: { vietTat: duLieu.vietTat },
+        select: { id: true },
+      });
+      if (trung && trung.id !== id) {
+        throw loi409(`Viết tắt ${duLieu.vietTat} đã dùng cho mục khác.`, { truong: 'vietTat' });
+      }
+    }
+
     const sau = await prisma.productLine.update({
       where: { id },
       data: {
+        ...(duLieu.vietTat === undefined ? {} : { vietTat: duLieu.vietTat }),
         ...(duLieu.name === undefined ? {} : { name: duLieu.name }),
         ...(duLieu.note === undefined ? {} : { note: duLieu.note || null }),
         ...(duLieu.sortOrder === undefined ? {} : { sortOrder: duLieu.sortOrder }),
@@ -177,8 +231,15 @@ danhMucRouter.post(
     if (await prisma.assetCategory.findUnique({ where: { code: duLieu.code }, select: { id: true } })) {
       throw loi409('Mã loại tài sản đã tồn tại.', { truong: 'code' });
     }
+    const vietTat = await chotVietTat(
+      duLieu.vietTat,
+      duLieu.name,
+      async (v) =>
+        (await prisma.assetCategory.findUnique({ where: { vietTat: v }, select: { id: true } })) !==
+        null,
+    );
     const muc = await prisma.assetCategory.create({
-      data: { ...duLieu, note: duLieu.note ?? null },
+      data: { ...duLieu, vietTat, note: duLieu.note ?? null },
     });
     await ghiAudit({
       actor,
@@ -202,9 +263,20 @@ danhMucRouter.patch(
     const truoc = await prisma.assetCategory.findUnique({ where: { id } });
     if (!truoc) throw loi404('Không tìm thấy loại tài sản.');
 
+    if (duLieu.vietTat !== undefined) {
+      const trung = await prisma.assetCategory.findUnique({
+        where: { vietTat: duLieu.vietTat },
+        select: { id: true },
+      });
+      if (trung && trung.id !== id) {
+        throw loi409(`Viết tắt ${duLieu.vietTat} đã dùng cho mục khác.`, { truong: 'vietTat' });
+      }
+    }
+
     const sau = await prisma.assetCategory.update({
       where: { id },
       data: {
+        ...(duLieu.vietTat === undefined ? {} : { vietTat: duLieu.vietTat }),
         ...(duLieu.name === undefined ? {} : { name: duLieu.name }),
         ...(duLieu.note === undefined ? {} : { note: duLieu.note || null }),
         ...(duLieu.sortOrder === undefined ? {} : { sortOrder: duLieu.sortOrder }),
@@ -320,6 +392,8 @@ const luocDoBangTraCuu = z.object({
   /** Bỏ trống thì sinh từ tên — dùng cho luồng "thêm nhanh" trong form thiết bị. */
   code: maDanhMuc.optional(),
   name: z.string().trim().min(1, 'Chưa nhập tên.').max(191),
+  /** Chỉ nguồn gốc dùng (nằm trong mã thiết bị); mục đích sử dụng bỏ qua. */
+  vietTat: luocDoVietTat.optional(),
   note: z.string().trim().max(2000).optional(),
   /** Bỏ trống thì xếp xuống CUỐI danh sách (xem `thuTuCuoi`). */
   sortOrder: z.coerce.number().int().min(0).max(9999).optional(),
@@ -360,20 +434,29 @@ interface BangTraCuu {
     orderBy: Array<Record<string, 'asc' | 'desc'>>;
     select: { sortOrder: true };
   }): Promise<{ sortOrder: number } | null>;
-  create(args: { data: Omit<HangTraCuu, 'id'> }): Promise<HangTraCuu>;
-  update(args: { where: { id: string }; data: Partial<Omit<HangTraCuu, 'id'>> }): Promise<HangTraCuu>;
+  create(args: { data: Omit<HangTraCuu, 'id'> & { vietTat?: string } }): Promise<HangTraCuu>;
+  update(args: {
+    where: { id: string };
+    data: Partial<Omit<HangTraCuu, 'id'>> & { vietTat?: string };
+  }): Promise<HangTraCuu>;
 }
 
 /**
  * CHỐT CHẶN BIÊN DỊCH cho phép ép kiểu ở trên.
  *
- * Nếu sau này ai thêm một cột vào `AssetOrigin` mà quên `AssetPurpose` (hoặc
- * ngược lại), dòng này đỏ ngay — thay vì bộ tuyến dùng chung lặng lẽ bỏ sót cột
- * đó ở một trong hai bảng.
+ * Yêu cầu là mỗi bảng PHỦ ĐỦ những cột bộ tuyến dùng chung đụng tới — thiếu một
+ * cột thì dòng tương ứng đỏ ngay. Cột RIÊNG thì không sao: `AssetOrigin` có
+ * `vietTat` để sinh mã thiết bị, `AssetPurpose` không cần vì mục đích sử dụng
+ * không nằm trong mã.
+ *
+ * (Bản đầu bắt hai bảng GIỐNG HỆT nhau, và nó đã đỏ đúng lúc `vietTat` được
+ * thêm vào một bên — chặt hơn mức cần, nên nới lại đúng điều kiện thật.)
  */
-type PhaiGiongNhau<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
-const _haiBangPhaiGiongNhau: PhaiGiongNhau<AssetOrigin, AssetPurpose> = true;
-void _haiBangPhaiGiongNhau;
+type CoDuCot<_T extends HangTraCuu> = true;
+const _nguonGocDuCot: CoDuCot<AssetOrigin> = true;
+const _mucDichDuCot: CoDuCot<AssetPurpose> = true;
+void _nguonGocDuCot;
+void _mucDichDuCot;
 
 /**
  * Thứ tự để mục mới nằm CUỐI ô chọn.
@@ -397,10 +480,22 @@ function dangKyBangTraCuu(cauHinh: {
   /** Dùng trong nhật ký kiểm toán: asset_origin.create… */
   entityType: string;
   bang: BangTraCuu;
+  /**
+   * Bảng này có cột `vietTat` (dùng sinh mã thiết bị) hay không.
+   *
+   * Nguồn gốc có, mục đích sử dụng không — nên hai tuyến dùng chung bộ mã này
+   * nhưng chỉ một bên đọc/ghi cột đó. Truyền hàm thay vì cờ boolean để phần
+   * Prisma vẫn đúng kiểu, không phải ép.
+   */
+  vietTat?: {
+    daCo: (v: string) => Promise<boolean>;
+    trungVoiMucKhac: (v: string, id: string) => Promise<boolean>;
+  };
   /** Xoá trong CÙNG transaction với dòng nhật ký kiểm toán. */
   xoaTrongTx: (tx: Prisma.TransactionClient, id: string) => Promise<unknown>;
 }): void {
   const { duong, ten, entityType, bang, xoaTrongTx } = cauHinh;
+  const coVietTat = cauHinh.vietTat;
 
   danhMucRouter.get(
     duong,
@@ -441,6 +536,9 @@ function dangKyBangTraCuu(cauHinh: {
           note: duLieu.note ?? null,
           sortOrder: duLieu.sortOrder ?? (await thuTuCuoi(bang)),
           isActive: duLieu.isActive,
+          ...(coVietTat
+            ? { vietTat: await chotVietTat(duLieu.vietTat, duLieu.name, coVietTat.daCo) }
+            : {}),
         },
       });
       await ghiAudit({
@@ -464,10 +562,16 @@ function dangKyBangTraCuu(cauHinh: {
       const duLieu = luocDoBangTraCuu.partial().omit({ code: true }).parse(req.body);
       const truoc = await bang.findUnique({ where: { id } });
       if (!truoc) throw loi404(`Không tìm thấy ${ten}.`);
+      if (coVietTat && duLieu.vietTat !== undefined) {
+        if (await coVietTat.trungVoiMucKhac(duLieu.vietTat, id)) {
+          throw loi409(`Viết tắt ${duLieu.vietTat} đã dùng cho mục khác.`, { truong: 'vietTat' });
+        }
+      }
 
       const sau = await bang.update({
         where: { id },
         data: {
+          ...(coVietTat && duLieu.vietTat !== undefined ? { vietTat: duLieu.vietTat } : {}),
           ...(duLieu.name === undefined ? {} : { name: duLieu.name }),
           ...(duLieu.note === undefined ? {} : { note: duLieu.note || null }),
           ...(duLieu.sortOrder === undefined ? {} : { sortOrder: duLieu.sortOrder }),
@@ -531,6 +635,18 @@ dangKyBangTraCuu({
   ten: 'nguồn gốc',
   entityType: 'asset_origin',
   bang: prisma.assetOrigin as unknown as BangTraCuu,
+  vietTat: {
+    daCo: async (v) =>
+      (await prisma.assetOrigin.findUnique({ where: { vietTat: v }, select: { id: true } })) !==
+      null,
+    trungVoiMucKhac: async (v, id) => {
+      const t = await prisma.assetOrigin.findUnique({
+        where: { vietTat: v },
+        select: { id: true },
+      });
+      return t !== null && t.id !== id;
+    },
+  },
   xoaTrongTx: (tx, id) => tx.assetOrigin.delete({ where: { id } }),
 });
 

@@ -15,6 +15,7 @@ import { dieuKienTaiSan } from '../../lib/pham-vi.js';
 import { tonCuaTaiSan } from '../../lib/ton-kho.js';
 import { xoaFileAnh } from '../../lib/luu-anh.js';
 import { idMucDichHoacDauTien, idNguonGocHoacDauTien } from '../../lib/tra-ma-tai-san.js';
+import { maKeTiepTheoId } from '../../lib/sinh-ma-thiet-bi.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
 import type { BoiCanhGoi } from '../auth/auth.service.js';
 import type {
@@ -210,10 +211,14 @@ export async function tao(
   ctx: BoiCanhGoi,
 ): Promise<ReturnType<typeof donDong>> {
   const [daCo, loai, diem, nguonGoc, mucDich] = await Promise.all([
-    prisma.asset.findUnique({
-      where: { code: duLieu.code },
-      select: { id: true, deletedAt: true },
-    }),
+    // Gõ tay mã thì phải dò trùng; để server sinh thì bước dò nằm trong vòng
+    // thử lại ở dưới, dò ở đây chỉ tốn một truy vấn thừa.
+    duLieu.code
+      ? prisma.asset.findUnique({
+          where: { code: duLieu.code },
+          select: { id: true, deletedAt: true },
+        })
+      : Promise.resolve(null),
     prisma.assetCategory.findUnique({ where: { id: duLieu.categoryId }, select: { id: true } }),
     // `deletedAt: null`: không nhập thiết bị mới về một điểm đã nằm trong thùng rác.
     prisma.location.findFirst({
@@ -233,6 +238,7 @@ export async function tao(
   }
   if (daCo) throw loi409(`Mã thiết bị ${duLieu.code} đã tồn tại.`, { truong: 'code' });
   if (!loai) throw loi400('Loại tài sản không tồn tại.', 'LOAI_KHONG_TON_TAI');
+
   if (!diem) throw loi400('Điểm nhập về không tồn tại hoặc đã bị xoá.', 'DIEM_KHONG_TON_TAI');
   // Kiểm tường minh thay vì để khoá ngoại tự đổ: lỗi khoá ngoại của Prisma là
   // một dòng tiếng Anh về ràng buộc, người dùng đọc không hiểu mình sai ô nào.
@@ -250,10 +256,46 @@ export async function tao(
 
   const ngayNhap = duLieu.receivedDate ? doiNgay(duLieu.receivedDate) : new Date();
 
+  /**
+   * Sinh mã rồi ghi, thử lại nếu vướng khoá duy nhất.
+   *
+   * Hai người cùng bấm Lưu trong một giây thì cả hai đọc ra cùng một số kế
+   * tiếp, người sau đâm vào lỗi trùng mã. Không khoá bảng vì khoá bảng làm
+   * nghẽn cả việc nhập hàng loạt; cứ thử lại — lần thứ hai đọc được mã người
+   * kia vừa ghi nên ra số mới.
+   */
+  const soLanThu = duLieu.code ? 1 : 5;
+  for (let lan = 0; lan < soLanThu; lan += 1) {
+    let ma = duLieu.code;
+    if (!ma) {
+      const sinh = await maKeTiepTheoId(
+        duLieu.originId,
+        duLieu.categoryId,
+        duLieu.productLineId || null,
+      );
+      if (!sinh) throw loi400('Không sinh được mã thiết bị.', 'KHONG_SINH_DUOC_MA');
+      ma = sinh.ma;
+    }
+    try {
+      return await ghiThietBi(ma);
+    } catch (e) {
+      const trungMa =
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002' &&
+        !duLieu.code &&
+        lan < soLanThu - 1;
+      if (!trungMa) throw e;
+    }
+  }
+  throw loi409('Không sinh được mã thiết bị chưa trùng. Hãy thử lại.', {
+    maLoi: 'MA_TRUNG_LIEN_TUC',
+  });
+
+  async function ghiThietBi(ma: string): Promise<ReturnType<typeof donDong>> {
   return prisma.$transaction(async (tx) => {
     const thietBi = await tx.asset.create({
       data: {
-        code: duLieu.code,
+        code: ma,
         name: duLieu.name,
         categoryId: duLieu.categoryId,
         productLineId: duLieu.productLineId || null,
@@ -310,6 +352,7 @@ export async function tao(
 
     return donDong(thietBi);
   });
+  }
 }
 
 export async function sua(

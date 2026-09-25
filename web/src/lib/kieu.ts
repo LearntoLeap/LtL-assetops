@@ -89,6 +89,11 @@ export interface DanhMuc {
   id: string;
   code: string;
   name: string;
+  /**
+   * Viết tắt dùng sinh mã thiết bị ({nguồn gốc}-{loại}-{dòng}-{số}).
+   * Chỉ nguồn gốc, loại tài sản và dòng giải pháp có; mục đích sử dụng không.
+   */
+  vietTat?: string;
   note: string | null;
   sortOrder: number;
   isActive: boolean;

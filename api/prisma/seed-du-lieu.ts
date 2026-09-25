@@ -66,10 +66,10 @@ export interface DongTaiSan {
  * vĩnh viễn thì sửa luôn ở đây.
  */
 export const NGUON_GOC_BAN_DAU = [
-  { code: 'NHAP_TU_IPP', name: 'Nhập từ IPP', sortOrder: 10 },
-  { code: 'LTL_MUA', name: 'LtL mua', sortOrder: 20 },
-  { code: 'LTL_MUON_DOI_TAC', name: 'LtL mượn của đối tác', sortOrder: 30 },
-  { code: 'KHAC', name: 'Khác', sortOrder: 40 },
+  { code: 'NHAP_TU_IPP', name: 'Nhập từ IPP', sortOrder: 10, vietTat: 'IPP' },
+  { code: 'LTL_MUA', name: 'LtL mua', sortOrder: 20, vietTat: 'MUA' },
+  { code: 'LTL_MUON_DOI_TAC', name: 'LtL mượn của đối tác', sortOrder: 30, vietTat: 'MUON' },
+  { code: 'KHAC', name: 'Khác', sortOrder: 40, vietTat: 'KHAC' },
 ] as const;
 
 export const MUC_DICH_BAN_DAU = [
@@ -80,30 +80,31 @@ export const MUC_DICH_BAN_DAU = [
 ] as const;
 
 export const DONG_GIAI_PHAP = [
-  { code: 'UKIT', name: 'uKit', sortOrder: 10 },
-  { code: 'UGOT', name: 'UGOT', sortOrder: 20 },
-  { code: 'STICKEM', name: "Stick'Em", sortOrder: 30 },
-  { code: 'ALPHA_MINI', name: 'Alpha Mini', sortOrder: 40 },
-  { code: 'YANSHEE', name: 'Yanshee', sortOrder: 50 },
-  { code: 'WEEEMAKE', name: 'Weeemake', sortOrder: 60 },
-  { code: 'KHAC', name: 'Dòng khác', sortOrder: 999 },
+  { code: 'UKIT', name: 'uKit', sortOrder: 10, vietTat: 'UKIT' },
+  { code: 'UGOT', name: 'UGOT', sortOrder: 20, vietTat: 'UGOT' },
+  { code: 'STICKEM', name: "Stick'Em", sortOrder: 30, vietTat: 'STK' },
+  { code: 'ALPHA_MINI', name: 'Alpha Mini', sortOrder: 40, vietTat: 'AM' },
+  { code: 'YANSHEE', name: 'Yanshee', sortOrder: 50, vietTat: 'YS' },
+  { code: 'WEEEMAKE', name: 'Weeemake', sortOrder: 60, vietTat: 'WM' },
+  { code: 'KHAC', name: 'Dòng khác', sortOrder: 999, vietTat: 'DKHAC' },
 ] as const;
 
 // --- Loại tài sản ---------------------------------------------------------
 export const LOAI_TAI_SAN: ReadonlyArray<{
   code: string;
   name: string;
+  vietTat: string;
   defaultTrackingType: $Enums.TrackingType;
   sortOrder: number;
 }> = [
-  { code: 'ROBOT', name: 'Robot', defaultTrackingType: 'DON_VI', sortOrder: 10 },
-  { code: 'MAY_TINH', name: 'Máy tính/Laptop', defaultTrackingType: 'DON_VI', sortOrder: 20 },
-  { code: 'TABLET', name: 'Tablet', defaultTrackingType: 'DON_VI', sortOrder: 30 },
-  { code: 'KINH_VR', name: 'Kính VR', defaultTrackingType: 'DON_VI', sortOrder: 40 },
-  { code: 'SA_BAN', name: 'Sa bàn', defaultTrackingType: 'DON_VI', sortOrder: 50 },
-  { code: 'AN_PHAM_IN', name: 'Ấn phẩm in', defaultTrackingType: 'SO_LUONG', sortOrder: 60 },
-  { code: 'PHU_KIEN', name: 'Phụ kiện', defaultTrackingType: 'SO_LUONG', sortOrder: 70 },
-  { code: 'KHAC', name: 'Khác', defaultTrackingType: 'DON_VI', sortOrder: 999 },
+  { code: 'ROBOT', name: 'Robot', defaultTrackingType: 'DON_VI', sortOrder: 10, vietTat: 'RB' },
+  { code: 'MAY_TINH', name: 'Máy tính/Laptop', defaultTrackingType: 'DON_VI', sortOrder: 20, vietTat: 'PC' },
+  { code: 'TABLET', name: 'Tablet', defaultTrackingType: 'DON_VI', sortOrder: 30, vietTat: 'TB' },
+  { code: 'KINH_VR', name: 'Kính VR', defaultTrackingType: 'DON_VI', sortOrder: 40, vietTat: 'VR' },
+  { code: 'SA_BAN', name: 'Sa bàn', defaultTrackingType: 'DON_VI', sortOrder: 50, vietTat: 'SB' },
+  { code: 'AN_PHAM_IN', name: 'Ấn phẩm in', defaultTrackingType: 'SO_LUONG', sortOrder: 60, vietTat: 'AP' },
+  { code: 'PHU_KIEN', name: 'Phụ kiện', defaultTrackingType: 'SO_LUONG', sortOrder: 70, vietTat: 'PK' },
+  { code: 'KHAC', name: 'Khác', defaultTrackingType: 'DON_VI', sortOrder: 999, vietTat: 'KH' },
 ];
 
 // --- Điểm lưu trữ ---------------------------------------------------------
