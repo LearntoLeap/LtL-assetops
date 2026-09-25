@@ -13,6 +13,7 @@ import {
   luocDoNhieuId,
   luocDoSuaThietBi,
   luocDoTaoNhanhThietBi,
+  luocDoHangLe,
   luocDoTaoThietBi,
   luocDoXemTruocMa,
   maThietBi,
@@ -87,6 +88,17 @@ thietBiRouter.get(
  * một mã, và người bấm Lưu sau sẽ nhận mã kế tiếp — `tao()` sinh lại mã ngay
  * trong lúc ghi chứ không tin con số form gửi lên.
  */
+/**
+ * Ô chọn HÀNG LẺ theo tên. Khai TRƯỚC `GET /:id` như mọi tuyến tên cố định khác.
+ */
+thietBiRouter.get(
+  '/hang-le',
+  batAsync(async (req, res) => {
+    const loc = luocDoHangLe.parse(req.query);
+    res.json({ ok: true, ...(await dv.hangLe(nguoiDungHienTai(req), loc)) });
+  }),
+);
+
 thietBiRouter.get(
   '/ma-tiep-theo',
   batAsync(async (req, res) => {

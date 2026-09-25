@@ -12,7 +12,7 @@ import { prisma } from '../../prisma.js';
 import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { dieuKienTaiSan } from '../../lib/pham-vi.js';
-import { tonCuaTaiSan } from '../../lib/ton-kho.js';
+import { tonCuaNhom, tonCuaTaiSan } from '../../lib/ton-kho.js';
 import { xoaFileAnh } from '../../lib/luu-anh.js';
 import { idMucDichHoacDauTien, idNguonGocHoacDauTien } from '../../lib/tra-ma-tai-san.js';
 import { maKeTiepTheoId } from '../../lib/sinh-ma-thiet-bi.js';
@@ -203,6 +203,57 @@ export async function traCuuNhanh(code: string) {
   });
   if (!thietBi) throw loi404(`Không có thiết bị nào mang mã ${chuanHoa}.`);
   return thietBi;
+}
+
+/**
+ * HÀNG LẺ: thiết bị quản lý THEO SỐ LƯỢNG, chọn bằng TÊN chứ không gõ mã.
+ *
+ * Sách lẻ, cờ, standee, ấn phẩm in… không dán mã lên từng cái được, nhưng vẫn
+ * phải biết kho còn bao nhiêu để lấy ra bao nhiêu thì trả về bấy nhiêu. Chúng
+ * KHÔNG phải một bảng riêng — vẫn là thiết bị `SO_LUONG` trong cùng sổ tồn kho,
+ * chỉ khác ở chỗ người dùng không bao giờ phải nhìn thấy mã. Tách bảng riêng
+ * nghĩa là hai hệ thống tồn kho song song, và sớm muộn hai con số sẽ lệch nhau.
+ *
+ * Trả kèm TỒN để người lập yêu cầu không xin nhiều hơn số đang có.
+ */
+export async function hangLe(
+  nguoiDung: NguoiDungDaXacThuc,
+  loc: { tuKhoa?: string | undefined; locationId?: string | undefined; moiTrang: number },
+) {
+  const muc = await prisma.asset.findMany({
+    where: {
+      ...dieuKienTaiSan(nguoiDung),
+      trackingType: 'SO_LUONG',
+      isActive: true,
+      ...(loc.locationId ? { currentLocationId: loc.locationId } : {}),
+      ...(loc.tuKhoa
+        ? {
+            OR: [
+              { name: { contains: loc.tuKhoa } },
+              { code: { contains: loc.tuKhoa } },
+            ],
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      category: { select: { id: true, name: true } },
+      currentLocation: { select: { id: true, name: true } },
+    },
+    orderBy: { name: 'asc' },
+    take: loc.moiTrang,
+  });
+
+  const ton = await tonCuaNhom(
+    muc.map((m) => m.id),
+    loc.locationId ?? null,
+  );
+  return {
+    muc: muc.map((m) => ({ ...m, ton: ton.get(m.id) ?? 0 })),
+    tong: muc.length,
+  };
 }
 
 export async function tao(

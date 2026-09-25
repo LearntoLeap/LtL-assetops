@@ -267,7 +267,7 @@ diaDiemRouter.get(
         ...CHON,
         deletedAt: true,
         deletedBy: { select: { id: true, fullName: true } },
-        _count: { select: { assets: true } },
+        _count: { select: { assets: { where: { deletedAt: null } } } },
       },
       orderBy: { deletedAt: 'desc' },
     });

@@ -201,7 +201,9 @@ function dieuKienTaiSanTheoDich(
   if (maId.length) ve.push({ id: { in: maId } });
   if (loaiId.length) ve.push({ categoryId: { in: loaiId } });
   if (dongId.length) ve.push({ productLineId: { in: dongId } });
-  return ve.length > 0 ? { OR: ve } : null;
+  // `deletedAt: null` ở NGOÀI OR: "bài này đang áp dụng cho bao nhiêu mã" phải
+  // đếm mã còn thật, không tính thiết bị nằm trong thùng rác.
+  return ve.length > 0 ? { deletedAt: null, OR: ve } : null;
 }
 
 /**

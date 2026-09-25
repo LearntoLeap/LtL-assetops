@@ -12,6 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { NutQuetQR } from '@/components/QuetQR';
 import { goiApi, LoiApi } from '@/lib/api';
+import { OGoiYMaThietBi } from '@/components/OGoiYMaThietBi';
+import { OChonHangLe } from './OChonHangLe';
 import type { NoiDen, ThietBi, TrangDuLieu, YeuCau } from '@/lib/kieu';
 
 /** Loại lập được ở form này — BÁO HỎNG có trang riêng vì bắt buộc kèm ảnh. */
@@ -280,18 +282,15 @@ export function FormYeuCau() {
                   <li key={i} className="rounded-md border p-3">
                     <div className="flex flex-wrap items-start gap-2">
                       <div className="min-w-44 flex-1 space-y-1">
-                        <Input
+                        <OGoiYMaThietBi
                           className="font-mono"
-                          placeholder="Mã thiết bị, VD LTL-RB-0001"
-                          value={d.code}
-                          spellCheck={false}
-                          onChange={(su) =>
-                            datMuc((cu) =>
-                              cu.map((x, j) => (j === i ? { ...x, code: su.target.value } : x)),
-                            )
+                          placeholder="Gõ vài ký tự để hiện gợi ý…"
+                          giaTri={d.code}
+                          onDoi={(v) =>
+                            datMuc((cu) => cu.map((x, j) => (j === i ? { ...x, code: v } : x)))
                           }
-                          onBlur={(su) => void traMa(i, su.target.value)}
-                          aria-label={`Mã thiết bị dòng ${i + 1}`}
+                          onChot={(v) => void traMa(i, v)}
+                          ariaLabel={`Mã thiết bị dòng ${i + 1}`}
                         />
                         {d.ten ? (
                           <p className="text-xs text-success-dam">{d.ten}</p>
@@ -373,6 +372,38 @@ export function FormYeuCau() {
                 <Plus aria-hidden />
                 Thêm dòng
               </Button>
+
+              {/*
+                HÀNG LẺ tách thành phần riêng, KHÔNG trộn vào danh sách trên.
+                Người ở kho biết rõ thứ mình cần là robot có mã hay là sách lẻ;
+                tách hai phần thì mỗi phần chỉ hỏi đúng thứ nó cần — trên gõ mã,
+                dưới tìm theo tên. Cả hai cùng đổ vào MỘT danh sách gửi lên, nên
+                phía sau (duyệt → xuất → nhập) không phải biết gì về chuyện này.
+              */}
+              <div className="space-y-2 pt-2">
+                <div>
+                  <p className="text-sm font-medium">Hàng lẻ — chọn theo tên</p>
+                  <p className="text-xs text-muted-foreground">
+                    Sách, cờ, standee, ấn phẩm in… không dán mã lên từng cái. Chọn tên rồi sửa số
+                    lượng ở danh sách trên; lấy ra bao nhiêu thì lúc trả hệ thống đối chiếu bấy nhiêu.
+                  </p>
+                </div>
+                <OChonHangLe
+                  locationId={undefined}
+                  daThem={new Set(muc.map((d) => d.code.trim().toUpperCase()).filter(Boolean))}
+                  onChon={(t) =>
+                    datMuc((cu) => {
+                      // Đã có trong phiếu thì thôi — tránh hai dòng cùng một mã,
+                      // lúc duyệt sẽ không biết lấy số lượng của dòng nào.
+                      if (cu.some((d) => d.code.trim().toUpperCase() === t.code)) return cu;
+                      const trong = cu.findIndex((d) => d.code.trim() === '');
+                      const dong = { code: t.code, quantity: '1', ten: t.name };
+                      if (trong >= 0) return cu.map((d, j) => (j === trong ? dong : d));
+                      return [...cu, dong];
+                    })
+                  }
+                />
+              </div>
             </div>
 
             {loi ? <Alert variant="destructive">{loi}</Alert> : null}

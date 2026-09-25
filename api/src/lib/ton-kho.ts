@@ -156,3 +156,45 @@ export async function tonTheoDiaDiem(
   `);
   return dong.map((d) => ({ assetId: d.asset_id, ton: veSo(d.ton) }));
 }
+
+/**
+ * Tồn của MỘT NHÓM tài sản — dùng cho ô chọn hàng lẻ theo tên.
+ *
+ * Có `tonTatCa()` rồi nhưng cố ý không dùng lại ở đây: ô chọn gọi lại sau mỗi
+ * vài ký tự người dùng gõ, mà `tonTatCa()` quét TOÀN BỘ bảng movements. Ở đây
+ * chỉ cần tồn của đúng 20 dòng đang hiện.
+ *
+ * `locationId` có truyền thì tính tồn TẠI ĐIỂM ĐÓ, không thì tính tổng toàn hệ
+ * thống — người lập yêu cầu cần biết kho mình lấy còn bao nhiêu, chứ tổng toàn
+ * công ty không giúp gì.
+ */
+export async function tonCuaNhom(
+  assetIds: readonly string[],
+  locationId: string | null,
+  db: PrismaTx = prisma,
+): Promise<Map<string, number>> {
+  if (assetIds.length === 0) return new Map();
+  const ids = Prisma.join(assetIds.map((x) => Prisma.sql`${x}`));
+  const locVao = locationId
+    ? Prisma.sql`AND to_location_id = ${locationId}`
+    : Prisma.sql`AND to_location_id IS NOT NULL`;
+  const locRa = locationId
+    ? Prisma.sql`AND from_location_id = ${locationId}`
+    : Prisma.sql`AND from_location_id IS NOT NULL`;
+
+  const dong = await db.$queryRaw<Array<{ asset_id: string; ton: unknown }>>(Prisma.sql`
+    SELECT buoc.asset_id AS asset_id, SUM(buoc.delta) AS ton
+      FROM (
+            SELECT asset_id, quantity AS delta
+              FROM movements
+             WHERE asset_id IN (${ids}) ${locVao}
+            UNION ALL
+            SELECT asset_id, -quantity AS delta
+              FROM movements
+             WHERE asset_id IN (${ids}) ${locRa}
+           ) AS buoc
+      JOIN assets ts ON ts.id = buoc.asset_id AND ts.deleted_at IS NULL
+     GROUP BY buoc.asset_id
+  `);
+  return new Map(dong.map((d) => [d.asset_id, veSo(d.ton)]));
+}

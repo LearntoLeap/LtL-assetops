@@ -410,7 +410,7 @@ nhapXuatRouter.get(
       // Bản xuất là ảnh chụp danh sách đang dùng, không kèm thùng rác.
       where: { deletedAt: null },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { assets: true } } },
+      include: { _count: { select: { assets: { where: { deletedAt: null } } } } },
     });
 
     const wb = taoWorkbook();

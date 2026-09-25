@@ -154,3 +154,11 @@ export const luocDoXemTruocMa = z.object({
   categoryId: z.string().trim().min(1, 'Chưa chọn loại tài sản.').max(30),
   productLineId: z.string().trim().max(30).optional(),
 });
+
+/** Tham số cho ô chọn HÀNG LẺ (thiết bị quản lý theo số lượng). */
+export const luocDoHangLe = z.object({
+  tuKhoa: z.string().trim().max(191).optional(),
+  /** Tính tồn tại đúng điểm này; bỏ trống thì tính tổng toàn hệ thống. */
+  locationId: z.string().trim().max(30).optional(),
+  moiTrang: z.coerce.number().int().positive().max(50).default(20),
+});

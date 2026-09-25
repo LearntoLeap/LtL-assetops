@@ -1,4 +1,14 @@
 /**
+ * MỌI phép đếm thiết bị ở tệp này đều lọc `deletedAt: null`.
+ *
+ * `_count: { select: { assets: true } }` trơn đếm CẢ thiết bị trong thùng rác,
+ * nên cột "Thiết bị" ở trang Danh mục đứng yên sau khi người dùng xoá — đo thật:
+ * xoá mềm một robot thì danh sách thiết bị về 7 mà Danh mục vẫn báo 8. Con số
+ * không khớp với màn hình bên cạnh thì người dùng hết tin cả hai.
+ *
+ * Cùng lý do đó, số này cũng là số dùng để CHẶN xoá danh mục: đếm cả thiết bị
+ * đã xoá thì một loại thực ra đã trống vẫn bị chặn mãi.
+ *
  * Danh mục nền: dòng giải pháp và loại tài sản.
  * Đọc: mọi tài khoản đã đăng nhập (form tạo thiết bị cần).
  * Ghi: ADMIN và VAN_HANH. Xoá: chỉ ADMIN, và chỉ khi chưa có thiết bị nào dùng.
@@ -94,7 +104,7 @@ danhMucRouter.get(
   batAsync(async (_req, res) => {
     const muc = await prisma.productLine.findMany({
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { assets: true } } },
+      include: { _count: { select: { assets: { where: { deletedAt: null } } } } },
     });
     res.json({ ok: true, muc, tong: muc.length });
   }),
@@ -182,7 +192,7 @@ danhMucRouter.delete(
     const id = String(req.params['id']);
     const truoc = await prisma.productLine.findUnique({
       where: { id },
-      include: { _count: { select: { assets: true } } },
+      include: { _count: { select: { assets: { where: { deletedAt: null } } } } },
     });
     if (!truoc) throw loi404('Không tìm thấy dòng giải pháp.');
     if (truoc._count.assets > 0) {
@@ -216,7 +226,7 @@ danhMucRouter.get(
   batAsync(async (_req, res) => {
     const muc = await prisma.assetCategory.findMany({
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { assets: true } } },
+      include: { _count: { select: { assets: { where: { deletedAt: null } } } } },
     });
     res.json({ ok: true, muc, tong: muc.length });
   }),
@@ -316,7 +326,7 @@ danhMucRouter.delete(
     const id = String(req.params['id']);
     const truoc = await prisma.assetCategory.findUnique({
       where: { id },
-      include: { _count: { select: { assets: true } } },
+      include: { _count: { select: { assets: { where: { deletedAt: null } } } } },
     });
     if (!truoc) throw loi404('Không tìm thấy loại tài sản.');
     if (truoc._count.assets > 0) {
@@ -420,14 +430,14 @@ interface HangTraCuu {
 interface BangTraCuu {
   findMany(args: {
     orderBy: Array<Record<string, 'asc' | 'desc'>>;
-    include: { _count: { select: { assets: true } } };
+    include: { _count: { select: { assets: { where: { deletedAt: null } } } } };
   }): Promise<Array<HangTraCuu & { _count: { assets: number } }>>;
   // Ba dạng nạp chồng, để mỗi chỗ gọi nhận đúng kiểu nó cần: chỉ dò tồn tại,
   // lấy kèm số thiết bị đang dùng, hay lấy cả hàng.
   findUnique(args: { where: { code: string }; select: { id: true } }): Promise<{ id: string } | null>;
   findUnique(args: {
     where: { id: string };
-    include: { _count: { select: { assets: true } } };
+    include: { _count: { select: { assets: { where: { deletedAt: null } } } } };
   }): Promise<(HangTraCuu & { _count: { assets: number } }) | null>;
   findUnique(args: { where: { id: string } }): Promise<HangTraCuu | null>;
   findFirst(args: {
@@ -502,7 +512,7 @@ function dangKyBangTraCuu(cauHinh: {
     batAsync(async (_req, res) => {
       const muc = await bang.findMany({
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-        include: { _count: { select: { assets: true } } },
+        include: { _count: { select: { assets: { where: { deletedAt: null } } } } },
       });
       res.json({ ok: true, muc, tong: muc.length });
     }),
@@ -599,7 +609,7 @@ function dangKyBangTraCuu(cauHinh: {
       const id = String(req.params['id']);
       const truoc = await bang.findUnique({
         where: { id },
-        include: { _count: { select: { assets: true } } },
+        include: { _count: { select: { assets: { where: { deletedAt: null } } } } },
       });
       if (!truoc) throw loi404(`Không tìm thấy ${ten}.`);
       // Xoá giá trị mà thiết bị đang dùng thì những thiết bị đó mất phân loại,
