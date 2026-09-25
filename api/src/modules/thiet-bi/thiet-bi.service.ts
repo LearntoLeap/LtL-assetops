@@ -14,6 +14,7 @@ import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { dieuKienTaiSan } from '../../lib/pham-vi.js';
 import { tonCuaTaiSan } from '../../lib/ton-kho.js';
 import { xoaFileAnh } from '../../lib/luu-anh.js';
+import { idMucDichHoacDauTien, idNguonGocHoacDauTien } from '../../lib/tra-ma-tai-san.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
 import type { BoiCanhGoi } from '../auth/auth.service.js';
 import type {
@@ -28,11 +29,9 @@ const CHON_DONG = {
   code: true,
   name: true,
   serialNumber: true,
-  origin: true,
   originNote: true,
   receivedDate: true,
   value: true,
-  purpose: true,
   trackingType: true,
   condition: true,
   allocationStatus: true,
@@ -43,6 +42,10 @@ const CHON_DONG = {
   updatedAt: true,
   category: { select: { id: true, code: true, name: true } },
   productLine: { select: { id: true, code: true, name: true } },
+  // Trả nguyên cả hàng nguồn gốc / mục đích chứ không chỉ id: giao diện cần
+  // TÊN để hiện, mà tên giờ nằm trong CSDL chứ không còn là hằng số dịch sẵn.
+  origin: { select: { id: true, code: true, name: true } },
+  purpose: { select: { id: true, code: true, name: true } },
   currentLocation: { select: { id: true, code: true, name: true, type: true } },
   holder: { select: { id: true, fullName: true, email: true } },
 } satisfies Prisma.AssetSelect;
@@ -73,7 +76,7 @@ export async function danhSach(
     ...(loc.locationId ? { currentLocationId: loc.locationId } : {}),
     ...(loc.condition ? { condition: loc.condition } : {}),
     ...(loc.allocationStatus ? { allocationStatus: loc.allocationStatus } : {}),
-    ...(loc.purpose ? { purpose: loc.purpose } : {}),
+    ...(loc.purposeId ? { purposeId: loc.purposeId } : {}),
     ...(loc.trackingType ? { trackingType: loc.trackingType } : {}),
     ...(loc.tuKhoa
       ? {
@@ -206,13 +209,15 @@ export async function tao(
   actor: NguoiThaoTac,
   ctx: BoiCanhGoi,
 ): Promise<ReturnType<typeof donDong>> {
-  const [daCo, loai, diem] = await Promise.all([
+  const [daCo, loai, diem, nguonGoc, mucDich] = await Promise.all([
     prisma.asset.findUnique({
       where: { code: duLieu.code },
       select: { id: true, deletedAt: true },
     }),
     prisma.assetCategory.findUnique({ where: { id: duLieu.categoryId }, select: { id: true } }),
     prisma.location.findUnique({ where: { id: duLieu.nhapVeLocationId }, select: { id: true } }),
+    prisma.assetOrigin.findUnique({ where: { id: duLieu.originId }, select: { id: true } }),
+    prisma.assetPurpose.findUnique({ where: { id: duLieu.purposeId }, select: { id: true } }),
   ]);
   // Thiết bị ở THÙNG RÁC vẫn giữ mã của nó trong khoá duy nhất, nên báo trùng mà
   // người dùng tìm khắp danh sách không thấy đâu. Nói rõ nó ở đâu và làm gì tiếp.
@@ -225,6 +230,11 @@ export async function tao(
   if (daCo) throw loi409(`Mã thiết bị ${duLieu.code} đã tồn tại.`, { truong: 'code' });
   if (!loai) throw loi400('Loại tài sản không tồn tại.', 'LOAI_KHONG_TON_TAI');
   if (!diem) throw loi400('Điểm nhập về không tồn tại.', 'DIEM_KHONG_TON_TAI');
+  // Kiểm tường minh thay vì để khoá ngoại tự đổ: lỗi khoá ngoại của Prisma là
+  // một dòng tiếng Anh về ràng buộc, người dùng đọc không hiểu mình sai ô nào.
+  // Hay gặp nhất là nguồn gốc vừa bị ADMIN xoá trong lúc form đang mở.
+  if (!nguonGoc) throw loi400('Nguồn gốc không tồn tại (có thể vừa bị xoá). Hãy tải lại trang và chọn lại.', 'NGUON_GOC_KHONG_TON_TAI');
+  if (!mucDich) throw loi400('Mục đích sử dụng không tồn tại (có thể vừa bị xoá). Hãy tải lại trang và chọn lại.', 'MUC_DICH_KHONG_TON_TAI');
 
   if (duLieu.productLineId) {
     const dong = await prisma.productLine.findUnique({
@@ -244,11 +254,11 @@ export async function tao(
         categoryId: duLieu.categoryId,
         productLineId: duLieu.productLineId || null,
         serialNumber: duLieu.serialNumber || null,
-        origin: duLieu.origin,
+        originId: duLieu.originId,
         originNote: duLieu.originNote || null,
         receivedDate: ngayNhap,
         value: duLieu.value ?? null,
-        purpose: duLieu.purpose,
+        purposeId: duLieu.purposeId,
         trackingType: duLieu.trackingType,
         condition: duLieu.condition,
         // Thiết bị mới luôn bắt đầu ở nơi nhận hàng, trạng thái Tại kho.
@@ -321,6 +331,20 @@ export async function sua(
     });
     if (!dong) throw loi400('Dòng giải pháp không tồn tại.', 'DONG_KHONG_TON_TAI');
   }
+  if (duLieu.originId) {
+    const ng = await prisma.assetOrigin.findUnique({
+      where: { id: duLieu.originId },
+      select: { id: true },
+    });
+    if (!ng) throw loi400('Nguồn gốc không tồn tại (có thể vừa bị xoá). Hãy tải lại trang và chọn lại.', 'NGUON_GOC_KHONG_TON_TAI');
+  }
+  if (duLieu.purposeId) {
+    const md = await prisma.assetPurpose.findUnique({
+      where: { id: duLieu.purposeId },
+      select: { id: true },
+    });
+    if (!md) throw loi400('Mục đích sử dụng không tồn tại (có thể vừa bị xoá). Hãy tải lại trang và chọn lại.', 'MUC_DICH_KHONG_TON_TAI');
+  }
 
   const sau = await prisma.asset.update({
     where: { id },
@@ -329,13 +353,13 @@ export async function sua(
       ...(duLieu.categoryId === undefined ? {} : { categoryId: duLieu.categoryId }),
       ...(duLieu.productLineId === undefined ? {} : { productLineId: duLieu.productLineId || null }),
       ...(duLieu.serialNumber === undefined ? {} : { serialNumber: duLieu.serialNumber || null }),
-      ...(duLieu.origin === undefined ? {} : { origin: duLieu.origin }),
+      ...(duLieu.originId === undefined ? {} : { originId: duLieu.originId }),
       ...(duLieu.originNote === undefined ? {} : { originNote: duLieu.originNote || null }),
       ...(duLieu.receivedDate === undefined
         ? {}
         : { receivedDate: duLieu.receivedDate ? doiNgay(duLieu.receivedDate) : null }),
       ...(duLieu.value === undefined ? {} : { value: duLieu.value }),
-      ...(duLieu.purpose === undefined ? {} : { purpose: duLieu.purpose }),
+      ...(duLieu.purposeId === undefined ? {} : { purposeId: duLieu.purposeId }),
       ...(duLieu.dueReturnAt === undefined
         ? {}
         : { dueReturnAt: duLieu.dueReturnAt ? doiNgay(duLieu.dueReturnAt) : null }),
@@ -355,9 +379,9 @@ export async function sua(
       categoryId: truoc.category.id,
       productLineId: truoc.productLine?.id ?? null,
       serialNumber: truoc.serialNumber,
-      origin: truoc.origin,
+      origin: truoc.origin.code,
       value: truoc.value === null ? null : Number(truoc.value),
-      purpose: truoc.purpose,
+      purpose: truoc.purpose.code,
       isActive: truoc.isActive,
     },
     afterValue: {
@@ -365,9 +389,9 @@ export async function sua(
       categoryId: sau.category.id,
       productLineId: sau.productLine?.id ?? null,
       serialNumber: sau.serialNumber,
-      origin: sau.origin,
+      origin: sau.origin.code,
       value: sau.value === null ? null : Number(sau.value),
-      purpose: sau.purpose,
+      purpose: sau.purpose.code,
       isActive: sau.isActive,
     },
     ...ctx,
@@ -652,6 +676,10 @@ export async function taoNhanh(
     throw loi422('Có ảnh đã gắn vào thiết bị khác.', 'ANH_DA_DUNG');
   }
 
+  // Tra một lần trước vòng lặp sinh mã, đừng gọi lại ở mỗi lần thử.
+  const idKhac = await idNguonGocHoacDauTien('KHAC');
+  const idMucDich = duLieu.purposeId ?? (await idMucDichHoacDauTien('XHH'));
+
   const ghiChu =
     'TẠO NHANH khi lập yêu cầu — cần bổ sung nguồn gốc, giá trị và serial sau.' +
     (duLieu.vendorCode ? ` Mã hãng: ${duLieu.vendorCode}.` : '') +
@@ -672,8 +700,8 @@ export async function taoNhanh(
           code: ma,
           name: duLieu.name,
           categoryId: duLieu.categoryId,
-          origin: 'KHAC',
-          purpose: duLieu.purpose,
+          originId: idKhac,
+          purposeId: idMucDich,
           // Nhiều hơn một cái thì phải quản theo số lượng — `tao()` chặn
           // DON_VI mà soLuongNhap > 1, nên suy ở đây cho khỏi vướng.
           trackingType: duLieu.soLuongNhap > 1 ? 'SO_LUONG' : 'DON_VI',

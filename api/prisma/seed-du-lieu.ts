@@ -25,11 +25,13 @@ export interface DongTaiSan {
   categoryCode: string;
   productLineCode?: string;
   serialNumber?: string;
-  origin: $Enums.AssetOrigin;
+  /** MÃ nguồn gốc (hàng trong `asset_origins`), không còn là enum. */
+  origin: string;
   originNote?: string;
   receivedDate: string;
   value?: number;
-  purpose: $Enums.AssetPurpose;
+  /** MÃ mục đích sử dụng (hàng trong `asset_purposes`). */
+  purpose: string;
   trackingType: $Enums.TrackingType;
   condition: $Enums.AssetCondition;
   allocationStatus: $Enums.AllocationStatus;
@@ -55,6 +57,28 @@ export interface DongTaiSan {
 }
 
 // --- Dòng giải pháp -------------------------------------------------------
+/**
+ * NGUỒN GỐC và MỤC ĐÍCH SỬ DỤNG nạp ban đầu.
+ *
+ * Đây là điểm bắt đầu, KHÔNG phải danh sách cố định: người dùng thêm / sửa tên /
+ * xoá thoải mái trong Danh mục. Seed chỉ upsert theo mã nên chạy lại không ghi
+ * đè những mục họ tự thêm; nhưng có ghi đè TÊN của bốn mục này — muốn đổi tên
+ * vĩnh viễn thì sửa luôn ở đây.
+ */
+export const NGUON_GOC_BAN_DAU = [
+  { code: 'NHAP_TU_IPP', name: 'Nhập từ IPP', sortOrder: 10 },
+  { code: 'LTL_MUA', name: 'LtL mua', sortOrder: 20 },
+  { code: 'LTL_MUON_DOI_TAC', name: 'LtL mượn của đối tác', sortOrder: 30 },
+  { code: 'KHAC', name: 'Khác', sortOrder: 40 },
+] as const;
+
+export const MUC_DICH_BAN_DAU = [
+  { code: 'XHH', name: 'XHH', sortOrder: 10 },
+  { code: 'SU_KIEN', name: 'Sự kiện', sortOrder: 20 },
+  { code: 'CO_DINH_TAI_KHO', name: 'Cố định tại kho', sortOrder: 30 },
+  { code: 'CHO_MUON', name: 'Cho mượn', sortOrder: 40 },
+] as const;
+
 export const DONG_GIAI_PHAP = [
   { code: 'UKIT', name: 'uKit', sortOrder: 10 },
   { code: 'UGOT', name: 'UGOT', sortOrder: 20 },

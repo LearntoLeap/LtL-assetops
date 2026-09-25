@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Layers, Package, PenLine, Plus, QrCode, RefreshCw, Trash2, X } from 'lucide-react';
+import { Layers, Package, PenLine, Pencil, Plus, QrCode, RefreshCw, Target, Trash2, Truck, X } from 'lucide-react';
 import { DS_KIEU_QUAN_LY, NHAN_KIEU_QUAN_LY, type KieuQuanLy } from '@ltl/taisan-shared';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +20,7 @@ import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { DanhMuc, TrangDuLieu } from '@/lib/kieu';
 
-type Nhom = 'dong-giai-phap' | 'loai-tai-san';
+type Nhom = 'dong-giai-phap' | 'loai-tai-san' | 'muc-dich' | 'nguon-goc';
 
 function KhoiDanhMuc({
   nhom,
@@ -28,12 +28,22 @@ function KhoiDanhMuc({
   moTa,
   icon,
   coKieuQuanLy,
+  maTuDong = false,
 }: {
   nhom: Nhom;
   tieuDe: string;
   moTa: string;
   icon: React.ReactNode;
   coKieuQuanLy: boolean;
+  /**
+   * Để server sinh mã từ tên, không hỏi người dùng.
+   *
+   * Nguồn gốc và mục đích được thêm chủ yếu từ trong form thiết bị, lúc đang
+   * gấp — bắt nghĩ thêm một cái mã viết hoa không dấu là thừa. Loại tài sản và
+   * dòng giải pháp thì khác: mã của chúng đi vào file Excel nhập liệu nên người
+   * dùng cần tự đặt cho khớp với file họ đang có.
+   */
+  maTuDong?: boolean;
 }) {
   const { nguoiDung } = useAuth();
   const duocSua = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
@@ -69,7 +79,11 @@ function KhoiDanhMuc({
     try {
       await goiApi(`/api/danh-muc/${nhom}`, {
         method: 'POST',
-        than: { code, name, ...(coKieuQuanLy ? { defaultTrackingType: kieu } : {}) },
+        than: {
+          ...(maTuDong ? {} : { code }),
+          name,
+          ...(coKieuQuanLy ? { defaultTrackingType: kieu } : {}),
+        },
       });
       datCode('');
       datName('');
@@ -113,6 +127,26 @@ function KhoiDanhMuc({
     }
   }
 
+  /**
+   * Đổi tên hiển thị. MÃ thì không đổi — mã đã đi vào file Excel nhập liệu và
+   * vài chỗ tra cứu cố định, đổi là hỏng những chỗ đó.
+   */
+  async function doiTen(d: DanhMuc): Promise<void> {
+    const ten = window.prompt(`Đổi tên "${d.name}" thành:`, d.name);
+    if (ten === null) return;
+    if (ten.trim() === '' || ten.trim() === d.name) return;
+    datLoi(null);
+    try {
+      await goiApi(`/api/danh-muc/${nhom}/${d.id}`, {
+        method: 'PATCH',
+        than: { name: ten.trim() },
+      });
+      await tai();
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Đổi tên thất bại.');
+    }
+  }
+
   async function xoa(d: DanhMuc): Promise<void> {
     if (!window.confirm(`Xoá hẳn "${d.name}"?`)) return;
     datLoi(null);
@@ -125,7 +159,16 @@ function KhoiDanhMuc({
   }
 
   return (
-    <Card>
+    /*
+     * `min-w-0` KHÔNG phải trang trí.
+     *
+     * Ô của lưới mặc định `min-width: auto`, tức là không co nhỏ hơn nội dung
+     * tối thiểu bên trong. Bảng ở dưới có 6 cột, min-content của nó ~860px, nên
+     * cả thẻ phình ra 860px trên màn 390px và kéo cả trang tràn ngang — dù bảng
+     * đã nằm trong khung cuộn ngang riêng. Có `min-w-0` thì thẻ co đúng bề ngang
+     * màn hình và khung cuộn của bảng mới có tác dụng. Đã đo: 876px → 390px.
+     */
+    <Card className="min-w-0">
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div>
           <CardTitle className="flex items-center gap-2">
@@ -155,17 +198,19 @@ function KhoiDanhMuc({
 
         {hienForm ? (
           <form onSubmit={(su) => void them(su)} className="grid gap-3 rounded-md border p-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor={`${nhom}-ma`}>Mã *</Label>
-              <Input
-                id={`${nhom}-ma`}
-                required
-                className="font-mono"
-                value={code}
-                onChange={(su) => datCode(su.target.value)}
-                placeholder="VIET_HOA_KHONG_DAU"
-              />
-            </div>
+            {maTuDong ? null : (
+              <div className="space-y-1.5">
+                <Label htmlFor={`${nhom}-ma`}>Mã *</Label>
+                <Input
+                  id={`${nhom}-ma`}
+                  required
+                  className="font-mono"
+                  value={code}
+                  onChange={(su) => datCode(su.target.value)}
+                  placeholder="VIET_HOA_KHONG_DAU"
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor={`${nhom}-ten`}>Tên *</Label>
               <Input
@@ -265,6 +310,17 @@ function KhoiDanhMuc({
                 <TableCell>
                   <div className="flex justify-end gap-1">
                     {duocSua ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void doiTen(d)}
+                        aria-label={`Đổi tên ${d.name}`}
+                        title="Đổi tên"
+                      >
+                        <Pencil aria-hidden />
+                      </Button>
+                    ) : null}
+                    {duocSua ? (
                       <Button variant="outline" size="sm" onClick={() => void doiHoatDong(d)}>
                         {d.isActive ? 'Ngừng dùng' : 'Dùng lại'}
                       </Button>
@@ -315,6 +371,22 @@ export function DanhMucHome() {
           moTa="uKit, UGOT, Stick'Em, Alpha Mini, Yanshee, Weeemake…"
           icon={<Layers className="text-primary-dam" aria-hidden />}
           coKieuQuanLy={false}
+        />
+        <KhoiDanhMuc
+          nhom="nguon-goc"
+          tieuDe="Nguồn gốc"
+          moTa="Thiết bị từ đâu mà có. Thêm được thẳng trong form thiết bị."
+          icon={<Truck className="text-primary-dam" aria-hidden />}
+          coKieuQuanLy={false}
+          maTuDong
+        />
+        <KhoiDanhMuc
+          nhom="muc-dich"
+          tieuDe="Mục đích sử dụng"
+          moTa="Thiết bị dùng vào việc gì. Thêm được thẳng trong form thiết bị."
+          icon={<Target className="text-primary-dam" aria-hidden />}
+          coKieuQuanLy={false}
+          maTuDong
         />
       </div>
     </div>

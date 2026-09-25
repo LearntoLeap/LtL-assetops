@@ -1,8 +1,6 @@
 import { z } from 'zod';
 import {
   KIEU_QUAN_LY,
-  MUC_DICH_SU_DUNG,
-  NGUON_GOC,
   TINH_TRANG,
   TRANG_THAI_PHAN_BO,
 } from '@ltl/taisan-shared';
@@ -47,7 +45,11 @@ export const luocDoTaoNhanhThietBi = z.object({
   /** Mã/serial của hãng cung cấp, nếu vỏ hộp có in. */
   vendorCode: z.string().trim().max(191).optional(),
   soLuongNhap: z.coerce.number().int().min(1).max(1_000_000).default(1),
-  purpose: z.enum(MUC_DICH_SU_DUNG).default('XHH'),
+  /**
+   * Bỏ trống thì service tự lấy mục đích mã XHH. Tạo nhanh là lúc đang gấp,
+   * không bắt chọn thêm một ô nữa.
+   */
+  purposeId: z.string().trim().max(30).optional(),
   /** Ảnh thiết bị — BẮT BUỘC ít nhất một. */
   anhIds: z
     .array(z.string().trim().min(1).max(30))
@@ -64,11 +66,11 @@ export const luocDoTaoThietBi = z
     categoryId: z.string().trim().min(1, 'Chưa chọn loại tài sản.').max(30),
     productLineId: z.string().trim().max(30).optional(),
     serialNumber: z.string().trim().max(191).optional(),
-    origin: z.enum(NGUON_GOC),
+    originId: z.string().trim().min(1, 'Chưa chọn nguồn gốc.').max(30),
     originNote: z.string().trim().max(255).optional(),
     receivedDate: ngayISO.optional(),
     value: z.coerce.number().min(0).max(999_999_999_999).optional(),
-    purpose: z.enum(MUC_DICH_SU_DUNG),
+    purposeId: z.string().trim().min(1, 'Chưa chọn mục đích sử dụng.').max(30),
     trackingType: z.enum(KIEU_QUAN_LY),
     condition: z.enum(TINH_TRANG).default('TOT'),
     /** Điểm nhận hàng lúc nhập ban đầu — sinh ra movement NHAP_BAN_DAU. */
@@ -98,11 +100,11 @@ export const luocDoSuaThietBi = z
     categoryId: z.string().trim().min(1).max(30).optional(),
     productLineId: z.string().trim().max(30).nullable().optional(),
     serialNumber: z.string().trim().max(191).nullable().optional(),
-    origin: z.enum(NGUON_GOC).optional(),
+    originId: z.string().trim().min(1).max(30).optional(),
     originNote: z.string().trim().max(255).nullable().optional(),
     receivedDate: ngayISO.nullable().optional(),
     value: z.coerce.number().min(0).max(999_999_999_999).nullable().optional(),
-    purpose: z.enum(MUC_DICH_SU_DUNG).optional(),
+    purposeId: z.string().trim().min(1).max(30).optional(),
     dueReturnAt: ngayISO.nullable().optional(),
     note: z.string().trim().max(5000).nullable().optional(),
     isActive: z.boolean().optional(),
@@ -117,7 +119,7 @@ export const luocDoLocThietBi = z.object({
   locationId: z.string().trim().max(30).optional(),
   condition: z.enum(TINH_TRANG).optional(),
   allocationStatus: z.enum(TRANG_THAI_PHAN_BO).optional(),
-  purpose: z.enum(MUC_DICH_SU_DUNG).optional(),
+  purposeId: z.string().trim().max(30).optional(),
   trackingType: z.enum(KIEU_QUAN_LY).optional(),
   chiHoatDong: z.enum(['true', 'false']).default('true'),
   sapXep: z.enum(['code', 'name', 'moi_nhat']).default('code'),

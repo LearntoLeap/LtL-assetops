@@ -22,11 +22,18 @@ export type LoaiDiemLuuTru = (typeof LOAI_DIEM_LUU_TRU)[number];
 export const KIEU_QUAN_LY = ['DON_VI', 'SO_LUONG'] as const;
 export type KieuQuanLy = (typeof KIEU_QUAN_LY)[number];
 
-export const NGUON_GOC = ['NHAP_TU_IPP', 'LTL_MUA', 'LTL_MUON_DOI_TAC', 'KHAC'] as const;
-export type NguonGoc = (typeof NGUON_GOC)[number];
-
-export const MUC_DICH_SU_DUNG = ['XHH', 'SU_KIEN', 'CO_DINH_TAI_KHO', 'CHO_MUON'] as const;
-export type MucDichSuDung = (typeof MUC_DICH_SU_DUNG)[number];
+/*
+ * NGUỒN GỐC và MỤC ĐÍCH SỬ DỤNG KHÔNG còn là enum.
+ *
+ * Trước đây là hai danh sách cứng ở đây; giờ là hai bảng trong CSDL
+ * (`asset_origins`, `asset_purposes`) mà người dùng tự thêm / sửa / xoá được,
+ * nên danh sách hợp lệ chỉ CSDL mới biết. Cố ý xoá hẳn khỏi đây thay vì để lại
+ * "cho tiện": còn hằng số thì sớm muộn có chỗ dựng ô chọn từ nó, và ô đó sẽ
+ * không bao giờ thấy giá trị người dùng vừa thêm.
+ *
+ * Giá trị nạp ban đầu nằm ở `api/prisma/seed.ts` và trong migration
+ * 20260925030000_nguon_goc_muc_dich_thanh_bang.
+ */
 
 export const TINH_TRANG = [
   'TOT',

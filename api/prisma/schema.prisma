@@ -50,20 +50,6 @@ enum TrackingType {
   SO_LUONG
 }
 
-enum AssetOrigin {
-  NHAP_TU_IPP
-  LTL_MUA
-  LTL_MUON_DOI_TAC
-  KHAC
-}
-
-enum AssetPurpose {
-  XHH
-  SU_KIEN
-  CO_DINH_TAI_KHO
-  CHO_MUON
-}
-
 enum AssetCondition {
   TOT
   DANG_SU_DUNG
@@ -281,6 +267,46 @@ model KioskSetting {
 // ===========================================================================
 
 /// Dòng giải pháp: uKit, UGOT, Stick'Em, Alpha Mini, Yanshee, Weeemake…
+/// NGUỒN GỐC thiết bị — bảng tra cứu, KHÔNG phải enum.
+///
+/// Trước đây là enum cứng 4 giá trị, muốn thêm phải sửa mã nguồn rồi chạy
+/// migration. Giờ thêm/sửa/xoá ngay trong ứng dụng. Bốn giá trị ban đầu
+/// (NHAP_TU_IPP, LTL_MUA, LTL_MUON_DOI_TAC, KHAC) được nạp sẵn nhưng không có
+/// đặc quyền gì: sửa tên được, xoá được nếu chưa thiết bị nào dùng.
+///
+/// `code` vẫn giữ vì file Excel nhập liệu và các chỗ gọi theo mã cố định
+/// (tạo nhanh dùng KHAC, kiosk dùng CO_DINH_TAI_KHO) tra theo nó.
+model AssetOrigin {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  code      String   @unique @db.VarChar(64)
+  name      String   @db.VarChar(191)
+  note      String?  @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  assets Asset[]
+
+  @@map("asset_origins")
+}
+
+/// MỤC ĐÍCH SỬ DỤNG — bảng tra cứu, cùng lý do với AssetOrigin.
+model AssetPurpose {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  code      String   @unique @db.VarChar(64)
+  name      String   @db.VarChar(191)
+  note      String?  @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  assets Asset[]
+
+  @@map("asset_purposes")
+}
+
 model ProductLine {
   id        String   @id @default(cuid()) @db.VarChar(30)
   code      String   @unique @db.VarChar(64)
@@ -392,12 +418,12 @@ model Asset {
   productLineId     String?          @map("product_line_id") @db.VarChar(30)
   /// Serial của nhà sản xuất.
   serialNumber      String?          @map("serial_number") @db.VarChar(191)
-  origin            AssetOrigin
+  originId          String           @map("origin_id") @db.VarChar(30)
   originNote        String?          @map("origin_note") @db.VarChar(255)
   receivedDate      DateTime?        @map("received_date")
   /// Giá trị (VND).
   value             Decimal?         @db.Decimal(15, 2)
-  purpose           AssetPurpose
+  purposeId         String           @map("purpose_id") @db.VarChar(30)
   trackingType      TrackingType     @map("tracking_type")
   currentLocationId String?          @map("current_location_id") @db.VarChar(30)
   condition         AssetCondition   @default(TOT)
@@ -422,6 +448,8 @@ model Asset {
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
   category        AssetCategory @relation(fields: [categoryId], references: [id])
+  origin          AssetOrigin   @relation(fields: [originId], references: [id])
+  purpose         AssetPurpose  @relation(fields: [purposeId], references: [id])
   productLine     ProductLine?  @relation(fields: [productLineId], references: [id], onDelete: SetNull)
   currentLocation Location?     @relation("AssetCurrentLocation", fields: [currentLocationId], references: [id], onDelete: SetNull)
   holder          User?         @relation("AssetHolder", fields: [holderUserId], references: [id], onDelete: SetNull)
@@ -443,7 +471,8 @@ model Asset {
   @@index([currentLocationId])
   @@index([allocationStatus])
   @@index([condition])
-  @@index([purpose])
+  @@index([originId])
+  @@index([purposeId])
   @@index([holderUserId])
   @@index([dueReturnAt])
   /// Mọi truy vấn danh sách đều lọc `deleted_at IS NULL` nên cột này phải có chỉ mục.
@@ -963,10 +992,10 @@ enum WikiStatus {
 }
 
 model WikiArticle {
-  id       String @id @default(cuid()) @db.VarChar(30)
+  id       String  @id @default(cuid()) @db.VarChar(30)
   /// Đường dẫn thân thiện, vd "ugot-explorer-kit" — link chia sẻ đọc được.
-  slug     String @unique @db.VarChar(191)
-  tieuDe   String @db.VarChar(191)
+  slug     String  @unique @db.VarChar(191)
+  tieuDe   String  @db.VarChar(191)
   /// 1–3 câu, hiện ở thẻ thư viện và ở kết quả tìm kiếm.
   tomTat   String? @db.VarChar(500)
   /// Markdown. Thiết bị này là gì, dùng để làm gì.
@@ -1028,20 +1057,20 @@ model WikiLink {
 }
 
 model WikiItem {
-  id        String       @id @default(cuid()) @db.VarChar(30)
-  articleId String       @map("article_id") @db.VarChar(30)
+  id        String         @id @default(cuid()) @db.VarChar(30)
+  articleId String         @map("article_id") @db.VarChar(30)
   loai      WikiItemKind
-  tieuDe    String       @db.VarChar(191)
-  noiDung   String?      @db.Text
+  tieuDe    String         @db.VarChar(191)
+  noiDung   String?        @db.Text
   /// Chỉ có nghĩa với THANH_PHAN.
-  soLuong   Int?         @map("so_luong")
-  donVi     String?      @map("don_vi") @db.VarChar(32)
+  soLuong   Int?           @map("so_luong")
+  donVi     String?        @map("don_vi") @db.VarChar(32)
   /// Chỉ có nghĩa với LUU_Y.
   mucDo     WikiNoteLevel?
   /// Thành phần này ứng với mã nào trong kho — để bấm một cái là sang form lấy
   /// linh kiện, khỏi gõ tay tên linh kiện. Xoá mã thì vẫn giữ dòng, chỉ mất liên kết.
-  assetId   String?      @map("asset_id") @db.VarChar(30)
-  thuTu     Int          @default(0) @map("thu_tu")
+  assetId   String?        @map("asset_id") @db.VarChar(30)
+  thuTu     Int            @default(0) @map("thu_tu")
 
   article WikiArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
   asset   Asset?      @relation(fields: [assetId], references: [id], onDelete: SetNull)

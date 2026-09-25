@@ -16,9 +16,7 @@ import type {
   LoaiDiChuyen,
   LoaiDiemLuuTru,
   LoaiYeuCau,
-  MucDichSuDung,
   MucDoCanhBao,
-  NguonGoc,
   TinhTrang,
   TrangThaiBBBG,
   TrangThaiKiemKe,
@@ -44,12 +42,9 @@ export type DanhSachKiemTraEnum = [
   // TrackingType ↔ KieuQuanLy
   PhaiRong<Exclude<$Enums.TrackingType, KieuQuanLy>>,
   PhaiRong<Exclude<KieuQuanLy, $Enums.TrackingType>>,
-  // AssetOrigin ↔ NguonGoc
-  PhaiRong<Exclude<$Enums.AssetOrigin, NguonGoc>>,
-  PhaiRong<Exclude<NguonGoc, $Enums.AssetOrigin>>,
-  // AssetPurpose ↔ MucDichSuDung
-  PhaiRong<Exclude<$Enums.AssetPurpose, MucDichSuDung>>,
-  PhaiRong<Exclude<MucDichSuDung, $Enums.AssetPurpose>>,
+  // Nguồn gốc và mục đích sử dụng KHÔNG có ở đây nữa: từ 25/09/2026 chúng là
+  // bảng tra cứu (`asset_origins`, `asset_purposes`) chứ không còn là enum, nên
+  // không có hai danh sách cố định nào để đối chiếu.
   // AssetCondition ↔ TinhTrang
   PhaiRong<Exclude<$Enums.AssetCondition, TinhTrang>>,
   PhaiRong<Exclude<TinhTrang, $Enums.AssetCondition>>,

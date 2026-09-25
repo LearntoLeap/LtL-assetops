@@ -13,8 +13,6 @@ import type {
   LoaiDiChuyen,
   LoaiDiemLuuTru,
   LoaiYeuCau,
-  MucDichSuDung,
-  NguonGoc,
   TinhTrang,
   TrangThaiBBBG,
   TrangThaiKiemKe,
@@ -105,11 +103,16 @@ export interface ThietBi {
   code: string;
   name: string;
   serialNumber: string | null;
-  origin: NguonGoc;
+  /**
+   * Nguồn gốc và mục đích KHÔNG còn là enum — chúng là hàng trong CSDL mà người
+   * dùng thêm / sửa / xoá được, nên API trả nguyên cả hàng. Đừng dịch `code`
+   * sang tiếng Việt ở phía web: `name` chính là cái người dùng đã đặt.
+   */
+  origin: { id: string; code: string; name: string };
   originNote: string | null;
   receivedDate: string | null;
   value: number | null;
-  purpose: MucDichSuDung;
+  purpose: { id: string; code: string; name: string };
   trackingType: KieuQuanLy;
   condition: TinhTrang;
   allocationStatus: TrangThaiPhanBo;

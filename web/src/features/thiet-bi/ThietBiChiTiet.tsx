@@ -5,8 +5,6 @@ import QRCode from 'qrcode';
 import {
   NHAN_KIEU_QUAN_LY,
   NHAN_LOAI_DI_CHUYEN,
-  NHAN_MUC_DICH_SU_DUNG,
-  NHAN_NGUON_GOC,
   NHAN_TINH_TRANG,
   NHAN_TRANG_THAI_PHAN_BO,
 } from '@ltl/taisan-shared';
@@ -178,7 +176,7 @@ export function ThietBiChiTiet() {
               <Muc nhan="Dòng giải pháp">{t.productLine?.name ?? '—'}</Muc>
               <Muc nhan="Serial NSX">{t.serialNumber ?? '—'}</Muc>
               <Muc nhan="Nguồn gốc">
-                {NHAN_NGUON_GOC[t.origin]}
+                {t.origin.name}
                 {t.originNote ? (
                   <span className="block text-xs font-normal text-muted-foreground">
                     {t.originNote}
@@ -187,7 +185,7 @@ export function ThietBiChiTiet() {
               </Muc>
               <Muc nhan="Ngày nhập">{ngay(t.receivedDate)}</Muc>
               <Muc nhan="Giá trị">{tienVN(t.value)} đ</Muc>
-              <Muc nhan="Mục đích sử dụng">{NHAN_MUC_DICH_SU_DUNG[t.purpose]}</Muc>
+              <Muc nhan="Mục đích sử dụng">{t.purpose.name}</Muc>
               <Muc nhan="Kiểu quản lý">{NHAN_KIEU_QUAN_LY[t.trackingType]}</Muc>
               <Muc nhan="Vị trí hiện tại">
                 {t.currentLocation?.name ??

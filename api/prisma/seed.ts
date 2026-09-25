@@ -16,6 +16,8 @@ import {
   DONG_GIAI_PHAP,
   LOAI_TAI_SAN,
   LY_DO_THAY_LINH_KIEN,
+  MUC_DICH_BAN_DAU,
+  NGUON_GOC_BAN_DAU,
   TAI_KHOAN,
   TAI_SAN,
 } from './seed-du-lieu.js';
@@ -52,6 +54,25 @@ function docMatKhau(): string {
 }
 
 async function napDanhMuc(): Promise<void> {
+  // Nguồn gốc & mục đích phải có TRƯỚC tài sản: tài sản khoá ngoại vào đây.
+  for (const n of NGUON_GOC_BAN_DAU) {
+    await prisma.assetOrigin.upsert({
+      where: { code: n.code },
+      create: { code: n.code, name: n.name, sortOrder: n.sortOrder },
+      update: { name: n.name, sortOrder: n.sortOrder },
+    });
+  }
+  viet(`  • Nguồn gốc: ${NGUON_GOC_BAN_DAU.length}`);
+
+  for (const m of MUC_DICH_BAN_DAU) {
+    await prisma.assetPurpose.upsert({
+      where: { code: m.code },
+      create: { code: m.code, name: m.name, sortOrder: m.sortOrder },
+      update: { name: m.name, sortOrder: m.sortOrder },
+    });
+  }
+  viet(`  • Mục đích sử dụng: ${MUC_DICH_BAN_DAU.length}`);
+
   for (const d of DONG_GIAI_PHAP) {
     await prisma.productLine.upsert({
       where: { code: d.code },
@@ -176,6 +197,31 @@ async function napTaiSan(
       l.id,
     ]),
   );
+  const nguonGoc = new Map(
+    (await prisma.assetOrigin.findMany({ select: { id: true, code: true } })).map((n) => [
+      n.code,
+      n.id,
+    ]),
+  );
+  const mucDich = new Map(
+    (await prisma.assetPurpose.findMany({ select: { id: true, code: true } })).map((m) => [
+      m.code,
+      m.id,
+    ]),
+  );
+  // Dừng hẳn nếu mã trong file seed không còn trong CSDL — thà đổ ở đây còn hơn
+  // tạo thiết bị với nguồn gốc của người khác.
+  const nguonGocTheoMa = (ma: string, maThietBi: string): string => {
+    const id = nguonGoc.get(ma);
+    if (!id) throw new Error(`${maThietBi}: không có nguồn gốc mã "${ma}" trong CSDL.`);
+    return id;
+  };
+  const mucDichTheoMa = (ma: string, maThietBi: string): string => {
+    const id = mucDich.get(ma);
+    if (!id) throw new Error(`${maThietBi}: không có mục đích sử dụng mã "${ma}" trong CSDL.`);
+    return id;
+  };
+
   const dong = new Map(
     (await prisma.productLine.findMany({ select: { id: true, code: true } })).map((d) => [
       d.code,
@@ -222,11 +268,11 @@ async function napTaiSan(
       categoryId,
       productLineId,
       serialNumber: t.serialNumber ?? null,
-      origin: t.origin,
+      originId: nguonGocTheoMa(t.origin, t.code),
       originNote: t.originNote ?? null,
       receivedDate: doiNgay(t.receivedDate),
       value: t.value ?? null,
-      purpose: t.purpose,
+      purposeId: mucDichTheoMa(t.purpose, t.code),
       trackingType: t.trackingType,
       currentLocationId,
       condition: t.condition,

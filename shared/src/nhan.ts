@@ -14,9 +14,7 @@ import {
   LOAI_DI_CHUYEN,
   LOAI_YEU_CAU,
   KIEU_QUAN_LY,
-  MUC_DICH_SU_DUNG,
   MUC_DO_CANH_BAO,
-  NGUON_GOC,
   TINH_TRANG,
   ANH_NEN_KIOSK,
   TRANG_THAI_BBBG,
@@ -35,9 +33,7 @@ import {
   type LoaiYeuCau,
   type MucDoLuuY,
   type TrangThaiWiki,
-  type MucDichSuDung,
   type MucDoCanhBao,
-  type NguonGoc,
   type TinhTrang,
   type AnhNenKiosk,
   type TrangThaiBBBG,
@@ -66,20 +62,6 @@ export const NHAN_KIEU_QUAN_LY = {
   DON_VI: 'Theo từng đơn vị',
   SO_LUONG: 'Theo số lượng',
 } satisfies Record<KieuQuanLy, string>;
-
-export const NHAN_NGUON_GOC = {
-  NHAP_TU_IPP: 'Nhập từ IPP',
-  LTL_MUA: 'LtL mua',
-  LTL_MUON_DOI_TAC: 'LtL mượn của đối tác',
-  KHAC: 'Khác',
-} satisfies Record<NguonGoc, string>;
-
-export const NHAN_MUC_DICH_SU_DUNG = {
-  XHH: 'XHH',
-  SU_KIEN: 'Sự kiện',
-  CO_DINH_TAI_KHO: 'Cố định tại kho',
-  CHO_MUON: 'Cho mượn',
-} satisfies Record<MucDichSuDung, string>;
 
 export const NHAN_TINH_TRANG = {
   TOT: 'Tốt',
@@ -225,8 +207,6 @@ export const DS_VAI_TRO = danhSach(VAI_TRO, NHAN_VAI_TRO);
 export const DS_ANH_NEN_KIOSK = danhSach(ANH_NEN_KIOSK, NHAN_ANH_NEN_KIOSK);
 export const DS_LOAI_DIEM_LUU_TRU = danhSach(LOAI_DIEM_LUU_TRU, NHAN_LOAI_DIEM_LUU_TRU);
 export const DS_KIEU_QUAN_LY = danhSach(KIEU_QUAN_LY, NHAN_KIEU_QUAN_LY);
-export const DS_NGUON_GOC = danhSach(NGUON_GOC, NHAN_NGUON_GOC);
-export const DS_MUC_DICH_SU_DUNG = danhSach(MUC_DICH_SU_DUNG, NHAN_MUC_DICH_SU_DUNG);
 export const DS_TINH_TRANG = danhSach(TINH_TRANG, NHAN_TINH_TRANG);
 export const DS_LOAI_MUC_WIKI = danhSach(LOAI_MUC_WIKI, NHAN_LOAI_MUC_WIKI);
 export const DS_MUC_DO_LUU_Y = danhSach(MUC_DO_LUU_Y, NHAN_MUC_DO_LUU_Y);

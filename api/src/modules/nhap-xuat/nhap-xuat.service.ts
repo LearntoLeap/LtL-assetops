@@ -10,19 +10,15 @@ import type { Prisma } from '@prisma/client';
 import {
   KIEU_QUAN_LY,
   LOAI_DIEM_LUU_TRU,
-  MUC_DICH_SU_DUNG,
-  NGUON_GOC,
   NHAN_KIEU_QUAN_LY,
   NHAN_LOAI_DIEM_LUU_TRU,
-  NHAN_MUC_DICH_SU_DUNG,
-  NHAN_NGUON_GOC,
   NHAN_TINH_TRANG,
   TINH_TRANG,
 } from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { loi422 } from '../../lib/loi-http.js';
-import { doiNhanSangMa, nhanHopLe, type OMotDong } from '../../lib/excel.js';
+import { chuanHoaDeSo, doiNhanSangMa, nhanHopLe, type OMotDong } from '../../lib/excel.js';
 import type { BoiCanhGoi } from '../auth/auth.service.js';
 
 // ---------------------------------------------------------------- kiểu dữ liệu
@@ -78,8 +74,9 @@ export const COT_DIA_DIEM = [
 
 // ------------------------------------------------------------- bộ đổi nhãn→mã
 
-const maNguonGoc = doiNhanSangMa(NGUON_GOC, NHAN_NGUON_GOC);
-const maMucDich = doiNhanSangMa(MUC_DICH_SU_DUNG, NHAN_MUC_DICH_SU_DUNG);
+// Nguồn gốc và mục đích KHÔNG có bộ đổi nhãn dựng sẵn ở đây: danh sách hợp lệ
+// nằm trong CSDL và người dùng đổi được bất cứ lúc nào, nên phải dựng lại mỗi
+// lần soát file (xem `dungTraCuu`).
 const maKieuQuanLy = doiNhanSangMa(KIEU_QUAN_LY, NHAN_KIEU_QUAN_LY);
 const maTinhTrang = doiNhanSangMa(TINH_TRANG, NHAN_TINH_TRANG);
 const maLoaiDiem = doiNhanSangMa(LOAI_DIEM_LUU_TRU, NHAN_LOAI_DIEM_LUU_TRU);
@@ -124,11 +121,11 @@ export interface DongThietBiHopLe {
   categoryCode: string;
   productLineId: string | null;
   serialNumber: string | null;
-  origin: (typeof NGUON_GOC)[number];
+  originId: string;
   originNote: string | null;
   receivedDate: Date;
   value: number | null;
-  purpose: (typeof MUC_DICH_SU_DUNG)[number];
+  purposeId: string;
   trackingType: (typeof KIEU_QUAN_LY)[number];
   condition: (typeof TINH_TRANG)[number];
   nhapVeLocationId: string;
@@ -137,15 +134,40 @@ export interface DongThietBiHopLe {
   note: string | null;
 }
 
+interface BangNhan {
+  /** Mã HOẶC nhãn đã chuẩn hoá → id. */
+  theoNhan: Map<string, string>;
+  /** Danh sách nhãn đang hợp lệ, để nhét vào thông điệp lỗi. */
+  nhanHopLe: string;
+}
+
 interface TraCuu {
   loai: Map<string, string>;
   dong: Map<string, string>;
   diem: Map<string, string>;
   maDaCo: Set<string>;
+  nguonGoc: BangNhan;
+  mucDich: BangNhan;
+}
+
+/**
+ * Dựng bảng tra "người dùng gõ gì" → id, cho nguồn gốc và mục đích.
+ *
+ * Nhận cả MÃ lẫn TÊN, vì file mẫu ghi tên tiếng Việt mà người quen tay vẫn gõ
+ * mã. Chỉ lấy mục đang dùng: mục đã Ngừng dùng thì không nên nhập thêm thiết bị
+ * mới vào đó — nhưng thiết bị CŨ đang mang mục đó vẫn nguyên, không đụng tới.
+ */
+function dungBangNhan(hang: ReadonlyArray<{ id: string; code: string; name: string }>): BangNhan {
+  const theoNhan = new Map<string, string>();
+  for (const h of hang) {
+    theoNhan.set(chuanHoaDeSo(h.code), h.id);
+    theoNhan.set(chuanHoaDeSo(h.name), h.id);
+  }
+  return { theoNhan, nhanHopLe: hang.map((h) => h.name).join(' / ') };
 }
 
 async function dungTraCuu(): Promise<TraCuu> {
-  const [loai, dong, diem, taiSan] = await Promise.all([
+  const [loai, dong, diem, taiSan, nguonGoc, mucDich] = await Promise.all([
     prisma.assetCategory.findMany({ select: { id: true, code: true } }),
     prisma.productLine.findMany({ select: { id: true, code: true } }),
     prisma.location.findMany({ select: { id: true, code: true } }),
@@ -154,12 +176,24 @@ async function dungTraCuu(): Promise<TraCuu> {
     // file nhập liệu trùng mã sẽ qua được bước soát rồi vỡ ở bước ghi với lỗi khoá
     // duy nhất của CSDL — thông điệp đó người dùng không hiểu gì.
     prisma.asset.findMany({ select: { code: true } }),
+    prisma.assetOrigin.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, code: true, name: true },
+    }),
+    prisma.assetPurpose.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, code: true, name: true },
+    }),
   ]);
   return {
     loai: new Map(loai.map((x) => [x.code.toUpperCase(), x.id])),
     dong: new Map(dong.map((x) => [x.code.toUpperCase(), x.id])),
     diem: new Map(diem.map((x) => [x.code.toUpperCase(), x.id])),
     maDaCo: new Set(taiSan.map((x) => x.code.toUpperCase())),
+    nguonGoc: dungBangNhan(nguonGoc),
+    mucDich: dungBangNhan(mucDich),
   };
 }
 
@@ -234,20 +268,29 @@ export async function soatThietBi(
 
     // --- nguồn gốc
     const nguonGocChu = lay(d, 'Nguồn gốc *');
-    const origin = nguonGocChu ? maNguonGoc(nguonGocChu) : null;
+    const originId = nguonGocChu
+      ? (traCuu.nguonGoc.theoNhan.get(chuanHoaDeSo(nguonGocChu)) ?? null)
+      : null;
     if (!nguonGocChu) them('Nguồn gốc *', 'Chưa điền nguồn gốc.');
-    else if (!origin) {
-      them('Nguồn gốc *', `"${nguonGocChu}" không hợp lệ. Chọn: ${nhanHopLe(NGUON_GOC, NHAN_NGUON_GOC)}.`);
+    else if (!originId) {
+      // Nêu đúng danh sách ĐANG có trong CSDL, không phải một danh sách cứng —
+      // người dùng vừa thêm "Phụ huynh tặng" thì lỗi phải kể cả cái đó.
+      them(
+        'Nguồn gốc *',
+        `"${nguonGocChu}" không hợp lệ. Chọn: ${traCuu.nguonGoc.nhanHopLe}. Muốn dùng giá trị khác thì vào Danh mục → Nguồn gốc thêm trước.`,
+      );
     }
 
     // --- mục đích
     const mucDichChu = lay(d, 'Mục đích sử dụng *');
-    const purpose = mucDichChu ? maMucDich(mucDichChu) : null;
+    const purposeId = mucDichChu
+      ? (traCuu.mucDich.theoNhan.get(chuanHoaDeSo(mucDichChu)) ?? null)
+      : null;
     if (!mucDichChu) them('Mục đích sử dụng *', 'Chưa điền mục đích sử dụng.');
-    else if (!purpose) {
+    else if (!purposeId) {
       them(
         'Mục đích sử dụng *',
-        `"${mucDichChu}" không hợp lệ. Chọn: ${nhanHopLe(MUC_DICH_SU_DUNG, NHAN_MUC_DICH_SU_DUNG)}.`,
+        `"${mucDichChu}" không hợp lệ. Chọn: ${traCuu.mucDich.nhanHopLe}. Muốn dùng giá trị khác thì vào Danh mục → Mục đích sử dụng thêm trước.`,
       );
     }
 
@@ -315,8 +358,8 @@ export async function soatThietBi(
       code !== '' &&
       name.length >= 2 &&
       categoryId !== undefined &&
-      origin !== null &&
-      purpose !== null &&
+      originId !== null &&
+      purposeId !== null &&
       trackingType !== null &&
       condition !== null &&
       nhapVeLocationId !== undefined &&
@@ -331,11 +374,11 @@ export async function soatThietBi(
         categoryCode,
         productLineId,
         serialNumber: lay(d, 'Serial NSX') || null,
-        origin,
+        originId,
         originNote: lay(d, 'Ghi chú nguồn gốc') || null,
         receivedDate,
         value,
-        purpose,
+        purposeId,
         trackingType,
         condition,
         nhapVeLocationId,
@@ -382,11 +425,11 @@ export async function ghiThietBi(
           categoryId: d.categoryId,
           productLineId: d.productLineId,
           serialNumber: d.serialNumber,
-          origin: d.origin,
+          originId: d.originId,
           originNote: d.originNote,
           receivedDate: d.receivedDate,
           value: d.value,
-          purpose: d.purpose,
+          purposeId: d.purposeId,
           trackingType: d.trackingType,
           condition: d.condition,
           currentLocationId: d.nhapVeLocationId,

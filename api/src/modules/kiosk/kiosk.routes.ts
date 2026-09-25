@@ -14,6 +14,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { ANH_NEN_KIOSK } from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
+import { idMucDichTheoMa } from '../../lib/tra-ma-tai-san.js';
 import { batAsync } from '../../lib/bat-async.js';
 import { boiCanh, ghiAudit } from '../../lib/audit.js';
 import { loi404, loi422 } from '../../lib/loi-http.js';
@@ -84,12 +85,15 @@ kioskRouter.get(
   '/tablet',
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
-    const muc = await prisma.asset.findMany({
+    // Mục đích "Cố định tại kho" giờ là hàng trong CSDL, phải tra id. Người dùng
+    // xoá được mã đó — lúc ấy màn hình này rỗng, đúng, chứ không đổi sang mã khác.
+    const idCoDinhTaiKho = await idMucDichTheoMa('CO_DINH_TAI_KHO');
+    const muc = idCoDinhTaiKho === null ? [] : await prisma.asset.findMany({
       where: {
         // Thiết bị đã xoá mềm không hiện trên màn hình kho.
         deletedAt: null,
         ...dieuKienTaiSan(nguoiDung),
-        purpose: 'CO_DINH_TAI_KHO',
+        purposeId: idCoDinhTaiKho,
         isActive: true,
       },
       select: {

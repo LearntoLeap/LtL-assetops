@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Download, Plus, QrCode, RefreshCw, Search, Trash2, Undo2, Upload } from 'lucide-react';
 import {
-  DS_MUC_DICH_SU_DUNG,
   DS_TINH_TRANG,
   DS_TRANG_THAI_PHAN_BO,
   NHAN_KIEU_QUAN_LY,
@@ -105,6 +104,7 @@ export function ThietBiList() {
 
   const [loaiTaiSan, datLoaiTaiSan] = useState<DanhMuc[]>([]);
   const [diaDiem, datDiaDiem] = useState<DiaDiem[]>([]);
+  const [mucDich, datMucDich] = useState<DanhMuc[]>([]);
 
   /**
    * Dựng tham số truy vấn từ bộ lọc đang chọn.
@@ -120,7 +120,7 @@ export function ThietBiList() {
     if (locDiem) q.set('locationId', locDiem);
     if (locTinhTrang) q.set('condition', locTinhTrang);
     if (locPhanBo) q.set('allocationStatus', locPhanBo);
-    if (locMucDich) q.set('purpose', locMucDich);
+    if (locMucDich) q.set('purposeId', locMucDich);
     return q;
   }, [tuKhoa, locLoai, locDiem, locTinhTrang, locPhanBo, locMucDich]);
 
@@ -148,12 +148,15 @@ export function ThietBiList() {
   useEffect(() => {
     async function taiDanhMuc(): Promise<void> {
       try {
-        const [loai, diem] = await Promise.all([
+        const [loai, diem, md] = await Promise.all([
           goiApi<TrangDuLieu<DanhMuc>>('/api/danh-muc/loai-tai-san'),
           goiApi<TrangDuLieu<DiaDiem>>('/api/dia-diem?chiHoatDong=true'),
+          goiApi<TrangDuLieu<DanhMuc>>('/api/danh-muc/muc-dich'),
         ]);
         datLoaiTaiSan(loai.muc);
         datDiaDiem(diem.muc);
+        // Kể cả mục đã Ngừng dùng: vẫn còn thiết bị cũ mang mục đó, phải lọc ra xem được.
+        datMucDich(md.muc);
       } catch {
         // Thiếu danh mục thì chỉ mất bộ lọc, bảng vẫn xem được.
       }
@@ -470,9 +473,9 @@ export function ThietBiList() {
                 aria-label="Lọc theo mục đích sử dụng"
               >
                 <option value="">Mọi mục đích</option>
-                {DS_MUC_DICH_SU_DUNG.map((t) => (
-                  <option key={t.ma} value={t.ma}>
-                    {t.nhan}
+                {mucDich.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
                   </option>
                 ))}
               </Select>

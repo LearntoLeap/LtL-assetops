@@ -10,13 +10,9 @@ import multer from 'multer';
 import {
   DS_KIEU_QUAN_LY,
   DS_LOAI_DIEM_LUU_TRU,
-  DS_MUC_DICH_SU_DUNG,
-  DS_NGUON_GOC,
   DS_TINH_TRANG,
   NHAN_KIEU_QUAN_LY,
   NHAN_LOAI_DIEM_LUU_TRU,
-  NHAN_MUC_DICH_SU_DUNG,
-  NHAN_NGUON_GOC,
   NHAN_TINH_TRANG,
   NHAN_TRANG_THAI_PHAN_BO,
 } from '@ltl/taisan-shared';
@@ -96,7 +92,7 @@ function ngayHomNay(): string {
 nhapXuatRouter.get(
   '/mau/thiet-bi',
   batAsync(async (_req, res) => {
-    const [loai, dong, diem] = await Promise.all([
+    const [loai, dong, diem, nguonGoc, mucDich] = await Promise.all([
       prisma.assetCategory.findMany({
         where: { isActive: true },
         orderBy: { sortOrder: 'asc' },
@@ -112,7 +108,23 @@ nhapXuatRouter.get(
         orderBy: { name: 'asc' },
         select: { code: true, name: true, type: true },
       }),
+      // Hai danh sách này giờ nằm trong CSDL: file mẫu phải nêu đúng những gì
+      // hiện có, không phải một danh sách cứng in sẵn trong mã nguồn.
+      prisma.assetOrigin.findMany({
+        where: { isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        select: { name: true },
+      }),
+      prisma.assetPurpose.findMany({
+        where: { isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        select: { name: true },
+      }),
     ]);
+    // Người dùng xoá sạch được cả hai bảng, lúc đó ví dụ để trống còn hơn ghi
+    // một giá trị không tồn tại rồi họ nhập vào là báo lỗi.
+    const nguonGocViDu = nguonGoc[0]?.name ?? '';
+    const mucDichViDu = mucDich[0]?.name ?? '';
 
     const wb = taoWorkbook();
     const sheet = themSheet(wb, 'Thiết bị', COT_THIET_BI);
@@ -126,11 +138,11 @@ nhapXuatRouter.get(
       maLoaiDauTien,
       dong[0]?.code ?? '',
       'SN-0001',
-      NHAN_NGUON_GOC.LTL_MUA,
+      nguonGocViDu,
       '',
       ngayHomNay(),
       '12500000',
-      NHAN_MUC_DICH_SU_DUNG.XHH,
+      mucDichViDu,
       NHAN_KIEU_QUAN_LY.DON_VI,
       NHAN_TINH_TRANG.TOT,
       maDiemDauTien,
@@ -143,11 +155,11 @@ nhapXuatRouter.get(
       loai.find((l) => l.defaultTrackingType === 'SO_LUONG')?.code ?? 'AN_PHAM_IN',
       '',
       '',
-      NHAN_NGUON_GOC.NHAP_TU_IPP,
+      nguonGocViDu,
       '',
       ngayHomNay(),
       '28000',
-      NHAN_MUC_DICH_SU_DUNG.XHH,
+      mucDichViDu,
       NHAN_KIEU_QUAN_LY.SO_LUONG,
       NHAN_TINH_TRANG.TOT,
       maDiemDauTien,
@@ -183,8 +195,8 @@ nhapXuatRouter.get(
     for (const d of diem) hd.addRow([d.code, d.name, NHAN_LOAI_DIEM_LUU_TRU[d.type]]);
     hd.addRow([]);
     tieuDeNhom('GIÁ TRỊ CHO CÁC CỘT CHỌN');
-    hd.addRow(['Nguồn gốc *', DS_NGUON_GOC.map((x) => x.nhan).join(' / ')]);
-    hd.addRow(['Mục đích sử dụng *', DS_MUC_DICH_SU_DUNG.map((x) => x.nhan).join(' / ')]);
+    hd.addRow(['Nguồn gốc *', nguonGoc.map((x) => x.name).join(' / ')]);
+    hd.addRow(['Mục đích sử dụng *', mucDich.map((x) => x.name).join(' / ')]);
     hd.addRow(['Kiểu quản lý *', DS_KIEU_QUAN_LY.map((x) => x.nhan).join(' / ')]);
     hd.addRow(['Tình trạng *', DS_TINH_TRANG.map((x) => x.nhan).join(' / ')]);
     hd.addRow([]);
@@ -322,6 +334,8 @@ nhapXuatRouter.get(
           productLine: { select: { code: true, name: true } },
           currentLocation: { select: { code: true, name: true } },
           holder: { select: { fullName: true } },
+          origin: { select: { name: true } },
+          purpose: { select: { name: true } },
         },
       }),
       tonTatCa(),
@@ -368,10 +382,10 @@ nhapXuatRouter.get(
         t.category.name,
         t.productLine?.name ?? '',
         t.serialNumber ?? '',
-        NHAN_NGUON_GOC[t.origin],
+        t.origin.name,
         t.receivedDate ? t.receivedDate.toISOString().slice(0, 10) : '',
         t.value === null ? '' : Number(t.value),
-        NHAN_MUC_DICH_SU_DUNG[t.purpose],
+        t.purpose.name,
         NHAN_KIEU_QUAN_LY[t.trackingType],
         NHAN_TINH_TRANG[t.condition],
         NHAN_TRANG_THAI_PHAN_BO[t.allocationStatus],

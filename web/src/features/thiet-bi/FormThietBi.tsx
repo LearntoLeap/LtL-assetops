@@ -3,8 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import {
   DS_KIEU_QUAN_LY,
-  DS_MUC_DICH_SU_DUNG,
-  DS_NGUON_GOC,
   DS_TINH_TRANG,
   type KieuQuanLy,
 } from '@ltl/taisan-shared';
@@ -14,7 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { OChonThemNhanh } from '@/components/OChonThemNhanh';
 import { goiApi, LoiApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { ChiTietThietBi, DanhMuc, DiaDiem, TrangDuLieu } from '@/lib/kieu';
 
 interface Bieu {
@@ -23,11 +23,11 @@ interface Bieu {
   categoryId: string;
   productLineId: string;
   serialNumber: string;
-  origin: string;
+  originId: string;
   originNote: string;
   receivedDate: string;
   value: string;
-  purpose: string;
+  purposeId: string;
   trackingType: KieuQuanLy;
   condition: string;
   nhapVeLocationId: string;
@@ -42,11 +42,11 @@ const BIEU_RONG: Bieu = {
   categoryId: '',
   productLineId: '',
   serialNumber: '',
-  origin: 'LTL_MUA',
+  originId: '',
   originNote: '',
   receivedDate: new Date().toISOString().slice(0, 10),
   value: '',
-  purpose: 'XHH',
+  purposeId: '',
   trackingType: 'DON_VI',
   condition: 'TOT',
   nhapVeLocationId: '',
@@ -59,6 +59,12 @@ export function FormThietBi() {
   const { id } = useParams<{ id: string }>();
   const dangSua = Boolean(id);
   const dieuHuong = useNavigate();
+  const { nguoiDung } = useAuth();
+  // Ai vào được form này thì cũng thêm được nguồn gốc / mục đích ngay tại chỗ —
+  // khớp với `yeuCauVaiTro('ADMIN','VAN_HANH','KHO')` ở tuyến POST của API.
+  // Ẩn nút chỉ cho gọn mắt, chặn thật vẫn nằm ở server.
+  const duocThemDanhMuc =
+    nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH' || nguoiDung?.role === 'KHO';
 
   const [bieu, datBieu] = useState<Bieu>(BIEU_RONG);
   const [loaiTaiSan, datLoaiTaiSan] = useState<DanhMuc[]>([]);
@@ -90,11 +96,11 @@ export function FormThietBi() {
             categoryId: t.category.id,
             productLineId: t.productLine?.id ?? '',
             serialNumber: t.serialNumber ?? '',
-            origin: t.origin,
+            originId: t.origin.id,
             originNote: t.originNote ?? '',
             receivedDate: t.receivedDate ? t.receivedDate.slice(0, 10) : '',
             value: t.value === null ? '' : String(t.value),
-            purpose: t.purpose,
+            purposeId: t.purpose.id,
             trackingType: t.trackingType,
             condition: t.condition,
             nhapVeLocationId: t.currentLocation?.id ?? '',
@@ -147,11 +153,11 @@ export function FormThietBi() {
             categoryId: bieu.categoryId,
             productLineId: bieu.productLineId || null,
             serialNumber: bieu.serialNumber || null,
-            origin: bieu.origin,
+            originId: bieu.originId,
             originNote: bieu.originNote || null,
             receivedDate: bieu.receivedDate || null,
             value: bieu.value === '' ? null : Number(bieu.value),
-            purpose: bieu.purpose,
+            purposeId: bieu.purposeId,
             dueReturnAt: bieu.dueReturnAt || null,
             note: bieu.note || null,
           },
@@ -166,11 +172,11 @@ export function FormThietBi() {
             categoryId: bieu.categoryId,
             ...(bieu.productLineId ? { productLineId: bieu.productLineId } : {}),
             ...(bieu.serialNumber ? { serialNumber: bieu.serialNumber } : {}),
-            origin: bieu.origin,
+            originId: bieu.originId,
             ...(bieu.originNote ? { originNote: bieu.originNote } : {}),
             ...(bieu.receivedDate ? { receivedDate: bieu.receivedDate } : {}),
             ...(bieu.value === '' ? {} : { value: Number(bieu.value) }),
-            purpose: bieu.purpose,
+            purposeId: bieu.purposeId,
             trackingType: bieu.trackingType,
             condition: bieu.condition,
             nhapVeLocationId: bieu.nhapVeLocationId,
@@ -288,21 +294,16 @@ export function FormThietBi() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="f-nguon">Nguồn gốc *</Label>
-              <Select
-                id="f-nguon"
-                required
-                value={bieu.origin}
-                onChange={(su) => dat('origin')(su.target.value)}
-              >
-                {DS_NGUON_GOC.map((n) => (
-                  <option key={n.ma} value={n.ma}>
-                    {n.nhan}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <OChonThemNhanh
+              id="f-nguon"
+              nhan="Nguồn gốc"
+              required
+              duongApi="/api/danh-muc/nguon-goc"
+              giaTri={bieu.originId}
+              onDoi={dat('originId')}
+              duocThem={duocThemDanhMuc}
+              goiY="VD: Phụ huynh tặng"
+            />
 
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="f-nguon-ghi">Ghi chú nguồn gốc</Label>
@@ -336,21 +337,16 @@ export function FormThietBi() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="f-muc-dich">Mục đích sử dụng *</Label>
-              <Select
-                id="f-muc-dich"
-                required
-                value={bieu.purpose}
-                onChange={(su) => dat('purpose')(su.target.value)}
-              >
-                {DS_MUC_DICH_SU_DUNG.map((m) => (
-                  <option key={m.ma} value={m.ma}>
-                    {m.nhan}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <OChonThemNhanh
+              id="f-muc-dich"
+              nhan="Mục đích sử dụng"
+              required
+              duongApi="/api/danh-muc/muc-dich"
+              giaTri={bieu.purposeId}
+              onDoi={dat('purposeId')}
+              duocThem={duocThemDanhMuc}
+              goiY="VD: Trưng bày hội chợ"
+            />
 
             <div className="space-y-1.5">
               <Label htmlFor="f-han-tra">Hạn trả (nếu là hàng mượn)</Label>
