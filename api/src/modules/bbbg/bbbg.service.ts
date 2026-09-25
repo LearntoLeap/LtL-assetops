@@ -15,7 +15,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Prisma, RequestType, TrackingType } from '@prisma/client';
 import { prisma } from '../../prisma.js';
-import { loi400, loi403, loi404, loi409, loi422 } from '../../lib/loi-http.js';
+import { LoiHttp, loi400, loi403, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
 import { docCaiDat, type CaiDatChung } from '../../lib/cai-dat.js';
@@ -350,20 +350,33 @@ export async function tao(
   ctx: BoiCanhGoi,
 ): Promise<BBBGDayDu> {
   const yeuCau = await docYeuCauDeLap(duLieu.requestId);
-
-  const daCo = await prisma.handoverNote.findFirst({
-    where: { requestId: yeuCau.id, status: { not: 'TU_CHOI' } },
-    select: { id: true, code: true },
-  });
-  if (daCo) {
-    throw loi409(`Yêu cầu này đã có biên bản ${daCo.code}.`, { bbbgId: daCo.id });
-  }
-
   const caiDat = await docCaiDat();
   const loaiMau = duLieu.templateType ?? yeuCau.type;
   const mau = mauCuaLoai(loaiMau);
 
   return prisma.$transaction(async (tx) => {
+    /*
+     * KHOÁ DÒNG YÊU CẦU rồi mới kiểm "đã có biên bản chưa".
+     *
+     * Kiểm ngoài transaction thì hai lượt gọi cùng lúc — bấm nút hai lần trên
+     * mạng chậm, hoặc bấm đúng lúc hook tự lập sau xuất kho chạy — cùng thấy
+     * "chưa có", cùng cấp số, và một lần bàn giao đẻ ra hai biên bản mang hai
+     * số khác nhau. Chứng từ trùng như thế không sửa được bằng cách xoá bớt:
+     * số đã cấp là đã vào sổ.
+     *
+     * Không đặt UNIQUE lên request_id được, vì biên bản bị bên nhận TỪ CHỐI
+     * thì phải lập lại được cho cùng yêu cầu đó.
+     */
+    await tx.$queryRaw`SELECT id FROM requests WHERE id = ${yeuCau.id} FOR UPDATE`;
+
+    const daCo = await tx.handoverNote.findFirst({
+      where: { requestId: yeuCau.id, status: { not: 'TU_CHOI' } },
+      select: { id: true, code: true },
+    });
+    if (daCo) {
+      throw loi409(`Yêu cầu này đã có biên bản ${daCo.code}.`, { bbbgId: daCo.id });
+    }
+
     const code = await capSoChungTu(tx, TIEN_TO.BBBG);
     const bbbg = await tx.handoverNote.create({
       data: {
@@ -444,23 +457,35 @@ export async function taoTuYeuCau(
   const loai = loaiMau ?? yeuCau.type;
   const hai = dienSanHaiBen(yeuCau, caiDat, loai);
 
-  const bbbg = await tao(
-    {
-      requestId,
-      templateType: loai,
-      ...hai,
-      ...(hai.giverTitle === null ? {} : { giverTitle: hai.giverTitle }),
-      ...(hai.giverAddress === null ? {} : { giverAddress: hai.giverAddress }),
-      ...(hai.giverTaxCode === null ? {} : { giverTaxCode: hai.giverTaxCode }),
-      ...(hai.giverPhone === null ? {} : { giverPhone: hai.giverPhone }),
-      ...(hai.receiverTitle === null ? {} : { receiverTitle: hai.receiverTitle }),
-      ...(hai.receiverPhone === null ? {} : { receiverPhone: hai.receiverPhone }),
-      ...(hai.receiverAddress === null ? {} : { receiverAddress: hai.receiverAddress }),
-      ...(hai.receiverAddress ? { handoverPlace: hai.receiverAddress } : {}),
-    } as DuLieuTaoBBBG,
-    actor,
-    ctx,
-  );
+  // Hai lượt gọi song song: lượt thua sẽ nhận 409 từ `tao()` (đã khoá dòng yêu
+  // cầu), ở đây đổi lại thành "trả về biên bản đã có" cho đúng nghĩa idempotent.
+  let bbbg: BBBGDayDu;
+  try {
+    bbbg = await tao(
+      {
+        requestId,
+        templateType: loai,
+        ...hai,
+        ...(hai.giverTitle === null ? {} : { giverTitle: hai.giverTitle }),
+        ...(hai.giverAddress === null ? {} : { giverAddress: hai.giverAddress }),
+        ...(hai.giverTaxCode === null ? {} : { giverTaxCode: hai.giverTaxCode }),
+        ...(hai.giverPhone === null ? {} : { giverPhone: hai.giverPhone }),
+        ...(hai.receiverTitle === null ? {} : { receiverTitle: hai.receiverTitle }),
+        ...(hai.receiverPhone === null ? {} : { receiverPhone: hai.receiverPhone }),
+        ...(hai.receiverAddress === null ? {} : { receiverAddress: hai.receiverAddress }),
+        ...(hai.receiverAddress ? { handoverPlace: hai.receiverAddress } : {}),
+      } as DuLieuTaoBBBG,
+      actor,
+      ctx,
+    );
+  } catch (loi) {
+    const daCoId =
+      loi instanceof LoiHttp && loi.maHttp === 409 ? loi.chiTiet?.['bbbgId'] : undefined;
+    if (typeof daCoId !== 'string') throw loi;
+    const cu = await prisma.handoverNote.findUnique({ where: { id: daCoId }, select: CHON_BBBG });
+    if (!cu) throw loi;
+    return { bbbg: cu, moi: false };
+  }
   return { bbbg, moi: true };
 }
 
