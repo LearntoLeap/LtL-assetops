@@ -51,18 +51,25 @@ export interface SoLieuNhanh {
 /**
  * Điều kiện phạm vi cho `movements`: một bút toán thuộc phạm vi nếu một trong
  * hai đầu (đi / đến) nằm trong các điểm người dùng xem được.
+ *
+ * `asset: { deletedAt: null }` ở CẢ BA nhánh, không phải chỉ nhánh cuối. Thiếu
+ * nó thì biểu đồ "Lưu chuyển kho theo ngày" vẫn cộng bút toán của thiết bị đã
+ * xoá — đo thật: nhập một thiết bị 500 đơn vị rồi xoá mềm, biểu đồ đứng nguyên
+ * ở 1000 thay vì quay về 500. Cùng một lớp lỗi với số đếm ở trang Danh mục.
  */
 function dieuKienBuocDiChuyen(nguoiDung: NguoiDungDaXacThuc): Prisma.MovementWhereInput {
   const pv = phamViCua(nguoiDung);
-  if (pv.toanBoKho) return {};
+  const conSong: Prisma.MovementWhereInput = { asset: { deletedAt: null } };
+  if (pv.toanBoKho) return conSong;
   if (pv.diaDiem) {
     const diaDiem = [...pv.diaDiem];
     return {
+      ...conSong,
       OR: [{ fromLocationId: { in: diaDiem } }, { toLocationId: { in: diaDiem } }],
     };
   }
   // Nhân sự: chỉ bút toán của thiết bị mình đang giữ.
-  return { asset: { holderUserId: nguoiDung.id } };
+  return { asset: { deletedAt: null, holderUserId: nguoiDung.id } };
 }
 
 function ngayISO(d: Date): string {
@@ -394,7 +401,8 @@ export async function lichSuSuaChuaTheoDiem(
   const baoHong = await prisma.request.findMany({
     where: {
       type: 'BAO_HONG',
-      items: { some: { asset: { currentLocationId: { in: idDiem } } } },
+      // Thiết bị đã xoá thì lịch sử sửa chữa của nó cũng không còn nghĩa gì.
+      items: { some: { asset: { deletedAt: null, currentLocationId: { in: idDiem } } } },
     },
     select: {
       id: true,
@@ -405,7 +413,11 @@ export async function lichSuSuaChuaTheoDiem(
   });
 
   const phieuLK = await prisma.partIssue.findMany({
-    where: { request: { items: { some: { asset: { currentLocationId: { in: idDiem } } } } } },
+    where: {
+      request: {
+        items: { some: { asset: { deletedAt: null, currentLocationId: { in: idDiem } } } },
+      },
+    },
     select: {
       quantity: true,
       issuedAt: true,
@@ -470,7 +482,7 @@ export async function lichSuMotDiem(
     prisma.request.findMany({
       where: {
         type: 'BAO_HONG',
-        items: { some: { asset: { currentLocationId: diaDiemId } } },
+        items: { some: { asset: { deletedAt: null, currentLocationId: diaDiemId } } },
       },
       select: {
         id: true,
@@ -486,7 +498,11 @@ export async function lichSuMotDiem(
       take: gioiHan,
     }),
     prisma.partIssue.findMany({
-      where: { request: { items: { some: { asset: { currentLocationId: diaDiemId } } } } },
+      where: {
+        request: {
+          items: { some: { asset: { deletedAt: null, currentLocationId: diaDiemId } } },
+        },
+      },
       select: {
         id: true,
         code: true,

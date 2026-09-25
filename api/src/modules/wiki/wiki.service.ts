@@ -211,8 +211,10 @@ function dieuKienTaiSanTheoDich(
  * để giao diện xếp nhóm: riêng máy này ▸ cả dòng ▸ cả loại ▸ áp dụng chung.
  */
 export async function theoThietBi(assetId: string) {
-  const ts = await prisma.asset.findUnique({
-    where: { id: assetId },
+  const ts = await prisma.asset.findFirst({
+    // Thiết bị trong thùng rác không hiện ở danh sách nào, nên cũng không có
+    // đường nào mở được trang này — giữ cho nhất quán.
+    where: { id: assetId, deletedAt: null },
     select: { id: true, code: true, name: true, categoryId: true, productLineId: true },
   });
   if (!ts) throw loi404('Không tìm thấy thiết bị.');

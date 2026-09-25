@@ -187,8 +187,11 @@ export async function timTheoMa(nguoiDung: NguoiDungDaXacThuc, code: string) {
  */
 export async function traCuuNhanh(code: string) {
   const chuanHoa = code.trim().toUpperCase();
-  const thietBi = await prisma.asset.findUnique({
-    where: { code: chuanHoa },
+  const thietBi = await prisma.asset.findFirst({
+    // `deletedAt: null`: đây là đường người lập yêu cầu dùng để đưa một mã vào
+    // phiếu. Tra ra được thiết bị đang nằm trong thùng rác thì họ sẽ xin xuất
+    // một thứ đã không còn tồn tại trong mọi danh sách.
+    where: { code: chuanHoa, deletedAt: null },
     select: {
       id: true,
       code: true,
@@ -412,8 +415,18 @@ export async function sua(
   actor: NguoiThaoTac,
   ctx: BoiCanhGoi,
 ): Promise<ReturnType<typeof donDong>> {
-  const truoc = await prisma.asset.findUnique({ where: { id }, select: CHON_DONG });
+  const truoc = await prisma.asset.findUnique({
+    where: { id },
+    select: { ...CHON_DONG, deletedAt: true },
+  });
   if (!truoc) throw loi404('Không tìm thấy thiết bị.');
+  // Sửa thiết bị đang nằm trong thùng rác là sửa một thứ không hiện ở đâu cả —
+  // lưu xong người dùng không có cách nào nhìn thấy kết quả.
+  if (truoc.deletedAt) {
+    throw loi409(
+      'Thiết bị này đang nằm trong THÙNG RÁC nên không sửa được. Hãy khôi phục ở Thiết bị → Thùng rác rồi sửa.',
+    );
+  }
 
   if (duLieu.categoryId) {
     const loai = await prisma.assetCategory.findUnique({
