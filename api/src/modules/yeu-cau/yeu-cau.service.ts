@@ -34,6 +34,7 @@ import type {
   DuLieuTaoYeuCau,
   DuLieuXuatKho,
 } from './yeu-cau.schema.js';
+import { lapBBBGTuDong } from '../bbbg/bbbg.service.js';
 
 const CHON_YEU_CAU = {
   id: true,
@@ -878,6 +879,10 @@ export async function xuatKho(
     return capNhat;
   });
 
+  // MỌI LẦN XUẤT KHO ĐỀU CÓ BIÊN BẢN LƯU LẠI. Gọi ngoài transaction và không
+  // cho lỗi của nó làm hỏng lần xuất kho vừa ghi xong (xem `lapBBBGTuDong`).
+  await lapBBBGTuDong(id, actor, ctx);
+
   phatChoNguoiDung(yeuCau.createdBy.id, SU_KIEN.YEU_CAU_DOI, {
     id: sau.id,
     code: sau.code,
@@ -1028,6 +1033,9 @@ export async function nhapKho(
     );
     return capNhat;
   });
+
+  // Nhập kho cũng là một lần bàn giao — cũng phải có biên bản lưu lại.
+  await lapBBBGTuDong(id, actor, ctx);
 
   phatChoNguoiDung(yeuCau.createdBy.id, SU_KIEN.YEU_CAU_DOI, {
     id: sau.id,

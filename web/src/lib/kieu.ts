@@ -237,7 +237,11 @@ export interface MucBienBan {
   assetCodeSnapshot: string;
   assetNameSnapshot: string;
   quantity: number;
+  /** Đơn vị tính in trên biên bản: Bộ, Chiếc, Quyển… */
+  unit: string;
   conditionSnapshot: TinhTrang;
+  /** Tiêu đề nhóm in trên một dòng riêng, vd "A. THIẾT BỊ AI – ROBOTICS". */
+  groupLabel: string | null;
   note: string | null;
   sortOrder: number;
   asset: { id: string; currentLocationId: string | null };
@@ -247,25 +251,62 @@ export interface BienBan {
   id: string;
   code: string;
   status: TrangThaiBBBG;
+  /** Mẫu biên bản — mỗi loại yêu cầu một mẫu riêng. */
+  templateType: LoaiYeuCau;
+  subtitle: string | null;
+  basis: string | null;
   giverName: string;
   giverTitle: string | null;
   giverOrg: string;
+  giverAddress: string | null;
+  giverTaxCode: string | null;
+  giverPhone: string | null;
   receiverOrg: string;
   receiverName: string;
   receiverTitle: string | null;
   receiverPhone: string | null;
+  receiverAddress: string | null;
   issuedDate: string | null;
+  handoverPlace: string | null;
+  inspection: string | null;
+  obligations: string | null;
+  copies: number;
   commitment: string | null;
   note: string | null;
   rejectionNote: string | null;
   confirmedAt: string | null;
+  /** File Word đã xuất — null nghĩa là chưa xuất lần nào. */
+  fileName: string | null;
+  fileSize: number | null;
+  fileGeneratedAt: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy: { id: string; fullName: string; email: string };
   confirmedBy: { id: string; fullName: string } | null;
   receiverLocation: { id: string; code: string; name: string; type: LoaiDiemLuuTru } | null;
-  request: { id: string; code: string; type: LoaiYeuCau; status: TrangThaiYeuCau; reason: string } | null;
+  request: {
+    id: string;
+    code: string;
+    type: LoaiYeuCau;
+    status: TrangThaiYeuCau;
+    reason: string;
+    expectedReturnAt: string | null;
+  } | null;
   items: MucBienBan[];
+}
+
+/** Cài đặt chung — thông tin đơn vị in trên chứng từ (trang Cài đặt, ADMIN sửa). */
+export interface CaiDatChung {
+  congTyTen: string;
+  congTyDiaChi: string;
+  congTyMaSoThue: string;
+  congTyDienThoai: string;
+  congTyEmail: string;
+  congTyWebsite: string;
+  daiDienTen: string;
+  daiDienChucVu: string;
+  canCu: string;
+  soBan: number;
 }
 
 export interface PhieuKiemKe {

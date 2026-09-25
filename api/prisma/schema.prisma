@@ -199,6 +199,7 @@ model User {
   wikiDaSua             WikiArticle[]           @relation("WikiUpdatedBy")
   wikiTaiLieu           WikiDoc[]
   wikiBanSua            WikiRevision[]
+  caiDatDaSua           AppSetting[]            @relation("SettingUpdatedBy")
 
   @@index([role])
   @@index([locationId])
@@ -762,10 +763,23 @@ model HandoverNote {
   requestId String?        @map("request_id") @db.VarChar(30)
   status    HandoverStatus @default(BAN_NHAP)
 
-  /// Bên giao.
-  giverName  String  @map("giver_name") @db.VarChar(191)
-  giverTitle String? @map("giver_title") @db.VarChar(191)
-  giverOrg   String  @map("giver_org") @db.VarChar(191)
+  /// MẪU BIÊN BẢN — mỗi loại yêu cầu một mẫu riêng (tên văn bản, căn cứ, các
+  /// mục kết quả kiểm tra / trách nhiệm đều khác nhau). Dùng lại enum của yêu
+  /// cầu để không có hai danh sách loại phải giữ cho khớp nhau.
+  templateType RequestType @default(PHAN_BO_VE_TRUONG) @map("template_type")
+  /// Dòng "(V/v …)" in dưới tên văn bản.
+  subtitle     String?     @db.VarChar(255)
+  /// Các dòng "Căn cứ …", mỗi dòng một căn cứ.
+  basis        String?     @db.Text
+
+  /// Bên giao — CHỤP LẠI thông tin công ty lúc lập, vì địa chỉ/đại diện của
+  /// công ty đổi theo thời gian mà biên bản đã ký thì không được đổi theo.
+  giverName    String  @map("giver_name") @db.VarChar(191)
+  giverTitle   String? @map("giver_title") @db.VarChar(191)
+  giverOrg     String  @map("giver_org") @db.VarChar(191)
+  giverAddress String? @map("giver_address") @db.VarChar(255)
+  giverTaxCode String? @map("giver_tax_code") @db.VarChar(32)
+  giverPhone   String? @map("giver_phone") @db.VarChar(32)
 
   /// Bên nhận (trường / đối tác).
   receiverLocationId String? @map("receiver_location_id") @db.VarChar(30)
@@ -773,17 +787,33 @@ model HandoverNote {
   receiverName       String  @map("receiver_name") @db.VarChar(191)
   receiverTitle      String? @map("receiver_title") @db.VarChar(191)
   receiverPhone      String? @map("receiver_phone") @db.VarChar(32)
+  receiverAddress    String? @map("receiver_address") @db.VarChar(255)
 
-  issuedDate    DateTime  @map("issued_date")
+  issuedDate    DateTime @map("issued_date")
+  /// Địa điểm bàn giao thực tế (mục "Địa điểm bàn giao").
+  handoverPlace String?  @map("handover_place") @db.VarChar(255)
+  /// Kết quả kiểm tra khi giao nhận, mỗi dòng một ý.
+  inspection    String?  @db.Text
+  /// Trách nhiệm của các bên, mỗi dòng một ý.
+  obligations   String?  @db.Text
+  /// Số bản biên bản được lập (mẫu của LtL là 04 bản).
+  copies        Int      @default(4)
   /// Nội dung cam kết in trên biên bản (sửa được theo từng lần bàn giao).
-  commitment    String?   @db.Text
-  note          String?   @db.Text
-  createdById   String    @map("created_by_id") @db.VarChar(30)
-  confirmedById String?   @map("confirmed_by_id") @db.VarChar(30)
-  confirmedAt   DateTime? @map("confirmed_at")
-  rejectionNote String?   @map("rejection_note") @db.Text
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  commitment    String?  @db.Text
+  note          String?  @db.Text
+
+  /// FILE MỀM (.docx) đã xuất — lưu lại để theo dõi, tải lại bất cứ lúc nào.
+  /// Đường dẫn tương đối so với UPLOAD_DIR, vd "bbbg/2026/09/ab12cd34.docx".
+  filePath        String?   @map("file_path") @db.VarChar(255)
+  fileName        String?   @map("file_name") @db.VarChar(191)
+  fileSize        Int?      @map("file_size")
+  fileGeneratedAt DateTime? @map("file_generated_at")
+  createdById     String    @map("created_by_id") @db.VarChar(30)
+  confirmedById   String?   @map("confirmed_by_id") @db.VarChar(30)
+  confirmedAt     DateTime? @map("confirmed_at")
+  rejectionNote   String?   @map("rejection_note") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   request          Request?  @relation(fields: [requestId], references: [id], onDelete: SetNull)
   receiverLocation Location? @relation(fields: [receiverLocationId], references: [id], onDelete: SetNull)
@@ -795,6 +825,7 @@ model HandoverNote {
   @@index([status])
   @@index([receiverLocationId])
   @@index([requestId])
+  @@index([templateType])
   @@map("handover_notes")
 }
 
@@ -806,7 +837,12 @@ model HandoverNoteItem {
   assetCodeSnapshot String         @map("asset_code_snapshot") @db.VarChar(64)
   assetNameSnapshot String         @map("asset_name_snapshot") @db.VarChar(191)
   quantity          Int            @default(1)
+  /// ĐƠN VỊ TÍNH in trên biên bản: Bộ, Chiếc, Quyển, Hộp… Bản chụp như các cột
+  /// khác: đổi đơn vị ở danh mục sau này không sửa biên bản đã lập.
+  unit              String         @default("Bộ") @db.VarChar(32)
   conditionSnapshot AssetCondition @map("condition_snapshot")
+  /// Tiêu đề nhóm in trên một dòng riêng phía trên, vd "A. THIẾT BỊ AI – ROBOTICS".
+  groupLabel        String?        @map("group_label") @db.VarChar(191)
   note              String?        @db.VarChar(255)
   sortOrder         Int            @default(0) @map("sort_order")
 
@@ -914,6 +950,24 @@ model Alert {
 
 /// Bộ đếm số chứng từ theo tiền tố + năm (BBBG-2026-0001, YC-2026-0001…).
 /// Cấp số trong transaction để hai người bấm cùng lúc không ra số trùng.
+/// CÀI ĐẶT ỨNG DỤNG — bảng khoá/giá trị, ADMIN sửa trong trang Cài đặt.
+///
+/// Dùng khoá/giá trị chứ không phải mỗi cài đặt một cột: thông tin in trên
+/// chứng từ (tên công ty, địa chỉ, mã số thuế, người đại diện, các dòng căn cứ…)
+/// sẽ còn thêm nữa, mà thêm một dòng cấu hình thì không nên phải chạy migration.
+/// Đổi lại, giá trị luôn là chuỗi; phía API có lược đồ zod để kiểm và đặt giá
+/// trị mặc định, xem `api/src/lib/cai-dat.ts`.
+model AppSetting {
+  key         String   @id @db.VarChar(64)
+  value       String   @db.Text
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id") @db.VarChar(30)
+
+  updatedBy User? @relation("SettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("app_settings")
+}
+
 model DocumentSequence {
   id         String @id @default(cuid()) @db.VarChar(30)
   prefix     String @db.VarChar(16)

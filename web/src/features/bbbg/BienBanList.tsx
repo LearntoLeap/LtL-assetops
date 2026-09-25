@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileSignature, Plus, RefreshCw, Search, Wifi, WifiOff } from 'lucide-react';
-import { DS_TRANG_THAI_BBBG, NHAN_LOAI_YEU_CAU, NHAN_TRANG_THAI_BBBG } from '@ltl/taisan-shared';
+import { FileDown, FileSignature, Loader2, Plus, RefreshCw, Search, Wifi, WifiOff } from 'lucide-react';
+import {
+  DS_MAU_BBBG,
+  DS_TRANG_THAI_BBBG,
+  NHAN_LOAI_YEU_CAU,
+  NHAN_MAU_BBBG,
+  NHAN_TRANG_THAI_BBBG,
+} from '@ltl/taisan-shared';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +25,7 @@ import {
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
+import { taiTep } from '@/lib/tep';
 import type { BienBan, TrangDuLieu } from '@/lib/kieu';
 import { SU_KIEN, useRealtime } from '@/hooks/useRealtime';
 import { MAU_TRANG_THAI_BBBG } from './tien-ich';
@@ -34,6 +41,9 @@ export function BienBanList() {
   const [loi, datLoi] = useState<string | null>(null);
   const [tuKhoa, datTuKhoa] = useState('');
   const [locTrangThai, datLocTrangThai] = useState('');
+  const [locMau, datLocMau] = useState('');
+  /** id biên bản đang tải file — để chỉ nút đó quay, không quay cả bảng. */
+  const [dangTaiTep, datDangTaiTep] = useState<string | null>(null);
 
   const tai = useCallback(async () => {
     datDangTai(true);
@@ -42,6 +52,7 @@ export function BienBanList() {
       const q = new URLSearchParams({ trang: String(trang), moiTrang: String(MOI_TRANG) });
       if (tuKhoa.trim()) q.set('tuKhoa', tuKhoa.trim());
       if (locTrangThai) q.set('status', locTrangThai);
+      if (locMau) q.set('templateType', locMau);
       const kq = await goiApi<TrangDuLieu<BienBan>>(`/api/bbbg?${q.toString()}`);
       datMuc(kq.muc);
       datTong(kq.tong);
@@ -50,7 +61,25 @@ export function BienBanList() {
     } finally {
       datDangTai(false);
     }
-  }, [trang, tuKhoa, locTrangThai]);
+  }, [trang, tuKhoa, locTrangThai, locMau]);
+
+  /**
+   * Tải file Word của một biên bản ngay từ danh sách.
+   *
+   * Endpoint đòi xác thực nên phải tải bằng fetch kèm token rồi mới lưu; dán
+   * thẳng URL vào thẻ <a> sẽ ra 401.
+   */
+  async function taiWord(b: BienBan): Promise<void> {
+    datLoi(null);
+    datDangTaiTep(b.id);
+    try {
+      await taiTep(`/api/bbbg/${b.id}/tep`, b.fileName ?? `${b.code}.docx`);
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Không tải được file biên bản.');
+    } finally {
+      datDangTaiTep(null);
+    }
+  }
 
   useEffect(() => {
     void tai();
@@ -125,7 +154,22 @@ export function BienBanList() {
                 aria-label="Tìm biên bản"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Select
+                value={locMau}
+                onChange={(su) => {
+                  datLocMau(su.target.value);
+                  datTrang(1);
+                }}
+                aria-label="Lọc theo mẫu biên bản"
+              >
+                <option value="">Mọi mẫu biên bản</option>
+                {DS_MAU_BBBG.map((m) => (
+                  <option key={m.ma} value={m.ma}>
+                    {m.nhan}
+                  </option>
+                ))}
+              </Select>
               <Select
                 value={locTrangThai}
                 onChange={(su) => {
@@ -166,6 +210,7 @@ export function BienBanList() {
                     <TableHead className="text-right">Số dòng</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Ngày lập</TableHead>
+                    <TableHead className="text-right">File mềm</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -191,9 +236,11 @@ export function BienBanList() {
                         ) : (
                           '—'
                         )}
-                        {b.request ? (
-                          <span className="block text-xs">{NHAN_LOAI_YEU_CAU[b.request.type]}</span>
-                        ) : null}
+                        <span className="block text-xs">
+                          {b.request
+                            ? NHAN_LOAI_YEU_CAU[b.request.type]
+                            : NHAN_MAU_BBBG[b.templateType]}
+                        </span>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {b.receiverLocation?.name ?? b.receiverOrg}
@@ -207,6 +254,22 @@ export function BienBanList() {
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {b.issuedDate ? ngay(b.issuedDate) : ngayGio(b.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={dangTaiTep === b.id}
+                          onClick={() => void taiWord(b)}
+                          aria-label={`Tải file Word của biên bản ${b.code}`}
+                        >
+                          {dangTaiTep === b.id ? (
+                            <Loader2 className="animate-spin" aria-hidden />
+                          ) : (
+                            <FileDown aria-hidden />
+                          )}
+                          Word
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

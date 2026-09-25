@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
+  FileDown,
   Loader2,
   Pencil,
   Printer,
+  RefreshCw,
   Send,
   X,
 } from 'lucide-react';
 import {
   NHAN_LOAI_YEU_CAU,
+  NHAN_MAU_BBBG,
   NHAN_TINH_TRANG,
   NHAN_TRANG_THAI_BBBG,
 } from '@ltl/taisan-shared';
@@ -31,6 +34,7 @@ import {
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
+import { taiTep } from '@/lib/tep';
 import type { BienBan } from '@/lib/kieu';
 import { MAU_TRANG_THAI_BBBG } from './tien-ich';
 
@@ -76,6 +80,19 @@ export function BienBanChiTiet() {
   const [sIssuedDate, datSIssuedDate] = useState('');
   const [sCommitment, datSCommitment] = useState('');
   const [sNote, datSNote] = useState('');
+  const [sSubtitle, datSSubtitle] = useState('');
+  const [sBasis, datSBasis] = useState('');
+  const [sGiverAddress, datSGiverAddress] = useState('');
+  const [sGiverTaxCode, datSGiverTaxCode] = useState('');
+  const [sGiverPhone, datSGiverPhone] = useState('');
+  const [sReceiverAddress, datSReceiverAddress] = useState('');
+  const [sHandoverPlace, datSHandoverPlace] = useState('');
+  const [sInspection, datSInspection] = useState('');
+  const [sObligations, datSObligations] = useState('');
+  const [sCopies, datSCopies] = useState(4);
+  /** Đơn vị tính từng dòng — khoá là id dòng biên bản. */
+  const [sDonVi, datSDonVi] = useState<Record<string, string>>({});
+  const [dangTaiTep, datDangTaiTep] = useState(false);
 
   const tai = useCallback(async () => {
     if (!id) return;
@@ -103,7 +120,34 @@ export function BienBanChiTiet() {
     datSIssuedDate(ngayChoO(b.issuedDate));
     datSCommitment(b.commitment ?? '');
     datSNote(b.note ?? '');
+    datSSubtitle(b.subtitle ?? '');
+    datSBasis(b.basis ?? '');
+    datSGiverAddress(b.giverAddress ?? '');
+    datSGiverTaxCode(b.giverTaxCode ?? '');
+    datSGiverPhone(b.giverPhone ?? '');
+    datSReceiverAddress(b.receiverAddress ?? '');
+    datSHandoverPlace(b.handoverPlace ?? '');
+    datSInspection(b.inspection ?? '');
+    datSObligations(b.obligations ?? '');
+    datSCopies(b.copies);
+    datSDonVi(Object.fromEntries(b.items.map((m) => [m.id, m.unit])));
     datSuaMo(true);
+  }
+
+  /**
+   * Tải file Word. Endpoint đòi xác thực nên không dán thẳng vào <a href> được —
+   * phải tải bằng fetch kèm token rồi mới lưu xuống máy.
+   */
+  async function taiWord(b: BienBan): Promise<void> {
+    datLoi(null);
+    datDangTaiTep(true);
+    try {
+      await taiTep(`/api/bbbg/${b.id}/tep`, b.fileName ?? `${b.code}.docx`);
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Không tải được file biên bản.');
+    } finally {
+      datDangTaiTep(false);
+    }
   }
 
   async function chay(
@@ -166,7 +210,7 @@ export function BienBanChiTiet() {
           </Button>
           <h1 className="font-mono text-xl font-semibold sm:text-2xl">{bb.code}</h1>
           <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
-            Biên bản bàn giao
+            {NHAN_MAU_BBBG[bb.templateType]}
             <Badge variant={MAU_TRANG_THAI_BBBG[bb.status]}>
               {NHAN_TRANG_THAI_BBBG[bb.status]}
             </Badge>
@@ -174,6 +218,10 @@ export function BienBanChiTiet() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button disabled={dangTaiTep} onClick={() => void taiWord(bb)}>
+            {dangTaiTep ? <Loader2 className="animate-spin" aria-hidden /> : <FileDown aria-hidden />}
+            Tải file Word
+          </Button>
           <Button variant="outline" asChild>
             <Link to={`/bbbg/${bb.id}/in`} target="_blank" rel="noreferrer">
               <Printer aria-hidden />
@@ -205,6 +253,44 @@ export function BienBanChiTiet() {
 
       {loi ? <Alert variant="destructive">{loi}</Alert> : null}
       {thongBao ? <Alert variant="success">{thongBao}</Alert> : null}
+
+      {/* File mềm lưu lại để theo dõi — mọi lần xuất/nhập đều có một bản. */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <div className="min-w-0 text-sm">
+            {bb.fileName ? (
+              <>
+                <span className="font-medium">File mềm đã lưu: </span>
+                <span className="break-all font-mono text-xs">{bb.fileName}</span>
+                <span className="text-muted-foreground">
+                  {' '}· {Math.max(1, Math.round((bb.fileSize ?? 0) / 1024))} KB · xuất lúc{' '}
+                  {bb.fileGeneratedAt ? ngayGio(bb.fileGeneratedAt) : '—'}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground">
+                Chưa xuất file mềm lần nào — bấm &quot;Tải file Word&quot; là hệ thống tạo và lưu lại.
+              </span>
+            )}
+          </div>
+          {duocSua ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={dangChay}
+              onClick={() =>
+                void chay(
+                  () => goiApi(`/api/bbbg/${bb.id}/xuat-file`, { method: 'POST' }),
+                  'Đã tạo lại file Word theo nội dung mới nhất.',
+                )
+              }
+            >
+              <RefreshCw aria-hidden />
+              Tạo lại file
+            </Button>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {bb.status === 'CHO_XAC_NHAN' ? (
         <Alert variant="warning" tieuDe="Đang chờ bên nhận xác nhận">
@@ -346,6 +432,31 @@ export function BienBanChiTiet() {
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="s-giao-dc">Địa chỉ bên giao</Label>
+                <Input
+                  id="s-giao-dc"
+                  value={sGiverAddress}
+                  onChange={(su) => datSGiverAddress(su.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="s-giao-mst">Mã số thuế bên giao</Label>
+                <Input
+                  id="s-giao-mst"
+                  value={sGiverTaxCode}
+                  onChange={(su) => datSGiverTaxCode(su.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="s-giao-dt">Điện thoại bên giao</Label>
+                <Input
+                  id="s-giao-dt"
+                  inputMode="tel"
+                  value={sGiverPhone}
+                  onChange={(su) => datSGiverPhone(su.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="s-nhan-dv">Đơn vị bên nhận</Label>
                 <Input
                   id="s-nhan-dv"
@@ -378,6 +489,14 @@ export function BienBanChiTiet() {
                   onChange={(su) => datSReceiverPhone(su.target.value)}
                 />
               </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="s-nhan-dc">Địa chỉ bên nhận</Label>
+                <Input
+                  id="s-nhan-dc"
+                  value={sReceiverAddress}
+                  onChange={(su) => datSReceiverAddress(su.target.value)}
+                />
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="s-ngay">Ngày lập</Label>
                 <Input
@@ -386,6 +505,86 @@ export function BienBanChiTiet() {
                   value={sIssuedDate}
                   onChange={(su) => datSIssuedDate(su.target.value)}
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="s-so-ban">Số bản được lập</Label>
+                <Input
+                  id="s-so-ban"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={sCopies}
+                  onChange={(su) => datSCopies(Number(su.target.value))}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="s-noi">Địa điểm bàn giao</Label>
+                <Input
+                  id="s-noi"
+                  value={sHandoverPlace}
+                  onChange={(su) => datSHandoverPlace(su.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="s-vviec">Trích yếu (dòng &quot;V/v …&quot;)</Label>
+                <Input
+                  id="s-vviec"
+                  value={sSubtitle}
+                  onChange={(su) => datSSubtitle(su.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="s-can-cu">Các dòng &quot;Căn cứ …&quot; — mỗi dòng một căn cứ</Label>
+              <textarea
+                id="s-can-cu"
+                rows={3}
+                className={O_VAN_BAN}
+                value={sBasis}
+                onChange={(su) => datSBasis(su.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-kiem-tra">Kết quả kiểm tra — mỗi dòng một ý</Label>
+              <textarea
+                id="s-kiem-tra"
+                rows={3}
+                className={O_VAN_BAN}
+                value={sInspection}
+                onChange={(su) => datSInspection(su.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-trach-nhiem">Trách nhiệm của các Bên — mỗi dòng một ý</Label>
+              <textarea
+                id="s-trach-nhiem"
+                rows={5}
+                className={O_VAN_BAN}
+                value={sObligations}
+                onChange={(su) => datSObligations(su.target.value)}
+              />
+            </div>
+
+            {/* Đơn vị tính từng dòng: sách là "Quyển", cờ là "Lá", robot là "Bộ". */}
+            <div className="space-y-2">
+              <Label>Đơn vị tính từng dòng thiết bị</Label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {bb.items.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-sm" title={m.assetNameSnapshot}>
+                      {m.assetNameSnapshot}
+                    </span>
+                    <Input
+                      aria-label={`Đơn vị tính của ${m.assetNameSnapshot}`}
+                      className="w-24 shrink-0"
+                      value={sDonVi[m.id] ?? m.unit}
+                      onChange={(su) =>
+                        datSDonVi((cu) => ({ ...cu, [m.id]: su.target.value }))
+                      }
+                    />
+                  </div>
+                ))}
               </div>
             </div>
             <div className="space-y-1.5">
@@ -417,16 +616,29 @@ export function BienBanChiTiet() {
                       goiApi(`/api/bbbg/${bb.id}`, {
                         method: 'PATCH',
                         than: {
+                          subtitle: sSubtitle.trim(),
+                          basis: sBasis.trim(),
                           giverName: sGiverName.trim(),
                           giverTitle: sGiverTitle.trim(),
                           giverOrg: sGiverOrg.trim(),
+                          giverAddress: sGiverAddress.trim(),
+                          giverTaxCode: sGiverTaxCode.trim(),
+                          giverPhone: sGiverPhone.trim(),
                           receiverOrg: sReceiverOrg.trim(),
                           receiverName: sReceiverName.trim(),
                           receiverTitle: sReceiverTitle.trim(),
                           receiverPhone: sReceiverPhone.trim(),
+                          receiverAddress: sReceiverAddress.trim(),
                           ...(sIssuedDate ? { issuedDate: sIssuedDate } : {}),
+                          handoverPlace: sHandoverPlace.trim(),
+                          inspection: sInspection.trim(),
+                          obligations: sObligations.trim(),
+                          copies: sCopies,
                           commitment: sCommitment.trim(),
                           note: sNote.trim(),
+                          muc: bb.items
+                            .filter((m) => (sDonVi[m.id] ?? m.unit).trim() !== m.unit)
+                            .map((m) => ({ id: m.id, unit: (sDonVi[m.id] ?? m.unit).trim() })),
                         },
                       }),
                     'Đã lưu nội dung biên bản.',
@@ -453,6 +665,9 @@ export function BienBanChiTiet() {
           <CardContent>
             <dl className="grid gap-3 sm:grid-cols-2">
               <Muc nhan="Đơn vị">{bb.giverOrg}</Muc>
+              {bb.giverAddress ? <Muc nhan="Địa chỉ">{bb.giverAddress}</Muc> : null}
+              {bb.giverTaxCode ? <Muc nhan="Mã số thuế">{bb.giverTaxCode}</Muc> : null}
+              {bb.giverPhone ? <Muc nhan="Điện thoại">{bb.giverPhone}</Muc> : null}
               <Muc nhan="Người giao">
                 {bb.giverName}
                 {bb.giverTitle ? (
@@ -515,6 +730,7 @@ export function BienBanChiTiet() {
                 <TableHead className="w-10 text-right">TT</TableHead>
                 <TableHead>Mã thiết bị</TableHead>
                 <TableHead>Tên thiết bị</TableHead>
+                <TableHead>ĐVT</TableHead>
                 <TableHead className="text-right">Số lượng</TableHead>
                 <TableHead>Tình trạng khi giao</TableHead>
                 <TableHead>Ghi chú</TableHead>
@@ -522,20 +738,31 @@ export function BienBanChiTiet() {
             </TableHeader>
             <TableBody>
               {bb.items.map((m, i) => (
-                <TableRow key={m.id}>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {i + 1}
-                  </TableCell>
-                  <TableCell className="font-mono text-sm font-medium">
-                    {m.assetCodeSnapshot}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{m.assetNameSnapshot}</TableCell>
-                  <TableCell className="text-right tabular-nums">{m.quantity}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {NHAN_TINH_TRANG[m.conditionSnapshot]}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{m.note ?? '—'}</TableCell>
-                </TableRow>
+                <Fragment key={m.id}>
+                  {/* Dòng tiêu đề nhóm, in y như trên biên bản giấy. */}
+                  {m.groupLabel && m.groupLabel !== bb.items[i - 1]?.groupLabel ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="bg-muted/50 font-semibold">
+                        {m.groupLabel}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  <TableRow>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {i + 1}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm font-medium">
+                      {m.assetCodeSnapshot}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{m.assetNameSnapshot}</TableCell>
+                    <TableCell className="text-muted-foreground">{m.unit}</TableCell>
+                    <TableCell className="text-right tabular-nums">{m.quantity}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {NHAN_TINH_TRANG[m.conditionSnapshot]}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{m.note ?? '—'}</TableCell>
+                  </TableRow>
+                </Fragment>
               ))}
             </TableBody>
           </Table>
@@ -544,9 +771,43 @@ export function BienBanChiTiet() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Cam kết và ghi chú</CardTitle>
+          <CardTitle>Nội dung biên bản</CardTitle>
+          <CardDescription>Đúng phần sẽ in ra trên file Word.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 text-sm">
+          {bb.subtitle ? (
+            <p>
+              <span className="font-medium">Trích yếu: </span>
+              <span className="text-muted-foreground">{bb.subtitle}</span>
+            </p>
+          ) : null}
+          {bb.basis ? (
+            <div>
+              <p className="font-medium">Căn cứ</p>
+              <p className="whitespace-pre-wrap text-muted-foreground">{bb.basis}</p>
+            </div>
+          ) : null}
+          {bb.handoverPlace ? (
+            <p>
+              <span className="font-medium">Địa điểm bàn giao: </span>
+              <span className="text-muted-foreground">{bb.handoverPlace}</span>
+            </p>
+          ) : null}
+          {bb.inspection ? (
+            <div>
+              <p className="font-medium">Kết quả kiểm tra</p>
+              <p className="whitespace-pre-wrap text-muted-foreground">{bb.inspection}</p>
+            </div>
+          ) : null}
+          {bb.obligations ? (
+            <div>
+              <p className="font-medium">Trách nhiệm của các Bên</p>
+              <p className="whitespace-pre-wrap text-muted-foreground">{bb.obligations}</p>
+            </div>
+          ) : null}
+          <p className="text-muted-foreground">
+            Biên bản được lập thành <strong className="text-foreground">{bb.copies}</strong> bản.
+          </p>
           <p className="whitespace-pre-wrap text-sm">{bb.commitment ?? '—'}</p>
           {bb.note ? (
             <p className="whitespace-pre-wrap text-sm text-muted-foreground">

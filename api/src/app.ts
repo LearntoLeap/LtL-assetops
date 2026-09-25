@@ -20,6 +20,7 @@ import { linhKienRouter } from './modules/linh-kien/linh-kien.routes.js';
 import { baoCaoRouter } from './modules/bao-cao/bao-cao.routes.js';
 import { kioskRouter } from './modules/kiosk/kiosk.routes.js';
 import { wikiRouter } from './modules/wiki/wiki.routes.js';
+import { caiDatRouter } from './modules/cai-dat/cai-dat.routes.js';
 import { khongTimThayRoute, xuLyLoi } from './middleware/loi.js';
 
 export function dungApp(): Express {
@@ -72,6 +73,7 @@ export function dungApp(): Express {
   app.use('/api/kiem-ke', kiemKeRouter);
   app.use('/api/bao-hong', baoHongRouter);
   app.use('/api/linh-kien', linhKienRouter);
+  app.use('/api/cai-dat', caiDatRouter);
 
   app.use(khongTimThayRoute);
   app.use(xuLyLoi);

@@ -57,6 +57,7 @@ const BienBanList = lazy(() => import('@/features/bbbg/BienBanList').then((m) =>
 const BienBanChiTiet = lazy(() => import('@/features/bbbg/BienBanChiTiet').then((m) => ({ default: m.BienBanChiTiet })));
 const FormBienBan = lazy(() => import('@/features/bbbg/FormBienBan').then((m) => ({ default: m.FormBienBan })));
 const InBienBan = lazy(() => import('@/features/bbbg/InBienBan').then((m) => ({ default: m.InBienBan })));
+const CaiDatChung = lazy(() => import('@/features/cai-dat/CaiDatChung').then((m) => ({ default: m.CaiDatChung })));
 const KiemKeList = lazy(() => import('@/features/kiem-ke/KiemKeList').then((m) => ({ default: m.KiemKeList })));
 const KiemKeChiTiet = lazy(() => import('@/features/kiem-ke/KiemKeChiTiet').then((m) => ({ default: m.KiemKeChiTiet })));
 const BaoHongList = lazy(() => import('@/features/bao-hong/BaoHongList').then((m) => ({ default: m.BaoHongList })));
@@ -225,6 +226,9 @@ export default function App() {
             }
           />
           <Route path="bbbg/:id" element={<BienBanChiTiet />} />
+
+          {/* Cài đặt chung — xem được hết, sửa thì server chỉ cho ADMIN */}
+          <Route path="cai-dat" element={<CaiDatChung />} />
 
           {/* Thiết bị cố định tại kho — màn hình riêng cho tablet đặt ở kho */}
           <Route

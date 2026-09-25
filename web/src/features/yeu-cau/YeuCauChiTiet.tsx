@@ -3,7 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
+  FileDown,
   FileSignature,
+  Loader2,
   PackageCheck,
   PackageOpen,
   Send,
@@ -31,7 +33,8 @@ import {
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
-import type { YeuCau } from '@/lib/kieu';
+import { taiTep } from '@/lib/tep';
+import type { BienBan, YeuCau } from '@/lib/kieu';
 import { MAU_TRANG_THAI } from './tien-ich';
 
 /** Loại yêu cầu đưa hàng ra khỏi kho / đưa hàng về kho. */
@@ -56,6 +59,7 @@ export function YeuCauChiTiet() {
   const [loi, datLoi] = useState<string | null>(null);
   const [thongBao, datThongBao] = useState<string | null>(null);
   const [dangChay, datDangChay] = useState(false);
+  const [dangXuatBBBG, datDangXuatBBBG] = useState(false);
 
   const tai = useCallback(async () => {
     if (!id) return;
@@ -128,9 +132,48 @@ export function YeuCauChiTiet() {
   const duocDuyet = yeuCau.status === 'CHO_DUYET' && laNguoiDuyet && !laNguoiTao;
   const duocXuat = yeuCau.status === 'DA_DUYET' && laKho && LOAI_XUAT.has(yeuCau.type);
   const duocNhap = yeuCau.status === 'DA_DUYET' && laKho && LOAI_NHAP.has(yeuCau.type);
-  // Biên bản bàn giao chỉ lập được sau khi hàng đã ra khỏi kho.
+  /*
+   * Biên bản bàn giao lập được NGAY KHI YÊU CẦU ĐƯỢC DUYỆT.
+   *
+   * Trước đây phải xuất kho xong mới lập được, nên lúc mang hàng đi giao thì
+   * chưa có giấy để ký — người đi giao phải quay về in rồi đi lại. Giờ duyệt
+   * xong là in được mang theo. Đổi lại, biên bản lập sớm vẫn là BẢN NHÁP: chỉ
+   * gửi bên nhận bấm xác nhận trên hệ thống được sau khi hàng thật sự xuất kho
+   * (server chặn, xem `guiXacNhan`).
+   */
   const duocLapBienBan =
-    laKho && (yeuCau.status === 'DA_XUAT' || yeuCau.status === 'DA_HOAN_TAT');
+    laKho &&
+    (yeuCau.status === 'DA_DUYET' ||
+      yeuCau.status === 'DA_XUAT' ||
+      yeuCau.status === 'DA_HOAN_TAT');
+
+  /**
+   * XUẤT BIÊN BẢN WORD THẲNG TỪ ĐÂY — không phải sang trang Biên bản chọn lại.
+   *
+   * Server điền sẵn hai bên từ trang Cài đặt và từ điểm lưu trữ, dựng file rồi
+   * lưu lại luôn; bấm nhiều lần vẫn là một biên bản, không cấp số mới.
+   */
+  async function xuatBBBG(yc: YeuCau): Promise<void> {
+    datLoi(null);
+    datThongBao(null);
+    datDangXuatBBBG(true);
+    try {
+      const kq = await goiApi<{ ok: true; bbbg: BienBan; moi: boolean }>(
+        `/api/bbbg/tu-yeu-cau/${yc.id}`,
+        { method: 'POST' },
+      );
+      await taiTep(`/api/bbbg/${kq.bbbg.id}/tep`, kq.bbbg.fileName ?? `${kq.bbbg.code}.docx`);
+      datThongBao(
+        kq.moi
+          ? `Đã lập biên bản ${kq.bbbg.code} và tải file Word về máy. Bản mềm được lưu trong mục Biên bản.`
+          : `Yêu cầu này đã có biên bản ${kq.bbbg.code} — đã tải lại file Word về máy.`,
+      );
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Không xuất được biên bản bàn giao.');
+    } finally {
+      datDangXuatBBBG(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -211,12 +254,22 @@ export function YeuCauChiTiet() {
             </Button>
           ) : null}
           {duocLapBienBan ? (
-            <Button variant="outline" asChild>
-              <Link to={`/bbbg/moi?yeuCau=${yeuCau.id}`}>
-                <FileSignature aria-hidden />
-                Lập biên bản bàn giao
-              </Link>
-            </Button>
+            <>
+              <Button disabled={dangXuatBBBG} onClick={() => void xuatBBBG(yeuCau)}>
+                {dangXuatBBBG ? (
+                  <Loader2 className="animate-spin" aria-hidden />
+                ) : (
+                  <FileDown aria-hidden />
+                )}
+                Xuất biên bản (Word)
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to={`/bbbg/moi?yeuCau=${yeuCau.id}`}>
+                  <FileSignature aria-hidden />
+                  Lập biên bản chi tiết
+                </Link>
+              </Button>
+            </>
           ) : null}
         </div>
       </div>

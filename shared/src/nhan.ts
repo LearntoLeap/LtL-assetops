@@ -173,6 +173,33 @@ export const NHAN_TRANG_THAI_BBBG = {
   TU_CHOI: 'Bên nhận từ chối',
 } satisfies Record<TrangThaiBBBG, string>;
 
+/**
+ * TÊN VĂN BẢN của từng mẫu biên bản — mỗi loại yêu cầu một mẫu riêng.
+ *
+ * Tên in ở giữa trang, chữ hoa, đúng thể thức văn bản hành chính. Đổi cách gọi
+ * ở đây là đổi luôn trên bản in, file Word và màn hình, không cần migration.
+ */
+export const NHAN_MAU_BBBG = {
+  XUAT_KHO: 'Biên bản bàn giao thiết bị',
+  NHAP_KHO: 'Biên bản tiếp nhận thiết bị nhập kho',
+  PHAN_BO_VE_TRUONG: 'Biên bản bàn giao thiết bị',
+  LUAN_CHUYEN_TRUONG: 'Biên bản bàn giao thiết bị luân chuyển',
+  CHO_MUON: 'Biên bản bàn giao thiết bị cho mượn',
+  TRA_VE_KHO: 'Biên bản bàn giao thiết bị trả về kho',
+  BAO_HONG: 'Biên bản bàn giao thiết bị hư hỏng',
+} satisfies Record<LoaiYeuCau, string>;
+
+/** Mô tả ngắn của mẫu — hiện ở ô chọn mẫu để người lập biết dùng khi nào. */
+export const MO_TA_MAU_BBBG = {
+  XUAT_KHO: 'Xuất thiết bị khỏi kho cho một đơn vị / cá nhân nhận.',
+  NHAP_KHO: 'Nhận thiết bị vào kho từ nhà cung cấp, đối tác hoặc đơn vị khác.',
+  PHAN_BO_VE_TRUONG: 'Kho bàn giao thiết bị về trường để lắp đặt, sử dụng lâu dài.',
+  LUAN_CHUYEN_TRUONG: 'Chuyển thiết bị từ trường này sang trường khác.',
+  CHO_MUON: 'Cho trường / đối tác / nhân sự mượn thiết bị, có hạn trả.',
+  TRA_VE_KHO: 'Trường / người mượn trả thiết bị về kho.',
+  BAO_HONG: 'Bàn giao thiết bị hư hỏng để sửa chữa, bảo hành hoặc thanh lý.',
+} satisfies Record<LoaiYeuCau, string>;
+
 export const NHAN_TRANG_THAI_KIEM_KE = {
   BAN_NHAP: 'Nháp',
   DANG_KIEM: 'Đang kiểm',
@@ -219,6 +246,7 @@ export const DS_TRANG_THAI_YEU_CAU = danhSach(TRANG_THAI_YEU_CAU, NHAN_TRANG_THA
 export const DS_LOAI_DI_CHUYEN = danhSach(LOAI_DI_CHUYEN, NHAN_LOAI_DI_CHUYEN);
 export const DS_LOAI_ANH = danhSach(LOAI_ANH, NHAN_LOAI_ANH);
 export const DS_TRANG_THAI_BBBG = danhSach(TRANG_THAI_BBBG, NHAN_TRANG_THAI_BBBG);
+export const DS_MAU_BBBG = danhSach(LOAI_YEU_CAU, NHAN_MAU_BBBG);
 export const DS_TRANG_THAI_KIEM_KE = danhSach(TRANG_THAI_KIEM_KE, NHAN_TRANG_THAI_KIEM_KE);
 export const DS_LOAI_CANH_BAO = danhSach(LOAI_CANH_BAO, NHAN_LOAI_CANH_BAO);
 export const DS_MUC_DO_CANH_BAO = danhSach(MUC_DO_CANH_BAO, NHAN_MUC_DO_CANH_BAO);

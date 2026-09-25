@@ -1,5 +1,8 @@
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { Router } from 'express';
 import { batAsync } from '../../lib/bat-async.js';
+import { loi404 } from '../../lib/loi-http.js';
 import { boiCanh } from '../../lib/audit.js';
 import {
   chanKhiChuaDoiMatKhau,
@@ -15,6 +18,7 @@ import {
   luocDoXacNhanBBBG,
 } from './bbbg.schema.js';
 import * as dv from './bbbg.service.js';
+import { MAU_THEO_LOAI } from './mau-bbbg.js';
 
 export const bbbgRouter = Router();
 bbbgRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
@@ -31,11 +35,61 @@ bbbgRouter.get(
   }),
 );
 
+/**
+ * Nội dung mặc định của cả 7 mẫu biên bản, để form điền sẵn và cho người lập
+ * sửa NGAY lúc lập chứ không phải lập xong mới thấy mình vừa ký cái gì.
+ *
+ * ĐẶT TRƯỚC `GET /:id` — Express khớp theo thứ tự khai báo, để sau thì "mau"
+ * bị nuốt thành một mã biên bản.
+ */
+bbbgRouter.get(
+  '/mau',
+  batAsync(async (_req, res) => {
+    res.json({ ok: true, mau: MAU_THEO_LOAI });
+  }),
+);
+
 bbbgRouter.get(
   '/:id',
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
     res.json({ ok: true, bbbg: await dv.xemMot(nguoiDung, String(req.params['id'])) });
+  }),
+);
+
+/**
+ * TẢI FILE WORD của biên bản. Chưa có file (hoặc biên bản sửa sau lần xuất gần
+ * nhất) thì sinh lại rồi mới trả — người dùng không phải bấm hai nút.
+ */
+bbbgRouter.get(
+  '/:id/tep',
+  batAsync(async (req, res) => {
+    const nguoiDung = nguoiDungHienTai(req);
+    const tep = await dv.layFile(String(req.params['id']), nguoiDung, boiCanh(req));
+    try {
+      await stat(tep.dayDu);
+    } catch {
+      throw loi404('File biên bản không còn trên ổ đĩa. Bấm "Tạo lại file" để xuất bản mới.');
+    }
+
+    res.setHeader('Content-Type', dv.KIEU_DOCX);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(tep.fileName)}`,
+    );
+    if (tep.byteSize) res.setHeader('Content-Length', String(tep.byteSize));
+    createReadStream(tep.dayDu).pipe(res);
+  }),
+);
+
+/** Xuất lại file Word sau khi sửa nội dung biên bản. */
+bbbgRouter.post(
+  '/:id/xuat-file',
+  benGiao,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    res.json({ ok: true, bbbg: await dv.sinhFile(String(req.params['id']), actor, boiCanh(req)) });
   }),
 );
 
@@ -46,6 +100,24 @@ bbbgRouter.post(
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoTaoBBBG.parse(req.body);
     res.status(201).json({ ok: true, bbbg: await dv.tao(duLieu, actor, boiCanh(req)) });
+  }),
+);
+
+/**
+ * XUẤT BIÊN BẢN THẲNG TỪ MỘT YÊU CẦU — không phải mở trang Biên bản chọn lại.
+ *
+ * Điền sẵn hai bên từ trang Cài đặt và từ điểm lưu trữ, dựng luôn file Word rồi
+ * trả về biên bản. Bấm nhiều lần vẫn ra đúng một biên bản.
+ */
+bbbgRouter.post(
+  '/tu-yeu-cau/:requestId',
+  benGiao,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const ctx = boiCanh(req);
+    const { bbbg, moi } = await dv.taoTuYeuCau(String(req.params['requestId']), actor, ctx);
+    const sau = await dv.sinhFile(bbbg.id, actor, ctx);
+    res.status(moi ? 201 : 200).json({ ok: true, bbbg: sau, moi });
   }),
 );
 

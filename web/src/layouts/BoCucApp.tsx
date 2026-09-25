@@ -23,6 +23,7 @@ import {
   Users,
   Wrench,
   X,
+  Settings2,
 } from 'lucide-react';
 import { NHAN_VAI_TRO } from '@ltl/taisan-shared';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,9 @@ const MENU_THEM: readonly MucMenu[] = [
   { duongDan: '/nhat-ky', nhan: 'Nhật ký', icon: ScrollText, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/nguoi-dung', nhan: 'Tài khoản', icon: Users, vaiTro: VAI_TRO_QUAN_LY },
   { duongDan: '/khoa-vi-tri', nhan: 'Khoá vị trí kho', icon: MapPin, vaiTro: ['ADMIN'] },
+  // Cài đặt: mọi vai trò XEM được (để biết biên bản sẽ in ra thông tin gì),
+  // nhưng chỉ ADMIN sửa — chặn ở server, nút Lưu chỉ hiện với ADMIN.
+  { duongDan: '/cai-dat', nhan: 'Cài đặt chung', icon: Settings2 },
   { duongDan: '/doi-mat-khau', nhan: 'Đổi mật khẩu', icon: ShieldCheck },
 ];
 
