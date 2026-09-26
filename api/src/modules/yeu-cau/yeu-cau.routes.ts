@@ -23,8 +23,16 @@ import * as dv from './yeu-cau.service.js';
 export const yeuCauRouter = Router();
 yeuCauRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
-/** Xoá phiếu là quyền của ADMIN — chặn ở server, ẩn nút chỉ là phụ. */
-const chiAdmin = yeuCauVaiTro('ADMIN');
+/**
+ * XOÁ PHIẾU: quản trị hệ thống và vận hành thiết bị.
+ *
+ * Hai vai trò này là người theo dõi luồng phiếu hằng ngày nên cũng là người dọn
+ * phiếu lập nhầm, lập trùng, phiếu thử. Chặn ở máy chủ; ẩn nút ở giao diện chỉ
+ * là cho gọn mắt, không phải là phép kiểm.
+ *
+ * Xoá thiết bị và điểm lưu trữ VẪN chỉ quản trị — hai thứ đó là gốc của tồn kho.
+ */
+const duocXoaPhieu = yeuCauVaiTro('ADMIN', 'VAN_HANH');
 
 /** Mọi vai trò đều tạo được yêu cầu — đó là cách duy nhất để lấy thiết bị. */
 yeuCauRouter.post(
@@ -52,7 +60,7 @@ yeuCauRouter.get(
  */
 yeuCauRouter.get(
   '/thung-rac',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const loc = luocDoLocYeuCau.parse(req.query);
     res.json({ ok: true, ...(await dv.thungRac({ trang: loc.trang, moiTrang: loc.moiTrang })) });
@@ -66,7 +74,7 @@ yeuCauRouter.get(
  */
 yeuCauRouter.post(
   '/xoa-nhieu',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuIdChung.parse(req.body);
@@ -81,7 +89,7 @@ yeuCauRouter.post(
 
 yeuCauRouter.post(
   '/khoi-phuc-nhieu',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuIdChung.parse(req.body);
@@ -92,7 +100,7 @@ yeuCauRouter.post(
 
 yeuCauRouter.post(
   '/xoa-vinh-vien-nhieu',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuIdChung.parse(req.body);
@@ -203,7 +211,7 @@ yeuCauRouter.delete(
 /** ADMIN xoá mềm phiếu ở BẤT KỲ trạng thái nào — đưa vào thùng rác. */
 yeuCauRouter.delete(
   '/:id/xoa-mem',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoaMem(String(req.params['id']), actor, boiCanh(req));
@@ -217,7 +225,7 @@ yeuCauRouter.delete(
 
 yeuCauRouter.post(
   '/:id/khoi-phuc',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     res.json({ ok: true, yeuCau: await dv.khoiPhuc(String(req.params['id']), actor, boiCanh(req)) });
@@ -226,7 +234,7 @@ yeuCauRouter.post(
 
 yeuCauRouter.delete(
   '/:id/vinh-vien',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoaVinhVien(String(req.params['id']), actor, boiCanh(req));

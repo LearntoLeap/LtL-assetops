@@ -214,6 +214,11 @@ export function BienBanChiTiet() {
     laQuanLy ||
     (bb.receiverLocation !== null && nguoiDung?.locationId === bb.receiverLocation.id);
 
+  /**
+   * Xoá phiếu / biên bản: quản trị hệ thống và vận hành thiết bị.
+   * Trùng với `duocXoaPhieu` ở máy chủ — nơi thật sự chặn.
+   */
+  const duocXoaPhieu = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
   const duocSua = bb.status === 'BAN_NHAP' && laBenGiao;
   const duocGui = bb.status === 'BAN_NHAP' && laBenGiao;
   const duocXacNhan = bb.status === 'CHO_XAC_NHAN' && laBenNhan;
@@ -254,7 +259,7 @@ export function BienBanChiTiet() {
               Sửa nội dung
             </Button>
           ) : null}
-          {nguoiDung?.role === 'ADMIN' ? (
+          {duocXoaPhieu ? (
             <Button
               variant="outline"
               className="text-destructive-dam"

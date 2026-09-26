@@ -85,7 +85,8 @@ export function BienBanList() {
     }
   }
 
-  const laAdmin = nguoiDung?.role === 'ADMIN';
+  // Quản trị hệ thống và vận hành thiết bị đều xoá được — trùng với máy chủ.
+  const laAdmin = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
 
   function bat(id: string): void {
     datDaChon((cu) => {

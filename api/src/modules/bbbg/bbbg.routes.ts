@@ -26,8 +26,11 @@ bbbgRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
 /** Lập/sửa biên bản: bên giao — ADMIN, VAN_HANH, KHO. */
 const benGiao = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
-/** Xoá biên bản là quyền của ADMIN — chặn ở server, ẩn nút chỉ là phụ. */
-const chiAdmin = yeuCauVaiTro('ADMIN');
+/**
+ * XOÁ BIÊN BẢN: quản trị hệ thống và vận hành thiết bị — cùng nhóm theo dõi
+ * chứng từ hằng ngày. Chặn ở máy chủ; ẩn nút chỉ là cho gọn mắt.
+ */
+const duocXoaPhieu = yeuCauVaiTro('ADMIN', 'VAN_HANH');
 
 bbbgRouter.get(
   '/',
@@ -48,7 +51,7 @@ bbbgRouter.get(
 /** THÙNG RÁC — khai trước `/:id` để không bị nuốt thành một mã biên bản. */
 bbbgRouter.get(
   '/thung-rac',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const loc = luocDoLocBBBG.parse(req.query);
     res.json({ ok: true, ...(await dv.thungRac({ trang: loc.trang, moiTrang: loc.moiTrang })) });
@@ -58,7 +61,7 @@ bbbgRouter.get(
 /** XOÁ / KHÔI PHỤC / XOÁ HẲN HÀNG LOẠT (ADMIN) — khai trước `/:id`. */
 bbbgRouter.post(
   '/xoa-nhieu',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuIdChung.parse(req.body);
@@ -73,7 +76,7 @@ bbbgRouter.post(
 
 bbbgRouter.post(
   '/khoi-phuc-nhieu',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuIdChung.parse(req.body);
@@ -84,7 +87,7 @@ bbbgRouter.post(
 
 bbbgRouter.post(
   '/xoa-vinh-vien-nhieu',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuIdChung.parse(req.body);
@@ -227,7 +230,7 @@ bbbgRouter.post(
 
 bbbgRouter.delete(
   '/:id',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoaMem(String(req.params['id']), actor, boiCanh(req));
@@ -241,7 +244,7 @@ bbbgRouter.delete(
 
 bbbgRouter.post(
   '/:id/khoi-phuc',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     res.json({ ok: true, bbbg: await dv.khoiPhuc(String(req.params['id']), actor, boiCanh(req)) });
@@ -250,7 +253,7 @@ bbbgRouter.post(
 
 bbbgRouter.delete(
   '/:id/vinh-vien',
-  chiAdmin,
+  duocXoaPhieu,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoaVinhVien(String(req.params['id']), actor, boiCanh(req));

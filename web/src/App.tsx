@@ -204,7 +204,7 @@ export default function App() {
           <Route
             path="yeu-cau/thung-rac"
             element={
-              <CanDangNhap vaiTro={['ADMIN']}>
+              <CanDangNhap vaiTro={['ADMIN', 'VAN_HANH']}>
                 <ThungRacYeuCau />
               </CanDangNhap>
             }
@@ -240,7 +240,7 @@ export default function App() {
           <Route
             path="bbbg/thung-rac"
             element={
-              <CanDangNhap vaiTro={['ADMIN']}>
+              <CanDangNhap vaiTro={['ADMIN', 'VAN_HANH']}>
                 <ThungRacBienBan />
               </CanDangNhap>
             }

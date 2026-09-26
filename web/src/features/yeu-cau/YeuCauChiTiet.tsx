@@ -142,6 +142,11 @@ export function YeuCauChiTiet() {
 
   const laNguoiTao = nguoiDung?.id === yeuCau.createdBy.id;
   const laNguoiDuyet = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
+  /**
+   * Xoá phiếu / biên bản: quản trị hệ thống và vận hành thiết bị.
+   * Trùng với `duocXoaPhieu` ở máy chủ — nơi thật sự chặn.
+   */
+  const duocXoaPhieu = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
   const laKho =
     nguoiDung?.role === 'KHO' || nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
 
@@ -231,8 +236,9 @@ export function YeuCauChiTiet() {
             </>
           ) : null}
 
-          {/* ADMIN xoá được phiếu ở mọi trạng thái; server mới là chỗ chặn thật. */}
-          {nguoiDung?.role === 'ADMIN' && yeuCau.status !== 'BAN_NHAP' ? (
+          {/* Quản trị và vận hành xoá được phiếu ở mọi trạng thái; server mới là
+              chỗ chặn thật, đây chỉ là ẩn nút cho gọn mắt. */}
+          {duocXoaPhieu && yeuCau.status !== 'BAN_NHAP' ? (
             <Button
               variant="outline"
               className="text-destructive-dam"

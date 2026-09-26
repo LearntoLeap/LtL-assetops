@@ -27,6 +27,12 @@ npm run build
 buoc "Áp migration còn thiếu"
 npm run migrate:deploy
 
+buoc "Ghi dấu phiên bản"
+# Để /api/health nói rõ đang chạy bản nào — khỏi phải đoán "đã cập nhật chưa".
+export APP_COMMIT="$(git rev-parse --short HEAD)"
+export APP_BUILT_AT="$(date '+%Y-%m-%d %H:%M:%S')"
+echo "  ✓ $APP_COMMIT lúc $APP_BUILT_AT"
+
 buoc "Nạp lại API"
 cd api && pm2 reload ecosystem.config.cjs --update-env && pm2 save && cd "$GOC"
 
@@ -43,5 +49,19 @@ else
   echo "  ! API trả mã $MA — xem: pm2 logs ltl-taisan-api --lines 50" >&2
 fi
 
+buoc "Bản đang chạy"
+curl -s http://127.0.0.1:3002/api/health || true
 echo
-echo "Xong. Nhớ build lại web trên Vercel nếu phần giao diện có thay đổi."
+
+echo
+echo "────────────────────────────────────────────────────────────────"
+echo "MỚI XONG NỬA VIỆC. Script này chỉ cập nhật API và cơ sở dữ liệu."
+echo
+echo "GIAO DIỆN WEB nằm trên Vercel, KHÔNG nằm trên máy chủ này. Mọi thay"
+echo "đổi về nút bấm, trang mới, biểu đồ… chỉ lên khi Vercel build lại từ"
+echo "nhánh main của repo LearntoLeap/LtL-assetops."
+echo
+echo "Kiểm tra nhanh xem giao diện đã mới chưa:"
+echo "  vào https://assetops.learntoleap.vn/api/health và xem trường"
+echo "  \"banDangChay\" — phải trùng với $(git rev-parse --short HEAD)"
+echo "────────────────────────────────────────────────────────────────"
