@@ -3,6 +3,17 @@ import { Plus, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { goiApi } from '@/lib/api';
 
+interface DiemCoHang {
+  locationId: string;
+  ten: string;
+  /** Tồn theo sổ (suy từ nhật ký di chuyển). */
+  ton: number;
+  /** Đã mang ra khỏi điểm này nhưng bên nhận chưa xác nhận. */
+  dangDi: number;
+  /** Thật sự còn lấy được = tồn − đang đi. */
+  khaDung: number;
+}
+
 interface DongHangLe {
   id: string;
   code: string;
@@ -10,6 +21,10 @@ interface DongHangLe {
   category: { id: string; name: string };
   currentLocation: { id: string; name: string } | null;
   ton: number;
+  dangDi: number;
+  khaDung: number;
+  tongTon: number;
+  theoDiem: DiemCoHang[];
 }
 
 interface Props {
@@ -30,6 +45,12 @@ interface Props {
  *
  * Hiện TỒN ngay cạnh tên: xin 50 quyển mà kho chỉ còn 12 thì phải biết trước
  * lúc lập phiếu, đừng để tới lúc ra kho mới phát hiện.
+ *
+ * Con số hiện ra là SỐ THẬT SỰ LẤY ĐƯỢC, không phải tổng toàn hệ thống. Một mã
+ * hàng lẻ nằm rải nhiều nơi, mà chuyển 30 quyển từ kho về trường thì tổng toàn
+ * hệ thống vẫn nguyên 100 — nhìn vào tưởng kho chưa bị trừ gì. Nên bên dưới
+ * tách rõ từng điểm còn bao nhiêu, và trừ sẵn phần đã lên xe đi nhưng bên nhận
+ * chưa xác nhận.
  */
 export function OChonHangLe({ locationId, onChon, daThem }: Props) {
   const [tuKhoa, datTuKhoa] = useState('');
@@ -94,29 +115,44 @@ export function OChonHangLe({ locationId, onChon, daThem }: Props) {
               <li key={t.id}>
                 <button
                   type="button"
-                  disabled={roi || t.ton <= 0}
-                  onClick={() => onChon({ code: t.code, name: t.name, ton: t.ton })}
+                  disabled={roi || t.khaDung <= 0}
+                  onClick={() => onChon({ code: t.code, name: t.name, ton: t.khaDung })}
                   className="flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-left hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{t.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {t.category.name}
-                      {t.currentLocation ? ` · ${t.currentLocation.name}` : ''}
                     </span>
+                    {/* Nằm rải mấy nơi thì phải nói rõ nơi nào còn bao nhiêu. */}
+                    {t.theoDiem.length > 0 ? (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {t.theoDiem
+                          .map(
+                            (d) =>
+                              `${d.ten}: ${d.khaDung}${d.dangDi > 0 ? ` (đang đi ${d.dangDi})` : ''}`,
+                          )
+                          .join(' · ')}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="shrink-0 text-right">
                     {/* Hết hàng thì nói thẳng, đừng để bấm vào rồi mới báo. */}
                     <span
                       className={`block text-xs tabular-nums ${
-                        t.ton <= 0 ? 'text-destructive-dam' : 'text-muted-foreground'
+                        t.khaDung <= 0 ? 'text-destructive-dam' : 'text-muted-foreground'
                       }`}
                     >
-                      {t.ton <= 0 ? 'Hết hàng' : `Còn ${t.ton}`}
+                      {t.khaDung <= 0 ? 'Hết hàng' : `Lấy được ${t.khaDung}`}
                     </span>
+                    {t.dangDi > 0 ? (
+                      <span className="block text-xs tabular-nums text-warning-dam">
+                        đang đi {t.dangDi}
+                      </span>
+                    ) : null}
                     {roi ? (
                       <span className="block text-xs text-success-dam">Đã thêm</span>
-                    ) : t.ton > 0 ? (
+                    ) : t.khaDung > 0 ? (
                       <span className="inline-flex items-center gap-0.5 text-xs font-medium text-primary-dam">
                         <Plus className="size-3" aria-hidden />
                         Thêm

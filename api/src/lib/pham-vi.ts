@@ -71,13 +71,21 @@ export function dieuKienDiaDiem(nguoiDung: NguoiDungDaXacThuc): Prisma.LocationW
   return { deletedAt: null, assets: { some: { holderUserId: nguoiDung.id } } };
 }
 
-/** Điều kiện `where` cho danh sách yêu cầu. */
+/**
+ * Điều kiện `where` cho danh sách yêu cầu.
+ *
+ * `deletedAt: null` ở CẢ BA nhánh — yêu cầu trong thùng rác phải biến khỏi mọi
+ * danh sách với mọi vai trò. Đặt ở đây, chỗ duy nhất mọi truy vấn danh sách đi
+ * qua, thay vì rải ở từng tuyến: rải thì chỉ cần quên một chỗ là phiếu đã xoá
+ * lại hiện ra, hoặc tệ hơn là vẫn cộng vào số đếm trên trang Tổng quan.
+ */
 export function dieuKienYeuCau(nguoiDung: NguoiDungDaXacThuc): Prisma.RequestWhereInput {
   const pv = phamViCua(nguoiDung);
-  if (pv.toanBoKho) return {};
+  if (pv.toanBoKho) return { deletedAt: null };
   if (pv.diaDiem) {
     const diaDiem = [...pv.diaDiem];
     return {
+      deletedAt: null,
       OR: [
         { createdById: nguoiDung.id },
         { fromLocationId: { in: diaDiem } },
@@ -85,8 +93,14 @@ export function dieuKienYeuCau(nguoiDung: NguoiDungDaXacThuc): Prisma.RequestWhe
       ],
     };
   }
-  return { createdById: nguoiDung.id };
+  return { deletedAt: null, createdById: nguoiDung.id };
 }
+
+/** Yêu cầu chưa bị xoá mềm — dùng cho những chỗ đếm không qua phạm vi. */
+export const YEU_CAU_CON_SONG = { deletedAt: null } satisfies Prisma.RequestWhereInput;
+
+/** Biên bản chưa bị xoá mềm. */
+export const BIEN_BAN_CON_SONG = { deletedAt: null } satisfies Prisma.HandoverNoteWhereInput;
 
 /** Chặn thẳng nếu vai trò không được xem toàn bộ kho. */
 export function batBuocToanBoKho(nguoiDung: NguoiDungDaXacThuc): void {

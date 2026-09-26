@@ -769,9 +769,14 @@ export async function xuatKho(
     // movements có thể xuống ÂM — đã dựng lại thật: xuất 5000 từ một kho chỉ có
     // 80 đơn vị, API trả 200, tồn còn −4920. Tồn âm nghĩa là sổ sách nói kho đang
     // nợ hàng cho chính mình, mọi báo cáo từ đó trở đi đều sai.
+    // Tồn tại nguồn ĐỌC TRƯỚC KHI ghi movement. Vòng dưới cần lại con số này để
+    // biết lấy xong nguồn còn gì không; đọc lại ở đó thì movement vừa ghi đã trừ
+    // rồi, trừ thêm một lần nữa là sai gấp đôi.
+    const tonNguonTruoc = new Map<string, number>();
     for (const d of dong) {
       if (!d.currentLocationId) continue;
       const dangCo = await tonTaiDiaDiem(d.assetId, d.currentLocationId, tx);
+      tonNguonTruoc.set(d.assetId, dangCo);
       if (d.soLuong > dangCo) {
         throw loi422(
           `Thiết bị ${d.code}: khai mang ra ${d.soLuong} nhưng kho chỉ còn ${dangCo}. Kiểm lại số lượng hoặc kiểm kê trước khi xuất.`,
@@ -814,14 +819,40 @@ export async function xuatKho(
         data: { movementId, requestId: yeuCau.id, assetId: d.assetId },
       });
 
+      // SỐ THỰC SỰ MANG RA. Với loại chờ xác nhận thì đây là chỗ DUY NHẤT ghi
+      // lại con số đó — chưa có movement nào để suy ra.
+      await tx.requestItem.update({
+        where: { id: d.requestItemId },
+        data: { issuedQuantity: d.soLuong },
+      });
+
+      /*
+       * CHỈ DỜI VỊ TRÍ KHI NGUỒN ĐÃ HẾT SẠCH.
+       *
+       * `current_location_id` ghi được đúng MỘT nơi, mà hàng lẻ (sách, cờ,
+       * standee) nằm rải nhiều nơi cùng lúc. Lấy 30 trong 100 quyển mà dời cả
+       * dòng sang trường thì 70 quyển còn nằm trong kho biến mất khỏi mọi danh
+       * sách lọc theo vị trí: kho vẫn còn hàng mà máy bảo không có, và người ở
+       * kho không lập nổi yêu cầu cho chính số hàng đang cầm trên tay.
+       *
+       * Tồn thật vẫn suy từ `movements` (nguyên tắc bất biến #5) nên không mất
+       * số; cột này chỉ là "đang chủ yếu nằm đâu" để lọc nhanh. Tài sản quản lý
+       * theo đơn vị luôn đi trọn vẹn nên nhánh này không đổi gì với chúng.
+       */
+      const conLaiONguon =
+        d.currentLocationId === null ? 0 : (tonNguonTruoc.get(d.assetId) ?? 0) - d.soLuong;
+      const dayHetKhoiNguon = conLaiONguon <= 0;
+
       await tx.asset.update({
         where: { id: d.assetId },
         data: {
-          allocationStatus: trangThaiMoi,
+          // Còn hàng ở nguồn thì thiết bị vẫn "tại kho" — không thể vừa ở kho
+          // vừa mang trạng thái đã phân bổ đi nơi khác.
+          ...(dayHetKhoiNguon ? { allocationStatus: trangThaiMoi } : {}),
           // Chờ bên nhận xác nhận thì vị trí giữ nguyên; còn lại chuyển theo nơi
           // đến (null = đang trong tay người giữ, không ở điểm lưu trữ nào).
-          ...(choXacNhan ? {} : { currentLocationId: noiDenId }),
-          ...(muonNoiBo ? { holderUserId: yeuCau.createdBy.id } : {}),
+          ...(choXacNhan || !dayHetKhoiNguon ? {} : { currentLocationId: noiDenId }),
+          ...(muonNoiBo && dayHetKhoiNguon ? { holderUserId: yeuCau.createdBy.id } : {}),
           ...(yeuCau.expectedReturnAt ? { dueReturnAt: yeuCau.expectedReturnAt } : {}),
         },
       });
@@ -838,9 +869,13 @@ export async function xuatKho(
               .allocationStatus,
           },
           afterValue: {
-            currentLocationId: choXacNhan ? d.currentLocationId : noiDenId,
-            nguoiGiu: muonNoiBo ? yeuCau.createdBy.email : null,
-            allocationStatus: trangThaiMoi,
+            currentLocationId:
+              choXacNhan || !dayHetKhoiNguon ? d.currentLocationId : noiDenId,
+            nguoiGiu: muonNoiBo && dayHetKhoiNguon ? yeuCau.createdBy.email : null,
+            allocationStatus: dayHetKhoiNguon
+              ? trangThaiMoi
+              : yeuCau.items.find((i) => i.asset.id === d.assetId)?.asset.allocationStatus,
+            conLaiONguon: Math.max(0, conLaiONguon),
             movementId,
             soLuong: d.soLuong,
           },
@@ -1090,4 +1125,140 @@ export function batBuocQuyenThucHien(nguoiDung: NguoiDungDaXacThuc): void {
   if (!phamViCua(nguoiDung).toanBoKho) {
     throw loi403('Chỉ tài khoản kho và quản trị mới thực hiện xuất/nhập kho.');
   }
+}
+
+// ===========================================================================
+// XOÁ MỀM — CHỈ ADMIN
+// ===========================================================================
+
+/**
+ * Xoá mềm một yêu cầu ở BẤT KỲ trạng thái nào.
+ *
+ * Khác `xoaNhap` (ai tạo cũng xoá được bản nháp của mình, xoá hẳn khỏi CSDL):
+ * đây là quyền của ADMIN để dọn phiếu lập sai, lập trùng, hoặc phiếu thử.
+ *
+ * ĐIỀU PHẢI NHỚ: xoá phiếu KHÔNG hoàn tác việc đã xảy ra. Hàng đã ra khỏi kho
+ * thì vẫn ở ngoài kho, vì tồn kho suy từ `movements` chứ không từ phiếu
+ * (nguyên tắc bất biến #5). Muốn hàng quay về thì phải lập phiếu nhập kho, chứ
+ * không phải xoá phiếu cũ đi — nên hàm này cố ý KHÔNG đụng vào movements.
+ */
+export async function xoaMem(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<void> {
+  const truoc = await prisma.request.findUnique({
+    where: { id },
+    select: { id: true, code: true, status: true, type: true, deletedAt: true },
+  });
+  if (!truoc) throw loi404('Không tìm thấy yêu cầu.');
+  if (truoc.deletedAt) throw loi409('Yêu cầu này đã nằm trong thùng rác.');
+
+  await prisma.$transaction(async (tx) => {
+    await tx.request.update({
+      where: { id },
+      data: { deletedAt: new Date(), deletedById: actor.id },
+    });
+    await ghiAudit(
+      {
+        actor,
+        action: 'request.soft_delete',
+        entityType: 'request',
+        entityId: id,
+        beforeValue: { code: truoc.code, status: truoc.status, type: truoc.type },
+        afterValue: { deletedAt: new Date().toISOString() },
+        note: 'Xoá mềm; nhật ký di chuyển và tồn kho giữ nguyên.',
+        ...ctx,
+      },
+      tx,
+    );
+  });
+}
+
+export async function khoiPhuc(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<YeuCauDayDu> {
+  const truoc = await prisma.request.findUnique({
+    where: { id },
+    select: { id: true, code: true, deletedAt: true },
+  });
+  if (!truoc) throw loi404('Không tìm thấy yêu cầu.');
+  if (!truoc.deletedAt) throw loi409('Yêu cầu này không nằm trong thùng rác.');
+
+  return prisma.$transaction(async (tx) => {
+    const sau = await tx.request.update({
+      where: { id },
+      data: { deletedAt: null, deletedById: null },
+      select: CHON_YEU_CAU,
+    });
+    await ghiAudit(
+      {
+        actor,
+        action: 'request.restore',
+        entityType: 'request',
+        entityId: id,
+        afterValue: { code: truoc.code },
+        ...ctx,
+      },
+      tx,
+    );
+    return sau;
+  });
+}
+
+/** Danh sách yêu cầu trong thùng rác (ADMIN). */
+export async function thungRac(loc: {
+  trang: number;
+  moiTrang: number;
+}): Promise<{ muc: YeuCauDayDu[]; tong: number; trang: number; moiTrang: number }> {
+  const dieuKien: Prisma.RequestWhereInput = { deletedAt: { not: null } };
+  const [muc, tong] = await Promise.all([
+    prisma.request.findMany({
+      where: dieuKien,
+      select: CHON_YEU_CAU,
+      orderBy: { deletedAt: 'desc' },
+      skip: (loc.trang - 1) * loc.moiTrang,
+      take: loc.moiTrang,
+    }),
+    prisma.request.count({ where: dieuKien }),
+  ]);
+  return { muc, tong, trang: loc.trang, moiTrang: loc.moiTrang };
+}
+
+/**
+ * XOÁ HẲN khỏi CSDL. Chỉ xoá được phiếu đang nằm trong thùng rác.
+ *
+ * Trình tự ở đây là phần an toàn, không phải thủ tục cho có:
+ *
+ *  1. GỠ ẢNH RA KHỎI PHIẾU TRƯỚC. `photos.request_id` khai ON DELETE CASCADE,
+ *     nên xoá phiếu là xoá luôn ảnh — kể cả những ảnh đang là bằng chứng gắn
+ *     vào một bút toán di chuyển vẫn còn sống. Gỡ `request_id` về NULL thì ảnh
+ *     ở lại với bút toán của nó.
+ *  2. GỠ BIÊN BẢN RA KHỎI PHIẾU. Khai SET NULL sẵn rồi nhưng gỡ tường minh cho
+ *     rõ ý: biên bản đã ký là chứng từ độc lập, không chết theo phiếu.
+ *  3. Movements để NGUYÊN (FK đã là SET NULL). Hàng đã đi là đã đi; xoá bút
+ *     toán là làm tồn kho sai vĩnh viễn, không có cách nào dựng lại.
+ */
+export async function xoaVinhVien(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<void> {
+  const truoc = await prisma.request.findUnique({
+    where: { id },
+    select: { id: true, code: true, status: true, deletedAt: true },
+  });
+  if (!truoc) throw loi404('Không tìm thấy yêu cầu.');
+  if (!truoc.deletedAt) {
+    throw loi409('Chỉ xoá hẳn được yêu cầu đang nằm trong thùng rác. Hãy xoá mềm trước.');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await ghiAudit(
+      {
+        actor,
+        action: 'request.purge',
+        entityType: 'request',
+        entityId: id,
+        beforeValue: { code: truoc.code, status: truoc.status },
+        note: 'Xoá hẳn khỏi CSDL; ảnh và bút toán di chuyển được giữ lại.',
+        ...ctx,
+      },
+      tx,
+    );
+    await tx.photo.updateMany({ where: { requestId: id }, data: { requestId: null } });
+    await tx.handoverNote.updateMany({ where: { requestId: id }, data: { requestId: null } });
+    await tx.requestItem.deleteMany({ where: { requestId: id } });
+    await tx.request.delete({ where: { id } });
+  });
 }

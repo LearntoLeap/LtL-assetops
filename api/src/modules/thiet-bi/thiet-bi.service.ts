@@ -12,7 +12,7 @@ import { prisma } from '../../prisma.js';
 import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { dieuKienTaiSan } from '../../lib/pham-vi.js';
-import { tonCuaNhom, tonCuaTaiSan } from '../../lib/ton-kho.js';
+import { hangDangTrenDuong, tonCuaTaiSan, tonNhomTheoDiem } from '../../lib/ton-kho.js';
 import { xoaFileAnh } from '../../lib/luu-anh.js';
 import { idMucDichHoacDauTien, idNguonGocHoacDauTien } from '../../lib/tra-ma-tai-san.js';
 import { maKeTiepTheoId } from '../../lib/sinh-ma-thiet-bi.js';
@@ -219,6 +219,21 @@ export async function traCuuNhanh(code: string) {
  *
  * Trả kèm TỒN để người lập yêu cầu không xin nhiều hơn số đang có.
  */
+/**
+ * HÀNG LẺ (sách, cờ, standee, ấn phẩm in…) kèm TỒN THEO TỪNG ĐIỂM.
+ *
+ * Hai điều ở đây đã từng sai và phải giữ cho đúng:
+ *
+ *  1. KHÔNG lọc theo `current_location_id`. Một mã hàng lẻ nằm rải nhiều nơi
+ *     cùng lúc; cột đó chỉ ghi được MỘT nơi, nên lấy 30 trong 100 là cả dòng
+ *     nhảy sang nơi nhận và 70 cái còn trong kho biến mất khỏi danh sách. Nơi
+ *     nào còn hàng phải suy từ `movements` (nguyên tắc bất biến #5).
+ *
+ *  2. Con số mặc định KHÔNG phải tổng toàn hệ thống. Chuyển 30 quyển từ kho về
+ *     trường thì tổng toàn hệ thống vẫn là 100 — đúng số, nhưng người lập yêu
+ *     cầu nhìn vào tưởng kho chưa bị trừ gì. Họ cần biết TỪNG ĐIỂM còn bao
+ *     nhiêu, nên trả về cả bản tách theo điểm.
+ */
 export async function hangLe(
   nguoiDung: NguoiDungDaXacThuc,
   loc: { tuKhoa?: string | undefined; locationId?: string | undefined; moiTrang: number },
@@ -228,7 +243,6 @@ export async function hangLe(
       ...dieuKienTaiSan(nguoiDung),
       trackingType: 'SO_LUONG',
       isActive: true,
-      ...(loc.locationId ? { currentLocationId: loc.locationId } : {}),
       ...(loc.tuKhoa
         ? {
             OR: [
@@ -246,17 +260,63 @@ export async function hangLe(
       currentLocation: { select: { id: true, name: true } },
     },
     orderBy: { name: 'asc' },
-    take: loc.moiTrang,
+    // Lấy dư rồi mới cắt, vì bước lọc "còn tồn ở điểm đang hỏi" nằm sau truy vấn.
+    take: loc.locationId ? loc.moiTrang * 4 : loc.moiTrang,
   });
 
-  const ton = await tonCuaNhom(
-    muc.map((m) => m.id),
-    loc.locationId ?? null,
-  );
-  return {
-    muc: muc.map((m) => ({ ...m, ton: ton.get(m.id) ?? 0 })),
-    tong: muc.length,
-  };
+  const ids = muc.map((m) => m.id);
+  const [theoDiem, dangDi] = await Promise.all([tonNhomTheoDiem(ids), hangDangTrenDuong(ids)]);
+  const tenDiem = await tenCacDiem(theoDiem);
+
+  const dayDu = muc.map((m) => {
+    const cac = (theoDiem.get(m.id) ?? []).filter((d) => d.ton > 0);
+    const di = dangDi.get(m.id) ?? [];
+    const diTai = (id: string): number =>
+      di.filter((x) => x.locationId === id).reduce((t, x) => t + x.soLuong, 0);
+    const tongDangDi = di.reduce((t, x) => t + x.soLuong, 0);
+    const tongTon = cac.reduce((t, d) => t + d.ton, 0);
+    const tonTaiDiem = loc.locationId
+      ? (cac.find((d) => d.locationId === loc.locationId)?.ton ?? 0)
+      : tongTon;
+    const diTaiDiem = loc.locationId ? diTai(loc.locationId) : tongDangDi;
+    return {
+      ...m,
+      /** Tổng còn trong toàn hệ thống (theo sổ movements). */
+      tongTon,
+      /** Tồn sổ sách tại điểm đang hỏi. */
+      ton: tonTaiDiem,
+      /** Đã mang ra khỏi điểm này nhưng bên nhận chưa xác nhận. */
+      dangDi: diTaiDiem,
+      /** Thật sự còn lấy được = tồn sổ sách − hàng đang trên đường. */
+      khaDung: Math.max(0, tonTaiDiem - diTaiDiem),
+      theoDiem: cac
+        .map((d) => ({
+          locationId: d.locationId,
+          ten: tenDiem.get(d.locationId) ?? '—',
+          ton: d.ton,
+          dangDi: diTai(d.locationId),
+          khaDung: Math.max(0, d.ton - diTai(d.locationId)),
+        }))
+        .sort((a, b) => b.ton - a.ton),
+    };
+  });
+
+  // Hỏi theo một điểm cụ thể thì chỉ trả về mã điểm đó THẬT SỰ còn lấy được.
+  const locTheoDiem = loc.locationId ? dayDu.filter((m) => m.khaDung > 0) : dayDu;
+  return { muc: locTheoDiem.slice(0, loc.moiTrang), tong: locTheoDiem.length };
+}
+
+/** Tên của mọi điểm xuất hiện trong bản tách tồn — một truy vấn cho cả danh sách. */
+async function tenCacDiem(
+  theoDiem: Map<string, Array<{ locationId: string; ton: number }>>,
+): Promise<Map<string, string>> {
+  const ids = [...new Set([...theoDiem.values()].flat().map((d) => d.locationId))];
+  if (ids.length === 0) return new Map();
+  const diem = await prisma.location.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true },
+  });
+  return new Map(diem.map((d) => [d.id, d.name]));
 }
 
 export async function tao(

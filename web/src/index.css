@@ -70,6 +70,21 @@
     --viz-thu-tu-3: #2a78d6;
     --viz-thu-tu-4: #1c5cab;
     --viz-thu-tu-5: #104281;
+
+    /* Màu TRẠNG THÁI THIẾT BỊ cho vành khuyên "Tình trạng thiết bị". Sáu bước
+       này đã chạy qua bộ kiểm màu: độ sáng nằm trong dải cho nền sáng, sắc độ
+       đủ để không đọc thành xám, cặp kề nhau chênh ΔE 23,0 với mắt thường và
+       16,2 dưới mù màu đỏ–lục, tương phản với nền thẻ đều ≥ 3:1.
+
+       Đây là dải TRẠNG THÁI, KHÔNG dùng lại làm màu chuỗi dữ liệu thứ n: tốt –
+       hỏng – mất phải giữ nguyên ý nghĩa ở mọi biểu đồ. Và không bao giờ chỉ
+       dựa vào màu: mọi phần đều có nhãn chữ đi kèm. */
+    --viz-tt-tot: #15803d;
+    --viz-tt-dang-dung: #2a78d6;
+    --viz-tt-bao-tri: #c2760a;
+    --viz-tt-bao-hanh: #0e8f9e;
+    --viz-tt-hong: #dc2626;
+    --viz-tt-mat: #9d3fb5;
   }
 
   .dark {
@@ -126,6 +141,17 @@
     --viz-thu-tu-3: #3987e5;
     --viz-thu-tu-4: #256abf;
     --viz-thu-tu-5: #184f95;
+
+    /* Bước riêng cho nền tối, KHÔNG phải đảo màu tự động từ dải sáng: dải sáng
+       đặt lên nền tối thì chói và lệch khỏi dải độ sáng cho phép. Sáu bước này
+       chạy lại bộ kiểm với nền thẻ tối: độ sáng trong dải, cặp kề nhau chênh
+       ΔE 22,3 với mắt thường và 16,5 dưới mù màu đỏ–lục, tương phản ≥ 3:1. */
+    --viz-tt-tot: #28a864;
+    --viz-tt-dang-dung: #4587d8;
+    --viz-tt-bao-tri: #c5831c;
+    --viz-tt-bao-hanh: #189fae;
+    --viz-tt-hong: #e04a38;
+    --viz-tt-mat: #a64fc0;
   }
 
   * {

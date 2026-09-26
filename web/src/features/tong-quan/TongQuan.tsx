@@ -31,6 +31,8 @@ import {
 } from '@/components/ui/table';
 import { CotRaVao } from '@/components/bieu-do/CotRaVao';
 import { ThanhNgang } from '@/components/bieu-do/ThanhNgang';
+import { VanhKhuyen } from '@/components/bieu-do/VanhKhuyen';
+import { MAU_TINH_TRANG } from '@/lib/bieu-do';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import { so } from '@/lib/bieu-do';
@@ -171,8 +173,20 @@ export function TongQuan() {
       {s ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <O nhan="Mã thiết bị" gia={s.soMa} icon={ClipboardList} den="/thiet-bi" />
-          <O nhan="Đơn vị tại kho" gia={s.donViTaiKho} icon={Warehouse} />
-          <O nhan="Đơn vị ở trường" gia={s.donViOTruong} icon={MapPin} />
+          {/* Tách BỘ và LẺ: cộng 1 bộ robot với 200 quyển sách thành "201 đơn
+              vị" là con số không dùng được vào việc gì. */}
+          <O
+            nhan="Tại kho"
+            gia={s.taiKho.bo}
+            phu={`bộ · ${so(s.taiKho.le)} hàng lẻ`}
+            icon={Warehouse}
+          />
+          <O
+            nhan="Ở trường"
+            gia={s.oTruong.bo}
+            phu={`bộ · ${so(s.oTruong.le)} hàng lẻ`}
+            icon={MapPin}
+          />
           <O
             nhan="Đang cho mượn"
             gia={s.maChoMuon}
@@ -252,6 +266,48 @@ export function TongQuan() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Tình trạng thiết bị</CardTitle>
+            <CardDescription>
+              Mỗi mã thuộc đúng một tình trạng, cộng lại là tổng số mã đang theo dõi.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dl ? (
+              <VanhKhuyen
+                phan={dl.theoTinhTrang.map((d) => ({
+                  ...d,
+                  mau: MAU_TINH_TRANG[d.ma] ?? 'var(--viz-thu-tu-3)',
+                }))}
+                donVi="mã"
+                nhanTong="mã thiết bị"
+              />
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Bộ và hàng lẻ</CardTitle>
+            <CardDescription>
+              Thiết bị dán mã theo từng bộ, và hàng lẻ đếm theo số lượng (sách, cờ, standee).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dl ? (
+              <VanhKhuyen
+                phan={dl.theoKieuQuanLy.map((d) => ({
+                  ...d,
+                  mau: d.ma === 'DON_VI' ? 'var(--viz-chuoi-1)' : 'var(--viz-chuoi-2)',
+                }))}
+                donVi="mã"
+                nhanTong="mã thiết bị"
+              />
+            ) : null}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Theo loại thiết bị</CardTitle>

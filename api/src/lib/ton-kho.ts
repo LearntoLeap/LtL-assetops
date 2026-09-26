@@ -198,3 +198,101 @@ export async function tonCuaNhom(
   `);
   return new Map(dong.map((d) => [d.asset_id, veSo(d.ton)]));
 }
+
+/**
+ * Tồn của MỘT NHÓM tài sản, TÁCH THEO TỪNG ĐỊA ĐIỂM.
+ *
+ * Khác `tonCuaNhom` ở chỗ không gộp lại thành một con số. Cần vậy vì một mã
+ * hàng lẻ nằm rải nhiều nơi: 70 quyển ở kho, 30 quyển đã về trường. Gộp lại
+ * thành "còn 100" là đúng số nhưng vô dụng với người đang hỏi "kho còn mấy
+ * quyển để tôi lấy" — và đó chính là con số họ nhìn khi lập yêu cầu.
+ */
+export async function tonNhomTheoDiem(
+  assetIds: readonly string[],
+  db: PrismaTx = prisma,
+): Promise<Map<string, Array<{ locationId: string; ton: number }>>> {
+  if (assetIds.length === 0) return new Map();
+  const ids = Prisma.join(assetIds.map((x) => Prisma.sql`${x}`));
+  const dong = await db.$queryRaw<DongTho[]>(Prisma.sql`
+    SELECT buoc.asset_id AS asset_id, buoc.location_id AS location_id, SUM(buoc.delta) AS ton
+      FROM (
+            SELECT asset_id, to_location_id AS location_id, quantity AS delta
+              FROM movements
+             WHERE asset_id IN (${ids}) AND to_location_id IS NOT NULL
+            UNION ALL
+            SELECT asset_id, from_location_id AS location_id, -quantity AS delta
+              FROM movements
+             WHERE asset_id IN (${ids}) AND from_location_id IS NOT NULL
+           ) AS buoc
+      JOIN assets ts ON ts.id = buoc.asset_id AND ts.deleted_at IS NULL
+     GROUP BY buoc.asset_id, buoc.location_id
+    HAVING SUM(buoc.delta) <> 0
+  `);
+  const ra = new Map<string, Array<{ locationId: string; ton: number }>>();
+  for (const d of dong) {
+    const mot = doiDong(d);
+    const da = ra.get(mot.assetId);
+    if (da) da.push({ locationId: mot.locationId, ton: mot.ton });
+    else ra.set(mot.assetId, [{ locationId: mot.locationId, ton: mot.ton }]);
+  }
+  return ra;
+}
+
+/**
+ * Sau khi bớt `soLuong` khỏi `locationId`, điểm đó còn gì không?
+ *
+ * Dùng để quyết định có dời `current_location_id` của tài sản hay không. Tài
+ * sản quản lý theo SỐ LƯỢNG nằm rải nhiều nơi, lấy 30 trong 100 mà dời vị trí
+ * cả dòng sang nơi nhận thì 70 cái còn lại trong kho biến mất khỏi mọi danh
+ * sách lọc theo vị trí — kho vẫn còn hàng mà máy bảo không có.
+ */
+export async function conLaiSauKhiBot(
+  assetId: string,
+  locationId: string,
+  soLuong: number,
+  db: PrismaTx = prisma,
+): Promise<number> {
+  return (await tonTaiDiaDiem(assetId, locationId, db)) - soLuong;
+}
+
+/**
+ * HÀNG ĐÃ RA KHỎI KHO NHƯNG CHƯA ĐƯỢC BÊN NHẬN XÁC NHẬN ("đang trên đường").
+ *
+ * Phân bổ về trường và luân chuyển trường CHƯA ghi movement lúc xuất kho — bên
+ * nhận bấm xác nhận mới ghi (luồng C). Nên nếu chỉ nhìn `movements` thì kho báo
+ * còn nguyên trong khi hàng đã lên xe đi rồi: đúng sổ sách, sai thực tế.
+ *
+ * Hàm này đếm phần chênh đó, theo (tài sản, điểm xuất đi), để chỗ hiển thị trừ
+ * ra được: "kho còn 100, đang đi 30, thật sự lấy được 70".
+ *
+ * KHÔNG cộng vào/trừ khỏi `movements`: tồn sổ sách vẫn phải là Σ movements
+ * (nguyên tắc bất biến #5). Đây là con số đi kèm, không phải con số thay thế.
+ */
+export async function hangDangTrenDuong(
+  assetIds: readonly string[],
+  db: PrismaTx = prisma,
+): Promise<Map<string, Array<{ locationId: string; soLuong: number }>>> {
+  if (assetIds.length === 0) return new Map();
+  const ids = Prisma.join(assetIds.map((x) => Prisma.sql`${x}`));
+  const dong = await db.$queryRaw<Array<{ asset_id: string; location_id: string; so: unknown }>>(Prisma.sql`
+    SELECT dong.asset_id AS asset_id,
+           ts.current_location_id AS location_id,
+           SUM(COALESCE(dong.issued_quantity, dong.quantity)) AS so
+      FROM request_items dong
+      JOIN requests yc ON yc.id = dong.request_id
+      JOIN assets ts ON ts.id = dong.asset_id AND ts.deleted_at IS NULL
+     WHERE dong.asset_id IN (${ids})
+       AND yc.status = 'DA_XUAT'
+       AND yc.type IN ('PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG')
+       AND ts.current_location_id IS NOT NULL
+     GROUP BY dong.asset_id, ts.current_location_id
+  `);
+  const ra = new Map<string, Array<{ locationId: string; soLuong: number }>>();
+  for (const d of dong) {
+    const mot = { locationId: d.location_id, soLuong: veSo(d.so) };
+    const da = ra.get(d.asset_id);
+    if (da) da.push(mot);
+    else ra.set(d.asset_id, [mot]);
+  }
+  return ra;
+}

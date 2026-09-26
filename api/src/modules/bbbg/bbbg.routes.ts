@@ -25,6 +25,8 @@ bbbgRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
 /** Lập/sửa biên bản: bên giao — ADMIN, VAN_HANH, KHO. */
 const benGiao = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
+/** Xoá biên bản là quyền của ADMIN — chặn ở server, ẩn nút chỉ là phụ. */
+const chiAdmin = yeuCauVaiTro('ADMIN');
 
 bbbgRouter.get(
   '/',
@@ -42,6 +44,16 @@ bbbgRouter.get(
  * ĐẶT TRƯỚC `GET /:id` — Express khớp theo thứ tự khai báo, để sau thì "mau"
  * bị nuốt thành một mã biên bản.
  */
+/** THÙNG RÁC — khai trước `/:id` để không bị nuốt thành một mã biên bản. */
+bbbgRouter.get(
+  '/thung-rac',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const loc = luocDoLocBBBG.parse(req.query);
+    res.json({ ok: true, ...(await dv.thungRac({ trang: loc.trang, moiTrang: loc.moiTrang })) });
+  }),
+);
+
 bbbgRouter.get(
   '/mau',
   batAsync(async (_req, res) => {
@@ -165,5 +177,40 @@ bbbgRouter.post(
       ok: true,
       bbbg: await dv.tuChoi(String(req.params['id']), rejectionNote, nguoiDung, boiCanh(req)),
     });
+  }),
+);
+
+// -------------------------------------------------------------- xoá (ADMIN)
+
+bbbgRouter.delete(
+  '/:id',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    await dv.xoaMem(String(req.params['id']), actor, boiCanh(req));
+    res.json({
+      ok: true,
+      thongDiep:
+        'Đã chuyển biên bản vào thùng rác. Việc bàn giao KHÔNG bị hoàn tác — thiết bị vẫn ở nơi đã nhận.',
+    });
+  }),
+);
+
+bbbgRouter.post(
+  '/:id/khoi-phuc',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    res.json({ ok: true, bbbg: await dv.khoiPhuc(String(req.params['id']), actor, boiCanh(req)) });
+  }),
+);
+
+bbbgRouter.delete(
+  '/:id/vinh-vien',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    await dv.xoaVinhVien(String(req.params['id']), actor, boiCanh(req));
+    res.json({ ok: true, thongDiep: 'Đã xoá hẳn biên bản và file mềm khỏi hệ thống.' });
   }),
 );

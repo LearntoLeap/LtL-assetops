@@ -465,10 +465,18 @@ export interface MocLichSu {
 
 /* ──────────── GĐ6: dashboard, kiosk, màn hình tablet ──────────── */
 
+/** Đếm tách hai loại: thiết bị theo bộ và hàng lẻ theo số lượng. */
+export interface DemTachLoai {
+  bo: number;
+  le: number;
+}
+
 export interface SoLieuNhanh {
   soMa: number;
   donViTaiKho: number;
   donViOTruong: number;
+  taiKho: DemTachLoai;
+  oTruong: DemTachLoai;
   maChoMuon: number;
   maQuaHan: number;
   maHong: number;
@@ -496,6 +504,8 @@ export interface DuLieuDashboard {
   theoLoai: DongDem[];
   theoDongGiaiPhap: DongDem[];
   theoDiaDiem: DongDem[];
+  theoTinhTrang: DongDem[];
+  theoKieuQuanLy: DongDem[];
   raVao: DongRaVao[];
   quaHan: Array<{
     id: string;

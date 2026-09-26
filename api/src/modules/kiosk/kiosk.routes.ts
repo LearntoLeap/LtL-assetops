@@ -63,7 +63,7 @@ kioskRouter.get(
         take: 30,
       }),
       prisma.handoverNote.findMany({
-        where: { status: 'CHO_XAC_NHAN' },
+        where: { deletedAt: null, status: 'CHO_XAC_NHAN' },
         select: {
           id: true,
           code: true,

@@ -406,8 +406,10 @@ async function demRangBuoc(id: string): Promise<{
     prisma.asset.count({ where: { currentLocationId: id, deletedAt: null } }),
     prisma.movement.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
     prisma.user.count({ where: { locationId: id } }),
-    prisma.request.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
-    prisma.handoverNote.count({ where: { receiverLocationId: id } }),
+    prisma.request.count({
+      where: { deletedAt: null, OR: [{ fromLocationId: id }, { toLocationId: id }] },
+    }),
+    prisma.handoverNote.count({ where: { deletedAt: null, receiverLocationId: id } }),
     prisma.inventoryCount.count({ where: { locationId: id } }),
   ]);
   const rangBuoc = { thietBi, diChuyen, taiKhoan, yeuCau, bienBan: bbbg, kiemKe };

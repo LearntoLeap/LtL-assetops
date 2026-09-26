@@ -96,16 +96,18 @@ function doiNgay(iso: string): Date {
 /** Điều kiện lọc theo phạm vi: điểm trường chỉ thấy biên bản gửi cho mình. */
 function dieuKienPhamVi(nguoiDung: NguoiDungDaXacThuc): Prisma.HandoverNoteWhereInput {
   const pv = phamViCua(nguoiDung);
-  if (pv.toanBoKho) return {};
+  // `deletedAt: null` ở CẢ BA nhánh — xem chú thích ở `dieuKienYeuCau`.
+  if (pv.toanBoKho) return { deletedAt: null };
   if (pv.diaDiem) {
     return {
+      deletedAt: null,
       OR: [
         { receiverLocationId: { in: [...pv.diaDiem] } },
         { createdById: nguoiDung.id },
       ],
     };
   }
-  return { createdById: nguoiDung.id };
+  return { deletedAt: null, createdById: nguoiDung.id };
 }
 
 export async function danhSach(
@@ -1005,4 +1007,132 @@ export async function tuChoi(
     thongDiep: `Biên bản ${sau.code} bị từ chối.`,
   });
   return sau;
+}
+
+// ===========================================================================
+// XOÁ MỀM — CHỈ ADMIN
+// ===========================================================================
+
+/**
+ * Xoá mềm một biên bản.
+ *
+ * XOÁ BIÊN BẢN KHÔNG HOÀN TÁC VIỆC BÀN GIAO. Với loại phân bổ / luân chuyển,
+ * chính cú bấm xác nhận của bên nhận đã ghi bút toán di chuyển và đổi vị trí
+ * thiết bị (luồng C). Xoá tờ biên bản đi thì thiết bị vẫn ở chỗ mới, tồn kho
+ * vẫn như đã ghi — vì tồn suy từ `movements` chứ không từ biên bản.
+ *
+ * Muốn đưa thiết bị về chỗ cũ thì phải lập yêu cầu trả về kho, không phải xoá
+ * chứng từ. Hàm này cố ý KHÔNG đụng vào movements; chỗ gọi phải nói rõ điều đó
+ * với người bấm nút.
+ */
+export async function xoaMem(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<void> {
+  const truoc = await prisma.handoverNote.findUnique({
+    where: { id },
+    select: { id: true, code: true, status: true, deletedAt: true },
+  });
+  if (!truoc) throw loi404('Không tìm thấy biên bản.');
+  if (truoc.deletedAt) throw loi409('Biên bản này đã nằm trong thùng rác.');
+
+  await prisma.$transaction(async (tx) => {
+    await tx.handoverNote.update({
+      where: { id },
+      data: { deletedAt: new Date(), deletedById: actor.id },
+    });
+    await ghiAudit(
+      {
+        actor,
+        action: 'handover.soft_delete',
+        entityType: 'handover_note',
+        entityId: id,
+        beforeValue: { code: truoc.code, status: truoc.status },
+        note:
+          truoc.status === 'DA_XAC_NHAN'
+            ? 'Xoá mềm biên bản ĐÃ XÁC NHẬN; vị trí thiết bị và tồn kho giữ nguyên.'
+            : 'Xoá mềm.',
+        ...ctx,
+      },
+      tx,
+    );
+  });
+}
+
+export async function khoiPhuc(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<BBBGDayDu> {
+  const truoc = await prisma.handoverNote.findUnique({
+    where: { id },
+    select: { id: true, code: true, deletedAt: true },
+  });
+  if (!truoc) throw loi404('Không tìm thấy biên bản.');
+  if (!truoc.deletedAt) throw loi409('Biên bản này không nằm trong thùng rác.');
+
+  return prisma.$transaction(async (tx) => {
+    const sau = await tx.handoverNote.update({
+      where: { id },
+      data: { deletedAt: null, deletedById: null },
+      select: CHON_BBBG,
+    });
+    await ghiAudit(
+      {
+        actor,
+        action: 'handover.restore',
+        entityType: 'handover_note',
+        entityId: id,
+        afterValue: { code: truoc.code },
+        ...ctx,
+      },
+      tx,
+    );
+    return sau;
+  });
+}
+
+/** Danh sách biên bản trong thùng rác (ADMIN). */
+export async function thungRac(loc: {
+  trang: number;
+  moiTrang: number;
+}): Promise<{ muc: BBBGDayDu[]; tong: number; trang: number; moiTrang: number }> {
+  const dieuKien: Prisma.HandoverNoteWhereInput = { deletedAt: { not: null } };
+  const [muc, tong] = await Promise.all([
+    prisma.handoverNote.findMany({
+      where: dieuKien,
+      select: CHON_BBBG,
+      orderBy: { deletedAt: 'desc' },
+      skip: (loc.trang - 1) * loc.moiTrang,
+      take: loc.moiTrang,
+    }),
+    prisma.handoverNote.count({ where: dieuKien }),
+  ]);
+  return { muc, tong, trang: loc.trang, moiTrang: loc.moiTrang };
+}
+
+/** XOÁ HẲN khỏi CSDL, kèm xoá file mềm .docx trên ổ đĩa. */
+export async function xoaVinhVien(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Promise<void> {
+  const truoc = await prisma.handoverNote.findUnique({
+    where: { id },
+    select: { id: true, code: true, status: true, deletedAt: true, filePath: true },
+  });
+  if (!truoc) throw loi404('Không tìm thấy biên bản.');
+  if (!truoc.deletedAt) {
+    throw loi409('Chỉ xoá hẳn được biên bản đang nằm trong thùng rác. Hãy xoá mềm trước.');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await ghiAudit(
+      {
+        actor,
+        action: 'handover.purge',
+        entityType: 'handover_note',
+        entityId: id,
+        beforeValue: { code: truoc.code, status: truoc.status },
+        note: 'Xoá hẳn khỏi CSDL; bút toán di chuyển và vị trí thiết bị giữ nguyên.',
+        ...ctx,
+      },
+      tx,
+    );
+    // Các dòng thiết bị của biên bản khai ON DELETE CASCADE nên tự đi theo.
+    await tx.handoverNote.delete({ where: { id } });
+  });
+
+  // Xoá file sau khi bản ghi đã biến mất — làm ngược lại thì lỗi xoá bản ghi sẽ
+  // để lại một biên bản trỏ vào file không còn tồn tại.
+  if (truoc.filePath) await xoaFileTaiLieu(truoc.filePath);
 }

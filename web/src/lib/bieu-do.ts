@@ -41,3 +41,19 @@ export function ngayThang(iso: string): string {
   const [, thang, ngay] = iso.split('-');
   return `${ngay}/${thang}`;
 }
+
+/**
+ * Màu của từng TÌNH TRẠNG thiết bị.
+ *
+ * Để ở một chỗ vì tình trạng phải giữ nguyên màu ở mọi biểu đồ: xanh lá luôn là
+ * "tốt", đỏ luôn là "hỏng". Dải này đã qua bộ kiểm màu (xem chú thích trong
+ * `index.css`) và không được dùng lại làm màu chuỗi dữ liệu bất kỳ.
+ */
+export const MAU_TINH_TRANG: Record<string, string> = {
+  TOT: 'var(--viz-tt-tot)',
+  DANG_SU_DUNG: 'var(--viz-tt-dang-dung)',
+  CAN_BAO_TRI: 'var(--viz-tt-bao-tri)',
+  DANG_BAO_HANH: 'var(--viz-tt-bao-hanh)',
+  HONG: 'var(--viz-tt-hong)',
+  MAT: 'var(--viz-tt-mat)',
+};

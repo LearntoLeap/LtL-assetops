@@ -200,6 +200,8 @@ model User {
   wikiTaiLieu           WikiDoc[]
   wikiBanSua            WikiRevision[]
   caiDatDaSua           AppSetting[]            @relation("SettingUpdatedBy")
+  deletedRequests       Request[]               @relation("RequestDeletedBy")
+  deletedHandovers      HandoverNote[]          @relation("HandoverDeletedBy")
 
   @@index([role])
   @@index([locationId])
@@ -531,6 +533,11 @@ model Request {
   rejectionNote    String?       @map("rejection_note") @db.Text
   issuedAt         DateTime?     @map("issued_at")
   completedAt      DateTime?     @map("completed_at")
+  /// XOÁ MỀM (chỉ ADMIN). Yêu cầu biến khỏi mọi danh sách và mọi con số, nhưng
+  /// NHẬT KÝ DI CHUYỂN, ẢNH và BIÊN BẢN sinh ra từ nó vẫn nguyên: hàng đã ra
+  /// khỏi kho thật rồi, xoá cái phiếu không làm hàng quay về.
+  deletedAt        DateTime?     @map("deleted_at")
+  deletedById      String?       @map("deleted_by_id") @db.VarChar(30)
   createdAt        DateTime      @default(now()) @map("created_at")
   updatedAt        DateTime      @updatedAt @map("updated_at")
 
@@ -538,6 +545,7 @@ model Request {
   approvedBy   User?     @relation("RequestApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   fromLocation Location? @relation("RequestFrom", fields: [fromLocationId], references: [id], onDelete: SetNull)
   toLocation   Location? @relation("RequestTo", fields: [toLocationId], references: [id], onDelete: SetNull)
+  deletedBy    User?     @relation("RequestDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
 
   items         RequestItem[]
   movements     Movement[]
@@ -550,17 +558,25 @@ model Request {
   @@index([createdById, status])
   @@index([type, status])
   @@index([expectedReturnAt])
+  /// Mọi truy vấn danh sách đều lọc `deleted_at IS NULL` nên cột này phải có chỉ mục.
+  @@index([deletedAt])
   @@map("requests")
 }
 
 /// Dòng thiết bị trong một yêu cầu — tham chiếu theo FK tới assets (theo mã).
 model RequestItem {
-  id        String  @id @default(cuid()) @db.VarChar(30)
-  requestId String  @map("request_id") @db.VarChar(30)
-  assetId   String  @map("asset_id") @db.VarChar(30)
+  id             String  @id @default(cuid()) @db.VarChar(30)
+  requestId      String  @map("request_id") @db.VarChar(30)
+  assetId        String  @map("asset_id") @db.VarChar(30)
   /// Số lượng xin (tài sản DON_VI luôn = 1).
-  quantity  Int     @default(1)
-  note      String? @db.VarChar(255)
+  quantity       Int     @default(1)
+  /// SỐ THỰC SỰ MANG RA lúc xuất kho — có thể ít hơn số đã duyệt.
+  ///
+  /// Cần cột riêng vì loại "chờ bên nhận xác nhận" CHƯA ghi movement lúc xuất
+  /// (luồng C), nên nếu không ghi ở đây thì số hàng đang trên đường không nằm ở
+  /// đâu cả: kho báo còn nguyên, mà hàng thì đã lên xe đi rồi.
+  issuedQuantity Int?    @map("issued_quantity")
+  note           String? @db.VarChar(255)
 
   request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
   asset   Asset   @relation(fields: [assetId], references: [id])
@@ -812,6 +828,10 @@ model HandoverNote {
   confirmedById   String?   @map("confirmed_by_id") @db.VarChar(30)
   confirmedAt     DateTime? @map("confirmed_at")
   rejectionNote   String?   @map("rejection_note") @db.Text
+  /// XOÁ MỀM (chỉ ADMIN). Xoá biên bản KHÔNG hoàn tác việc bàn giao: thiết bị đã
+  /// đổi vị trí lúc bên nhận xác nhận thì vẫn ở chỗ mới.
+  deletedAt       DateTime? @map("deleted_at")
+  deletedById     String?   @map("deleted_by_id") @db.VarChar(30)
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -819,6 +839,7 @@ model HandoverNote {
   receiverLocation Location? @relation(fields: [receiverLocationId], references: [id], onDelete: SetNull)
   createdBy        User      @relation("HandoverCreatedBy", fields: [createdById], references: [id])
   confirmedBy      User?     @relation("HandoverConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  deletedBy        User?     @relation("HandoverDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
 
   items HandoverNoteItem[]
 
@@ -826,6 +847,7 @@ model HandoverNote {
   @@index([receiverLocationId])
   @@index([requestId])
   @@index([templateType])
+  @@index([deletedAt])
   @@map("handover_notes")
 }
 

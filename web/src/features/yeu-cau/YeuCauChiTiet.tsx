@@ -60,6 +60,7 @@ export function YeuCauChiTiet() {
   const [thongBao, datThongBao] = useState<string | null>(null);
   const [dangChay, datDangChay] = useState(false);
   const [dangXuatBBBG, datDangXuatBBBG] = useState(false);
+  const [hoiXoa, datHoiXoa] = useState(false);
 
   const tai = useCallback(async () => {
     if (!id) return;
@@ -102,6 +103,23 @@ export function YeuCauChiTiet() {
       dieuHuong('/yeu-cau', { replace: true });
     } catch (e) {
       datLoi(e instanceof LoiApi ? e.message : 'Xoá thất bại.');
+    }
+  }
+
+  /**
+   * ADMIN xoá phiếu ở bất kỳ trạng thái nào — chuyển vào thùng rác, khôi phục lại được.
+   *
+   * Hỏi thẳng điều dễ hiểu nhầm nhất: xoá phiếu KHÔNG làm hàng quay về kho.
+   */
+  async function xoaMem(): Promise<void> {
+    datLoi(null);
+    datDangChay(true);
+    try {
+      await goiApi(`/api/yeu-cau/${id}/xoa-mem`, { method: 'DELETE' });
+      dieuHuong('/yeu-cau', { replace: true });
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Xoá thất bại.');
+      datDangChay(false);
     }
   }
 
@@ -211,6 +229,19 @@ export function YeuCauChiTiet() {
             </>
           ) : null}
 
+          {/* ADMIN xoá được phiếu ở mọi trạng thái; server mới là chỗ chặn thật. */}
+          {nguoiDung?.role === 'ADMIN' && yeuCau.status !== 'BAN_NHAP' ? (
+            <Button
+              variant="outline"
+              className="text-destructive-dam"
+              disabled={dangChay}
+              onClick={() => datHoiXoa(true)}
+            >
+              <Trash2 aria-hidden />
+              Xoá yêu cầu
+            </Button>
+          ) : null}
+
           {duocDuyet ? (
             <>
               <Button
@@ -276,6 +307,27 @@ export function YeuCauChiTiet() {
 
       {thongBao ? <Alert variant="success">{thongBao}</Alert> : null}
       {loi ? <Alert variant="destructive">{loi}</Alert> : null}
+
+      {hoiXoa ? (
+        <Alert variant="warning" tieuDe="Xoá yêu cầu này?">
+          <div className="space-y-3">
+            <p>
+              Phiếu sẽ vào <strong>thùng rác</strong> và khôi phục lại được. Nhưng việc đã xảy ra
+              thì không hoàn tác: <strong>hàng đã ra khỏi kho vẫn ở ngoài kho</strong>, nhật ký di
+              chuyển và tồn kho giữ nguyên. Muốn hàng quay về thì phải lập yêu cầu nhập kho.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="destructive" disabled={dangChay} onClick={() => void xoaMem()}>
+                <Trash2 aria-hidden />
+                Xoá vào thùng rác
+              </Button>
+              <Button variant="outline" onClick={() => datHoiXoa(false)}>
+                Thôi
+              </Button>
+            </div>
+          </div>
+        </Alert>
+      ) : null}
 
       {yeuCau.status === 'CHO_DUYET' && laNguoiTao && laNguoiDuyet ? (
         <Alert variant="info" tieuDe="Bạn không tự duyệt yêu cầu của mình được">

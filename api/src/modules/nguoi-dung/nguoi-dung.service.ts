@@ -324,11 +324,11 @@ export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Pro
 
   const [movement, yeuCau, duyet, anh, kiemKe, bbbg, taiSanGiu] = await Promise.all([
     prisma.movement.count({ where: { performedById: id } }),
-    prisma.request.count({ where: { createdById: id } }),
-    prisma.request.count({ where: { approvedById: id } }),
+    prisma.request.count({ where: { deletedAt: null, createdById: id } }),
+    prisma.request.count({ where: { deletedAt: null, approvedById: id } }),
     prisma.photo.count({ where: { uploadedById: id } }),
     prisma.inventoryCount.count({ where: { createdById: id } }),
-    prisma.handoverNote.count({ where: { createdById: id } }),
+    prisma.handoverNote.count({ where: { deletedAt: null, createdById: id } }),
     // Thiết bị đã xoá không được tính là "đang giữ" để chặn xoá tài khoản.
     prisma.asset.count({ where: { holderUserId: id, deletedAt: null } }),
   ]);

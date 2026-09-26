@@ -174,8 +174,8 @@ linhKienRouter.post(
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoLay.parse(req.body);
 
-    const baoHong = await prisma.request.findUnique({
-      where: { id: duLieu.baoHongId },
+    const baoHong = await prisma.request.findFirst({
+      where: { id: duLieu.baoHongId, deletedAt: null },
       select: {
         id: true,
         code: true,

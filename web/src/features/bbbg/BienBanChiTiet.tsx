@@ -9,6 +9,7 @@ import {
   Printer,
   RefreshCw,
   Send,
+  Trash2,
   X,
 } from 'lucide-react';
 import {
@@ -93,6 +94,7 @@ export function BienBanChiTiet() {
   /** Đơn vị tính từng dòng — khoá là id dòng biên bản. */
   const [sDonVi, datSDonVi] = useState<Record<string, string>>({});
   const [dangTaiTep, datDangTaiTep] = useState(false);
+  const [hoiXoa, datHoiXoa] = useState(false);
 
   const tai = useCallback(async () => {
     if (!id) return;
@@ -138,6 +140,24 @@ export function BienBanChiTiet() {
    * Tải file Word. Endpoint đòi xác thực nên không dán thẳng vào <a href> được —
    * phải tải bằng fetch kèm token rồi mới lưu xuống máy.
    */
+  /**
+   * ADMIN xoá biên bản — vào thùng rác, khôi phục lại được.
+   *
+   * Nói thẳng điều dễ hiểu nhầm: biên bản đã xác nhận thì việc bàn giao ĐÃ xảy
+   * ra, xoá tờ giấy không kéo thiết bị về chỗ cũ.
+   */
+  async function xoaBienBan(b: BienBan): Promise<void> {
+    datLoi(null);
+    datDangChay(true);
+    try {
+      await goiApi(`/api/bbbg/${b.id}`, { method: 'DELETE' });
+      window.location.assign('/bbbg');
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Xoá biên bản thất bại.');
+      datDangChay(false);
+    }
+  }
+
   async function taiWord(b: BienBan): Promise<void> {
     datLoi(null);
     datDangTaiTep(true);
@@ -234,6 +254,17 @@ export function BienBanChiTiet() {
               Sửa nội dung
             </Button>
           ) : null}
+          {nguoiDung?.role === 'ADMIN' ? (
+            <Button
+              variant="outline"
+              className="text-destructive-dam"
+              disabled={dangChay}
+              onClick={() => datHoiXoa(true)}
+            >
+              <Trash2 aria-hidden />
+              Xoá biên bản
+            </Button>
+          ) : null}
           {duocGui ? (
             <Button
               disabled={dangChay}
@@ -253,6 +284,33 @@ export function BienBanChiTiet() {
 
       {loi ? <Alert variant="destructive">{loi}</Alert> : null}
       {thongBao ? <Alert variant="success">{thongBao}</Alert> : null}
+
+      {hoiXoa ? (
+        <Alert variant="warning" tieuDe="Xoá biên bản này?">
+          <div className="space-y-3">
+            <p>
+              Biên bản sẽ vào <strong>thùng rác</strong> và khôi phục lại được.
+              {bb.status === 'DA_XAC_NHAN' ? (
+                <>
+                  {' '}
+                  Biên bản này <strong>đã được bên nhận xác nhận</strong> — việc bàn giao đã xảy ra
+                  thật, nên xoá biên bản <strong>không</strong> kéo thiết bị về chỗ cũ. Muốn đưa
+                  thiết bị về thì lập yêu cầu trả về kho.
+                </>
+              ) : null}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="destructive" disabled={dangChay} onClick={() => void xoaBienBan(bb)}>
+                <Trash2 aria-hidden />
+                Xoá vào thùng rác
+              </Button>
+              <Button variant="outline" onClick={() => datHoiXoa(false)}>
+                Thôi
+              </Button>
+            </div>
+          </div>
+        </Alert>
+      ) : null}
 
       {/* File mềm lưu lại để theo dõi — mọi lần xuất/nhập đều có một bản. */}
       <Card>

@@ -9,6 +9,7 @@
  * nhân sự chỉ thấy thiết bị mình đang giữ. Gọi thẳng API cũng không ra ngoài được.
  */
 import type { LocationType, Prisma } from '@prisma/client';
+import { NHAN_TINH_TRANG, TINH_TRANG } from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
 import { tonTatCa } from '../../lib/ton-kho.js';
 import {
@@ -16,6 +17,8 @@ import {
   dieuKienTaiSan,
   dieuKienYeuCau,
   phamViCua,
+  YEU_CAU_CON_SONG,
+  BIEN_BAN_CON_SONG,
 } from '../../lib/pham-vi.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
 
@@ -35,10 +38,29 @@ export interface DongRaVao {
   ra: number;
 }
 
+/**
+ * Đếm TÁCH HAI LOẠI, không gộp.
+ *
+ * Gộp lại là con số vô nghĩa: 1 bộ robot và 200 quyển sách cộng thành "201 đơn
+ * vị" không nói lên điều gì — không biết kho đang giữ bao nhiêu bộ thiết bị để
+ * phân về trường, cũng không biết còn bao nhiêu quyển sách để phát. Hai thứ
+ * khác hẳn nhau về cách quản lý nên phải đếm riêng.
+ */
+export interface DemTachLoai {
+  /** Thiết bị quản lý theo từng đơn vị (robot, máy tính): ĐẾM SỐ BỘ. */
+  bo: number;
+  /** Hàng lẻ quản lý theo số lượng (sách, cờ, standee): CỘNG SỐ LƯỢNG. */
+  le: number;
+}
+
 export interface SoLieuNhanh {
   soMa: number;
+  /** Giữ lại tổng gộp cho các chỗ chỉ cần một con số. */
   donViTaiKho: number;
   donViOTruong: number;
+  /** Tách bộ / lẻ — con số dùng để ra quyết định. */
+  taiKho: DemTachLoai;
+  oTruong: DemTachLoai;
   maChoMuon: number;
   maQuaHan: number;
   maHong: number;
@@ -86,25 +108,40 @@ function ngayISO(d: Date): string {
  * trường sẽ nhìn thấy số tồn của mã đó ở KHO của LtL — đúng thiết bị trong phạm
  * vi, nhưng sai địa điểm.
  */
-async function tonTrongPhamVi(
-  nguoiDung: NguoiDungDaXacThuc,
-): Promise<{ theoDiem: Map<string, number>; tongTheoTaiSan: Map<string, number> }> {
+async function tonTrongPhamVi(nguoiDung: NguoiDungDaXacThuc): Promise<{
+  theoDiem: Map<string, number>;
+  tongTheoTaiSan: Map<string, number>;
+  /** Cùng dữ liệu nhưng tách bộ / lẻ theo từng điểm. */
+  tachTheoDiem: Map<string, DemTachLoai>;
+}> {
   const [ton, taiSanTrongPhamVi, diemTrongPhamVi] = await Promise.all([
     tonTatCa(),
-    prisma.asset.findMany({ where: dieuKienTaiSan(nguoiDung), select: { id: true } }),
+    prisma.asset.findMany({
+      where: dieuKienTaiSan(nguoiDung),
+      select: { id: true, trackingType: true },
+    }),
     prisma.location.findMany({ where: dieuKienDiaDiem(nguoiDung), select: { id: true } }),
   ]);
-  const duocXem = new Set(taiSanTrongPhamVi.map((t) => t.id));
+  const kieu = new Map(taiSanTrongPhamVi.map((t) => [t.id, t.trackingType]));
   const coDiem = new Set(diemTrongPhamVi.map((d) => d.id));
 
   const theoDiem = new Map<string, number>();
   const tongTheoTaiSan = new Map<string, number>();
+  const tachTheoDiem = new Map<string, DemTachLoai>();
   for (const d of ton) {
-    if (!duocXem.has(d.assetId) || !coDiem.has(d.locationId)) continue;
+    const kieuTaiSan = kieu.get(d.assetId);
+    if (kieuTaiSan === undefined || !coDiem.has(d.locationId)) continue;
     theoDiem.set(d.locationId, (theoDiem.get(d.locationId) ?? 0) + d.ton);
     tongTheoTaiSan.set(d.assetId, (tongTheoTaiSan.get(d.assetId) ?? 0) + d.ton);
+
+    const tach = tachTheoDiem.get(d.locationId) ?? { bo: 0, le: 0 };
+    // Thiết bị theo đơn vị: đếm SỐ BỘ đang nằm ở đó (tồn của mỗi bộ luôn là 1).
+    // Hàng lẻ: cộng SỐ LƯỢNG.
+    if (kieuTaiSan === 'DON_VI') tach.bo += d.ton;
+    else tach.le += d.ton;
+    tachTheoDiem.set(d.locationId, tach);
   }
-  return { theoDiem, tongTheoTaiSan };
+  return { theoDiem, tongTheoTaiSan, tachTheoDiem };
 }
 
 export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieuNhanh> {
@@ -126,9 +163,15 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
       prisma.asset.count({ where: { ...dieuKien, condition: 'CAN_BAO_TRI' } }),
       prisma.location.findMany({ select: { id: true, type: true } }),
       tonTrongPhamVi(nguoiDung),
-      prisma.request.count({ where: { status: 'CHO_DUYET', type: { not: 'BAO_HONG' } } }),
-      prisma.request.count({ where: { status: 'DA_DUYET', type: { not: 'BAO_HONG' } } }),
-      prisma.handoverNote.count({ where: { status: 'CHO_XAC_NHAN' } }),
+      // Phiếu và biên bản ĐÃ XOÁ không được cộng vào việc-đang-chờ: bấm vào
+      // con số mà danh sách trống thì người dùng không biết tin cái nào.
+      prisma.request.count({
+        where: { ...YEU_CAU_CON_SONG, status: 'CHO_DUYET', type: { not: 'BAO_HONG' } },
+      }),
+      prisma.request.count({
+        where: { ...YEU_CAU_CON_SONG, status: 'DA_DUYET', type: { not: 'BAO_HONG' } },
+      }),
+      prisma.handoverNote.count({ where: { ...BIEN_BAN_CON_SONG, status: 'CHO_XAC_NHAN' } }),
     ]);
 
   const laKho = new Set(diem.filter((d) => LOAI_KHO.has(d.type)).map((d) => d.id));
@@ -136,15 +179,27 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
 
   let donViTaiKho = 0;
   let donViOTruong = 0;
+  const taiKho: DemTachLoai = { bo: 0, le: 0 };
+  const oTruong: DemTachLoai = { bo: 0, le: 0 };
   for (const [idDiem, so] of ton.theoDiem) {
-    if (laKho.has(idDiem)) donViTaiKho += so;
-    else if (laTruong.has(idDiem)) donViOTruong += so;
+    const tach = ton.tachTheoDiem.get(idDiem) ?? { bo: 0, le: 0 };
+    if (laKho.has(idDiem)) {
+      donViTaiKho += so;
+      taiKho.bo += tach.bo;
+      taiKho.le += tach.le;
+    } else if (laTruong.has(idDiem)) {
+      donViOTruong += so;
+      oTruong.bo += tach.bo;
+      oTruong.le += tach.le;
+    }
   }
 
   return {
     soMa,
     donViTaiKho,
     donViOTruong,
+    taiKho,
+    oTruong,
     maChoMuon,
     maQuaHan,
     maHong,
@@ -160,6 +215,10 @@ export interface DuLieuDashboard {
   theoLoai: DongDem[];
   theoDongGiaiPhap: DongDem[];
   theoDiaDiem: DongDem[];
+  /** Tình trạng thiết bị — đếm theo SỐ MÃ, để vẽ vành khuyên trên trang chủ. */
+  theoTinhTrang: DongDem[];
+  /** Bộ (quản lý theo đơn vị) và hàng lẻ (quản lý theo số lượng) — tách hẳn. */
+  theoKieuQuanLy: DongDem[];
   raVao: DongRaVao[];
   quaHan: Array<{
     id: string;
@@ -205,6 +264,8 @@ export async function dashboard(
       where: { ...dieuKien, isActive: true },
       select: {
         id: true,
+        condition: true,
+        trackingType: true,
         category: { select: { id: true, name: true } },
         productLine: { select: { id: true, name: true } },
       },
@@ -261,7 +322,13 @@ export async function dashboard(
   // một mã quản lý theo số lượng có thể là 200 quyển vở.
   const demLoai = new Map<string, { nhan: string; so: number }>();
   const demDong = new Map<string, { nhan: string; so: number }>();
+  const demTinhTrang = new Map<string, number>();
+  let soMaBo = 0;
+  let soMaLe = 0;
   for (const t of taiSan) {
+    demTinhTrang.set(t.condition, (demTinhTrang.get(t.condition) ?? 0) + 1);
+    if (t.trackingType === 'DON_VI') soMaBo += 1;
+    else soMaLe += 1;
     const l = demLoai.get(t.category.id) ?? { nhan: t.category.name, so: 0 };
     l.so += 1;
     demLoai.set(t.category.id, l);
@@ -306,6 +373,18 @@ export async function dashboard(
       .map(([ma, v]) => ({ ma, nhan: v.nhan, so: v.so }))
       .sort((a, b) => b.so - a.so),
     theoDiaDiem,
+    // Giữ đúng thứ tự khai báo của enum tình trạng, không sắp theo số lượng:
+    // vành khuyên có thứ tự cố định thì lần nào mở trang các phần cũng nằm
+    // đúng chỗ cũ, mắt không phải đọc lại chú giải từ đầu.
+    theoTinhTrang: TINH_TRANG.map((ma) => ({
+      ma,
+      nhan: NHAN_TINH_TRANG[ma],
+      so: demTinhTrang.get(ma) ?? 0,
+    })).filter((d) => d.so > 0),
+    theoKieuQuanLy: [
+      { ma: 'DON_VI', nhan: 'Theo bộ', so: soMaBo },
+      { ma: 'SO_LUONG', nhan: 'Hàng lẻ', so: soMaLe },
+    ].filter((d) => d.so > 0),
     raVao: [...theoNgay.entries()].map(([ngay, v]) => ({ ngay, vao: v.vao, ra: v.ra })),
     quaHan: quaHanTho.map((t) => ({
       id: t.id,
@@ -652,6 +731,7 @@ export async function tongThe(
   tuNgay.setUTCHours(0, 0, 0, 0);
 
   /** Yêu cầu thường (không tính báo hỏng) trong phạm vi. */
+  // pvYeuCau đã mang sẵn `deletedAt: null`, không cần lặp lại ở đây.
   const chiYeuCauThuong: Prisma.RequestWhereInput = {
     AND: [pvYeuCau, { type: { not: 'BAO_HONG' } }],
   };
