@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileDown, FileSignature, Loader2, Plus, RefreshCw, Search, Wifi, WifiOff } from 'lucide-react';
+import { FileDown, FileSignature, Loader2, Plus, RefreshCw, Search, Wifi, WifiOff, Trash2} from 'lucide-react';
 import {
   DS_MAU_BBBG,
   DS_TRANG_THAI_BBBG,
@@ -39,6 +39,10 @@ export function BienBanList() {
   const [trang, datTrang] = useState(1);
   const [dangTai, datDangTai] = useState(true);
   const [loi, datLoi] = useState<string | null>(null);
+  /** Các dòng đã tick — dùng Set để bật/tắt nhanh và giữ thứ tự không quan trọng. */
+  const [daChon, datDaChon] = useState<ReadonlySet<string>>(new Set());
+  const [dangXoaLo, datDangXoaLo] = useState(false);
+  const [ghiChuXoa, datGhiChuXoa] = useState<string | null>(null);
   const [tuKhoa, datTuKhoa] = useState('');
   const [locTrangThai, datLocTrangThai] = useState('');
   const [locMau, datLocMau] = useState('');
@@ -78,6 +82,60 @@ export function BienBanList() {
       datLoi(e instanceof LoiApi ? e.message : 'Không tải được file biên bản.');
     } finally {
       datDangTaiTep(null);
+    }
+  }
+
+  const laAdmin = nguoiDung?.role === 'ADMIN';
+
+  function bat(id: string): void {
+    datDaChon((cu) => {
+      const moi = new Set(cu);
+      if (moi.has(id)) moi.delete(id);
+      else moi.add(id);
+      return moi;
+    });
+  }
+
+  /**
+   * Xoá hàng loạt biên bản đã tick — chuyển vào thùng rác, khôi phục lại được.
+   *
+   * Báo cả phần BỎ QUA kèm lý do: lô 20 dòng mà 2 dòng vướng thì phải biết đúng
+   * 2 dòng nào, không thể chỉ báo "thất bại" rồi để người dùng tự dò.
+   */
+  async function xoaLoDaChon(): Promise<void> {
+    const ids = [...daChon];
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Chuyển ${ids.length} biên bản đã chọn vào thùng rác?\n\n` +
+          'Việc bàn giao KHÔNG bị hoàn tác: thiết bị vẫn ở nơi đã nhận, tồn kho giữ nguyên. Khôi phục được ở Biên bản → Thùng rác.',
+      )
+    ) {
+      return;
+    }
+    datLoi(null);
+    datGhiChuXoa(null);
+    datDangXoaLo(true);
+    try {
+      const kq = await goiApi<{
+        ok: true;
+        soThanhCong: number;
+        boQua: Array<{ ma: string | null; lyDo: string }>;
+        thongDiep: string;
+      }>('/api/bbbg/xoa-nhieu', { method: 'POST', than: { ids } });
+      datDaChon(new Set());
+      await tai();
+      datGhiChuXoa(kq.thongDiep);
+      if (kq.boQua.length > 0) {
+        datLoi(
+          `Bỏ qua ${kq.boQua.length}: ` +
+            kq.boQua.map((x) => `${x.ma ?? '?'} (${x.lyDo})`).join('; '),
+        );
+      }
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Xoá hàng loạt thất bại.');
+    } finally {
+      datDangXoaLo(false);
     }
   }
 
@@ -123,6 +181,7 @@ export function BienBanList() {
       </div>
 
       {loi ? <Alert variant="destructive">{loi}</Alert> : null}
+      {ghiChuXoa ? <Alert variant="success">{ghiChuXoa}</Alert> : null}
 
       {choToiXacNhan > 0 ? (
         <Alert variant="warning" tieuDe="Có biên bản đang chờ xác nhận">
@@ -133,7 +192,32 @@ export function BienBanList() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Danh sách ({tong})</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Danh sách ({tong})</CardTitle>
+            {/* Xoá là quyền của ADMIN — máy chủ kiểm lại, ẩn nút chỉ cho gọn mắt. */}
+            {laAdmin ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {daChon.size > 0 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive-dam"
+                    disabled={dangXoaLo}
+                    onClick={() => void xoaLoDaChon()}
+                  >
+                    <Trash2 aria-hidden />
+                    {dangXoaLo ? 'Đang xoá…' : `Xoá ${daChon.size} biên bản`}
+                  </Button>
+                ) : null}
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/bbbg/thung-rac">
+                    <Trash2 aria-hidden />
+                    Thùng rác
+                  </Link>
+                </Button>
+              </div>
+            ) : null}
+          </div>
           <CardDescription>
             Trang {trang}/{soTrang}
           </CardDescription>
@@ -203,6 +287,11 @@ export function BienBanList() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {laAdmin ? (
+                      <TableHead className="w-8">
+                        <span className="sr-only">Chọn</span>
+                      </TableHead>
+                    ) : null}
                     <TableHead>Số biên bản</TableHead>
                     <TableHead>Yêu cầu</TableHead>
                     <TableHead>Đơn vị nhận</TableHead>
@@ -216,6 +305,17 @@ export function BienBanList() {
                 <TableBody>
                   {muc.map((b) => (
                     <TableRow key={b.id}>
+                      {laAdmin ? (
+                        <TableCell className="w-8">
+                          <input
+                            type="checkbox"
+                            className="size-4 accent-[hsl(var(--chinh))]"
+                            checked={daChon.has(b.id)}
+                            onChange={() => bat(b.id)}
+                            aria-label={`Chọn ${b.code}`}
+                          />
+                        </TableCell>
+                      ) : null}
                       <TableCell>
                         <Link
                           to={`/bbbg/${b.id}`}

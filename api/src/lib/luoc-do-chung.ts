@@ -59,3 +59,16 @@ export function chuoiSua(toiDa: number) {
     .optional()
     .transform((v) => (v === '' ? null : v));
 }
+
+/**
+ * Danh sách id cho thao tác hàng loạt (xoá / khôi phục / xoá hẳn nhiều dòng).
+ *
+ * Giới hạn 500 để một cú bấm nhầm không quét cả cơ sở dữ liệu, và để lô chạy
+ * xong trong thời gian chờ của trình duyệt — mỗi id là một giao dịch riêng.
+ */
+export const luocDoNhieuIdChung = z.object({
+  ids: z
+    .array(z.string().trim().min(1).max(30))
+    .min(1, 'Chưa chọn dòng nào.')
+    .max(500, 'Mỗi lần tối đa 500 dòng. Chọn bớt rồi làm tiếp.'),
+});

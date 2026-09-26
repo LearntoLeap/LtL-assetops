@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, RefreshCw, Search, Wifi, WifiOff } from 'lucide-react';
+import { Plus, RefreshCw, Search, Wifi, WifiOff, Trash2, FileSignature} from 'lucide-react';
 import {
   DS_LOAI_YEU_CAU,
   DS_TRANG_THAI_YEU_CAU,
@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { goiApi, LoiApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { ngayGio } from '@/lib/dinh-dang';
 import type { TrangDuLieu, YeuCau } from '@/lib/kieu';
 import { SU_KIEN, useRealtime } from '@/hooks/useRealtime';
@@ -30,6 +31,7 @@ import { MAU_TRANG_THAI } from './tien-ich';
 const MOI_TRANG = 25;
 
 export function YeuCauList() {
+  const { nguoiDung } = useAuth();
   // Mở từ dashboard hoặc màn hình kho thì lọc sẵn theo ?status= và ?type=.
   const [thamSo] = useSearchParams();
   const [muc, datMuc] = useState<YeuCau[]>([]);
@@ -37,6 +39,10 @@ export function YeuCauList() {
   const [trang, datTrang] = useState(1);
   const [dangTai, datDangTai] = useState(true);
   const [loi, datLoi] = useState<string | null>(null);
+  /** Các dòng đã tick — dùng Set để bật/tắt nhanh và giữ thứ tự không quan trọng. */
+  const [daChon, datDaChon] = useState<ReadonlySet<string>>(new Set());
+  const [dangXoaLo, datDangXoaLo] = useState(false);
+  const [ghiChuXoa, datGhiChuXoa] = useState<string | null>(null);
   const [tuKhoa, datTuKhoa] = useState('');
   const [locLoai, datLocLoai] = useState(thamSo.get('type') ?? '');
   const [locTrangThai, datLocTrangThai] = useState(thamSo.get('status') ?? '');
@@ -60,6 +66,60 @@ export function YeuCauList() {
       datDangTai(false);
     }
   }, [trang, tuKhoa, locLoai, locTrangThai, cuaToi]);
+
+  const laAdmin = nguoiDung?.role === 'ADMIN';
+
+  function bat(id: string): void {
+    datDaChon((cu) => {
+      const moi = new Set(cu);
+      if (moi.has(id)) moi.delete(id);
+      else moi.add(id);
+      return moi;
+    });
+  }
+
+  /**
+   * Xoá hàng loạt yêu cầu đã tick — chuyển vào thùng rác, khôi phục lại được.
+   *
+   * Báo cả phần BỎ QUA kèm lý do: lô 20 dòng mà 2 dòng vướng thì phải biết đúng
+   * 2 dòng nào, không thể chỉ báo "thất bại" rồi để người dùng tự dò.
+   */
+  async function xoaLoDaChon(): Promise<void> {
+    const ids = [...daChon];
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Chuyển ${ids.length} yêu cầu đã chọn vào thùng rác?\n\n` +
+          'Chúng biến khỏi mọi danh sách và mọi con số, nhưng TỒN KHO, NHẬT KÝ DI CHUYỂN và ẢNH giữ nguyên — xoá phiếu không làm hàng quay về kho. Khôi phục được ở Yêu cầu → Thùng rác.',
+      )
+    ) {
+      return;
+    }
+    datLoi(null);
+    datGhiChuXoa(null);
+    datDangXoaLo(true);
+    try {
+      const kq = await goiApi<{
+        ok: true;
+        soThanhCong: number;
+        boQua: Array<{ ma: string | null; lyDo: string }>;
+        thongDiep: string;
+      }>('/api/yeu-cau/xoa-nhieu', { method: 'POST', than: { ids } });
+      datDaChon(new Set());
+      await tai();
+      datGhiChuXoa(kq.thongDiep);
+      if (kq.boQua.length > 0) {
+        datLoi(
+          `Bỏ qua ${kq.boQua.length}: ` +
+            kq.boQua.map((x) => `${x.ma ?? '?'} (${x.lyDo})`).join('; '),
+        );
+      }
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Xoá hàng loạt thất bại.');
+    } finally {
+      datDangXoaLo(false);
+    }
+  }
 
   useEffect(() => {
     void tai();
@@ -100,10 +160,36 @@ export function YeuCauList() {
       </div>
 
       {loi ? <Alert variant="destructive">{loi}</Alert> : null}
+      {ghiChuXoa ? <Alert variant="success">{ghiChuXoa}</Alert> : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>Danh sách ({tong})</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Danh sách ({tong})</CardTitle>
+            {/* Xoá là quyền của ADMIN — máy chủ kiểm lại, ẩn nút chỉ cho gọn mắt. */}
+            {laAdmin ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {daChon.size > 0 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive-dam"
+                    disabled={dangXoaLo}
+                    onClick={() => void xoaLoDaChon()}
+                  >
+                    <Trash2 aria-hidden />
+                    {dangXoaLo ? 'Đang xoá…' : `Xoá ${daChon.size} yêu cầu`}
+                  </Button>
+                ) : null}
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/yeu-cau/thung-rac">
+                    <Trash2 aria-hidden />
+                    Thùng rác
+                  </Link>
+                </Button>
+              </div>
+            ) : null}
+          </div>
           <CardDescription>
             Trang {trang}/{soTrang}
           </CardDescription>
@@ -174,18 +260,35 @@ export function YeuCauList() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {laAdmin ? (
+                      <TableHead className="w-8">
+                        <span className="sr-only">Chọn</span>
+                      </TableHead>
+                    ) : null}
                     <TableHead>Số yêu cầu</TableHead>
                     <TableHead>Loại</TableHead>
                     <TableHead>Người tạo</TableHead>
                     <TableHead>Nơi đến</TableHead>
                     <TableHead className="text-right">Số dòng</TableHead>
                     <TableHead>Trạng thái</TableHead>
+                    <TableHead>Biên bản</TableHead>
                     <TableHead>Tạo lúc</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {muc.map((y) => (
                     <TableRow key={y.id}>
+                      {laAdmin ? (
+                        <TableCell className="w-8">
+                          <input
+                            type="checkbox"
+                            className="size-4 accent-[hsl(var(--chinh))]"
+                            checked={daChon.has(y.id)}
+                            onChange={() => bat(y.id)}
+                            aria-label={`Chọn ${y.code}`}
+                          />
+                        </TableCell>
+                      ) : null}
                       <TableCell>
                         <Link
                           to={`/yeu-cau/${y.id}`}
@@ -211,6 +314,21 @@ export function YeuCauList() {
                         <Badge variant={MAU_TRANG_THAI[y.status]}>
                           {NHAN_TRANG_THAI_YEU_CAU[y.status]}
                         </Badge>
+                      </TableCell>
+                      {/* ĐƯỜNG DẪN THẲNG SANG BIÊN BẢN của chính phiếu này —
+                          không phải sang mục Biên bản rồi dò lại theo số phiếu. */}
+                      <TableCell>
+                        {y.handoverNotes[0] ? (
+                          <Link
+                            to={`/bbbg/${y.handoverNotes[0].id}`}
+                            className="inline-flex items-center gap-1 font-mono text-xs text-primary-dam hover:underline"
+                          >
+                            <FileSignature className="size-3.5 shrink-0" aria-hidden />
+                            {y.handoverNotes[0].code}
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {ngayGio(y.createdAt)}

@@ -8,6 +8,7 @@ import {
   yeuCauNguoiDuyet,
   yeuCauVaiTro,
 } from '../../middleware/xac-thuc.js';
+import { luocDoNhieuIdChung } from '../../lib/luoc-do-chung.js';
 import {
   luocDoDuyet,
   luocDoLocYeuCau,
@@ -55,6 +56,52 @@ yeuCauRouter.get(
   batAsync(async (req, res) => {
     const loc = luocDoLocYeuCau.parse(req.query);
     res.json({ ok: true, ...(await dv.thungRac({ trang: loc.trang, moiTrang: loc.moiTrang })) });
+  }),
+);
+
+/**
+ * XOÁ / KHÔI PHỤC / XOÁ HẲN HÀNG LOẠT (ADMIN).
+ *
+ * Khai TRƯỚC `/:id` như mọi tuyến tĩnh khác trong tệp này.
+ */
+yeuCauRouter.post(
+  '/xoa-nhieu',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuIdChung.parse(req.body);
+    const kq = await dv.xoaMemNhieu(ids, actor, boiCanh(req));
+    res.json({
+      ok: true,
+      ...kq,
+      thongDiep: `Đã chuyển ${kq.soThanhCong} yêu cầu vào thùng rác. Tồn kho và nhật ký di chuyển giữ nguyên.`,
+    });
+  }),
+);
+
+yeuCauRouter.post(
+  '/khoi-phuc-nhieu',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuIdChung.parse(req.body);
+    const kq = await dv.khoiPhucNhieu(ids, actor, boiCanh(req));
+    res.json({ ok: true, ...kq, thongDiep: `Đã khôi phục ${kq.soThanhCong} yêu cầu.` });
+  }),
+);
+
+yeuCauRouter.post(
+  '/xoa-vinh-vien-nhieu',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuIdChung.parse(req.body);
+    const kq = await dv.xoaVinhVienNhieu(ids, actor, boiCanh(req));
+    res.json({
+      ok: true,
+      ...kq,
+      thongDiep: `Đã xoá hẳn ${kq.soThanhCong} yêu cầu. Không khôi phục lại được.`,
+    });
   }),
 );
 

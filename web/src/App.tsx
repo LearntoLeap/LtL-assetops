@@ -58,6 +58,8 @@ const BienBanChiTiet = lazy(() => import('@/features/bbbg/BienBanChiTiet').then(
 const FormBienBan = lazy(() => import('@/features/bbbg/FormBienBan').then((m) => ({ default: m.FormBienBan })));
 const InBienBan = lazy(() => import('@/features/bbbg/InBienBan').then((m) => ({ default: m.InBienBan })));
 const CaiDatChung = lazy(() => import('@/features/cai-dat/CaiDatChung').then((m) => ({ default: m.CaiDatChung })));
+const ThungRacYeuCau = lazy(() => import('@/features/yeu-cau/ThungRacYeuCau').then((m) => ({ default: m.ThungRacYeuCau })));
+const ThungRacBienBan = lazy(() => import('@/features/bbbg/ThungRacBienBan').then((m) => ({ default: m.ThungRacBienBan })));
 const KiemKeList = lazy(() => import('@/features/kiem-ke/KiemKeList').then((m) => ({ default: m.KiemKeList })));
 const KiemKeChiTiet = lazy(() => import('@/features/kiem-ke/KiemKeChiTiet').then((m) => ({ default: m.KiemKeChiTiet })));
 const BaoHongList = lazy(() => import('@/features/bao-hong/BaoHongList').then((m) => ({ default: m.BaoHongList })));
@@ -197,6 +199,16 @@ export default function App() {
           {/* Yêu cầu — mọi vai trò tạo được; duyệt và xuất/nhập kho có chốt riêng */}
           <Route path="yeu-cau" element={<YeuCauList />} />
           <Route path="yeu-cau/moi" element={<FormYeuCau />} />
+          {/* Khai TRƯỚC "yeu-cau/:id" — để sau thì "thung-rac" bị khớp thành một
+              mã yêu cầu và trang luôn báo không tìm thấy. */}
+          <Route
+            path="yeu-cau/thung-rac"
+            element={
+              <CanDangNhap vaiTro={['ADMIN']}>
+                <ThungRacYeuCau />
+              </CanDangNhap>
+            }
+          />
           <Route path="yeu-cau/:id" element={<YeuCauChiTiet />} />
           <Route
             path="kho/xuat/:id"
@@ -222,6 +234,14 @@ export default function App() {
             element={
               <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
                 <FormBienBan />
+              </CanDangNhap>
+            }
+          />
+          <Route
+            path="bbbg/thung-rac"
+            element={
+              <CanDangNhap vaiTro={['ADMIN']}>
+                <ThungRacBienBan />
               </CanDangNhap>
             }
           />

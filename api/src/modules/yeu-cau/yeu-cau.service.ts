@@ -35,6 +35,7 @@ import type {
   DuLieuXuatKho,
 } from './yeu-cau.schema.js';
 import { lapBBBGTuDong } from '../bbbg/bbbg.service.js';
+import { chayTungCai, type KetQuaHangLoatChung } from '../../lib/hang-loat.js';
 
 const CHON_YEU_CAU = {
   id: true,
@@ -55,6 +56,19 @@ const CHON_YEU_CAU = {
   approvedBy: { select: { id: true, fullName: true } },
   fromLocation: { select: { id: true, code: true, name: true, type: true } },
   toLocation: { select: { id: true, code: true, name: true, type: true } },
+  deletedAt: true,
+  deletedBy: { select: { id: true, fullName: true } },
+  /**
+   * BIÊN BẢN ĐÃ LẬP cho phiếu này — để giao diện dẫn thẳng sang, khỏi phải sang
+   * mục Biên bản dò lại theo số phiếu. Bỏ biên bản bị từ chối và biên bản đã
+   * xoá: dẫn tới một tờ giấy không còn hiệu lực thì tệ hơn là không dẫn.
+   */
+  handoverNotes: {
+    where: { deletedAt: null, status: { not: 'TU_CHOI' } },
+    select: { id: true, code: true, status: true },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+  },
   items: {
     select: {
       id: true,
@@ -1261,4 +1275,38 @@ export async function xoaVinhVien(id: string, actor: NguoiThaoTac, ctx: BoiCanhG
     await tx.requestItem.deleteMany({ where: { requestId: id } });
     await tx.request.delete({ where: { id } });
   });
+}
+
+/** Tra mã phiếu của cả lô một lượt — để báo lỗi gọi tên phiếu, không đọc id. */
+async function maCuaLo(ids: readonly string[]): Promise<Map<string, string>> {
+  const hang = await prisma.request.findMany({
+    where: { id: { in: [...ids] } },
+    select: { id: true, code: true },
+  });
+  return new Map(hang.map((h) => [h.id, h.code]));
+}
+
+/** Xoá mềm NHIỀU phiếu đã chọn (ADMIN). */
+export async function xoaMemNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoatChung> {
+  return chayTungCai(ids, maCuaLo, (id) => xoaMem(id, actor, ctx));
+}
+
+export async function khoiPhucNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoatChung> {
+  return chayTungCai(ids, maCuaLo, (id) => khoiPhuc(id, actor, ctx));
+}
+
+export async function xoaVinhVienNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoatChung> {
+  return chayTungCai(ids, maCuaLo, (id) => xoaVinhVien(id, actor, ctx));
 }

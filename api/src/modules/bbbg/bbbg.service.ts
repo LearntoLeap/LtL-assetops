@@ -22,6 +22,7 @@ import { docCaiDat, type CaiDatChung } from '../../lib/cai-dat.js';
 import { duongDanTuyetDoi, thuMucGoc } from '../../lib/luu-anh.js';
 import { xoaFileTaiLieu } from '../../lib/luu-tai-lieu.js';
 import { log, moTaLoi } from '../../lib/ghi-log.js';
+import { chayTungCai, type KetQuaHangLoatChung } from '../../lib/hang-loat.js';
 import { taoFileBBBG, tenFileBBBG, type DongInBBBG, type DuLieuInBBBG } from './bbbg.docx.js';
 import { mauCuaLoai, vViecCuThe } from './mau-bbbg.js';
 import { phamViCua } from '../../lib/pham-vi.js';
@@ -60,6 +61,8 @@ const CHON_BBBG = {
   fileName: true,
   fileSize: true,
   fileGeneratedAt: true,
+  deletedAt: true,
+  deletedBy: { select: { id: true, fullName: true } },
   createdAt: true,
   updatedAt: true,
   createdBy: { select: { id: true, fullName: true, email: true } },
@@ -1155,4 +1158,38 @@ export async function xoaVinhVien(id: string, actor: NguoiThaoTac, ctx: BoiCanhG
   // Xoá file sau khi bản ghi đã biến mất — làm ngược lại thì lỗi xoá bản ghi sẽ
   // để lại một biên bản trỏ vào file không còn tồn tại.
   if (truoc.filePath) await xoaFileTaiLieu(truoc.filePath);
+}
+
+/** Tra số biên bản của cả lô một lượt — để báo lỗi gọi tên, không đọc id. */
+async function soCuaLo(ids: readonly string[]): Promise<Map<string, string>> {
+  const hang = await prisma.handoverNote.findMany({
+    where: { id: { in: [...ids] } },
+    select: { id: true, code: true },
+  });
+  return new Map(hang.map((h) => [h.id, h.code]));
+}
+
+/** Xoá mềm NHIỀU biên bản đã chọn (ADMIN). */
+export async function xoaMemNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoatChung> {
+  return chayTungCai(ids, soCuaLo, (id) => xoaMem(id, actor, ctx));
+}
+
+export async function khoiPhucNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoatChung> {
+  return chayTungCai(ids, soCuaLo, (id) => khoiPhuc(id, actor, ctx));
+}
+
+export async function xoaVinhVienNhieu(
+  ids: readonly string[],
+  actor: NguoiThaoTac,
+  ctx: BoiCanhGoi,
+): Promise<KetQuaHangLoatChung> {
+  return chayTungCai(ids, soCuaLo, (id) => xoaVinhVien(id, actor, ctx));
 }

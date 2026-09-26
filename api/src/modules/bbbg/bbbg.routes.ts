@@ -17,6 +17,7 @@ import {
   luocDoTuChoiBBBG,
   luocDoXacNhanBBBG,
 } from './bbbg.schema.js';
+import { luocDoNhieuIdChung } from '../../lib/luoc-do-chung.js';
 import * as dv from './bbbg.service.js';
 import { MAU_THEO_LOAI } from './mau-bbbg.js';
 
@@ -51,6 +52,48 @@ bbbgRouter.get(
   batAsync(async (req, res) => {
     const loc = luocDoLocBBBG.parse(req.query);
     res.json({ ok: true, ...(await dv.thungRac({ trang: loc.trang, moiTrang: loc.moiTrang })) });
+  }),
+);
+
+/** XOÁ / KHÔI PHỤC / XOÁ HẲN HÀNG LOẠT (ADMIN) — khai trước `/:id`. */
+bbbgRouter.post(
+  '/xoa-nhieu',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuIdChung.parse(req.body);
+    const kq = await dv.xoaMemNhieu(ids, actor, boiCanh(req));
+    res.json({
+      ok: true,
+      ...kq,
+      thongDiep: `Đã chuyển ${kq.soThanhCong} biên bản vào thùng rác. Việc bàn giao không bị hoàn tác.`,
+    });
+  }),
+);
+
+bbbgRouter.post(
+  '/khoi-phuc-nhieu',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuIdChung.parse(req.body);
+    const kq = await dv.khoiPhucNhieu(ids, actor, boiCanh(req));
+    res.json({ ok: true, ...kq, thongDiep: `Đã khôi phục ${kq.soThanhCong} biên bản.` });
+  }),
+);
+
+bbbgRouter.post(
+  '/xoa-vinh-vien-nhieu',
+  chiAdmin,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = luocDoNhieuIdChung.parse(req.body);
+    const kq = await dv.xoaVinhVienNhieu(ids, actor, boiCanh(req));
+    res.json({
+      ok: true,
+      ...kq,
+      thongDiep: `Đã xoá hẳn ${kq.soThanhCong} biên bản và file mềm. Không khôi phục lại được.`,
+    });
   }),
 );
 

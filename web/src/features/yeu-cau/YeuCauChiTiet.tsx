@@ -186,6 +186,8 @@ export function YeuCauChiTiet() {
           ? `Đã lập biên bản ${kq.bbbg.code} và tải file Word về máy. Bản mềm được lưu trong mục Biên bản.`
           : `Yêu cầu này đã có biên bản ${kq.bbbg.code} — đã tải lại file Word về máy.`,
       );
+      // Nạp lại để nút "Mở biên bản …" hiện ra ngay, khỏi phải tải lại trang.
+      await tai();
     } catch (e) {
       datLoi(e instanceof LoiApi ? e.message : 'Không xuất được biên bản bàn giao.');
     } finally {
@@ -281,6 +283,15 @@ export function YeuCauChiTiet() {
               <Link to={`/kho/nhap/${yeuCau.id}`}>
                 <PackageCheck aria-hidden />
                 Nhập kho
+              </Link>
+            </Button>
+          ) : null}
+          {/* Đã có biên bản thì dẫn thẳng sang, không bắt đi vòng qua mục Biên bản. */}
+          {yeuCau.handoverNotes[0] ? (
+            <Button variant="outline" asChild>
+              <Link to={`/bbbg/${yeuCau.handoverNotes[0].id}`}>
+                <FileSignature aria-hidden />
+                Mở biên bản {yeuCau.handoverNotes[0].code}
               </Link>
             </Button>
           ) : null}

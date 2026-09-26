@@ -193,6 +193,11 @@ export interface YeuCau {
   fromLocation: { id: string; code: string; name: string; type: LoaiDiemLuuTru } | null;
   toLocation: { id: string; code: string; name: string; type: LoaiDiemLuuTru } | null;
   items: DongYeuCau[];
+  /** Xoá mềm — chỉ có giá trị với bản ghi trong thùng rác. */
+  deletedAt: string | null;
+  deletedBy: { id: string; fullName: string } | null;
+  /** Biên bản đã lập cho phiếu này (bỏ bản bị từ chối và bản đã xoá). */
+  handoverNotes: Array<{ id: string; code: string; status: TrangThaiBBBG }>;
 }
 
 export interface CanhBao {
@@ -293,6 +298,8 @@ export interface BienBan {
     expectedReturnAt: string | null;
   } | null;
   items: MucBienBan[];
+  deletedAt: string | null;
+  deletedBy: { id: string; fullName: string } | null;
 }
 
 /** Cài đặt chung — thông tin đơn vị in trên chứng từ (trang Cài đặt, ADMIN sửa). */
