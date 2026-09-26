@@ -107,7 +107,27 @@ function dieuKienPhamVi(nguoiDung: NguoiDungDaXacThuc): Prisma.HandoverNoteWhere
       ],
     };
   }
-  return { deletedAt: null, createdById: nguoiDung.id };
+  /*
+   * NHÂN SỰ PHÒNG BAN — không gắn điểm lưu trữ nào.
+   *
+   * Trước đây chỉ thấy biên bản DO CHÍNH MÌNH LẬP, mà vai trò này lại không có
+   * quyền lập biên bản: kết quả là mượn một con robot, hệ thống tự sinh biên
+   * bản bàn giao, mà người mượn không xem nổi, không in nổi tờ giấy mình phải
+   * ký. Đo thật: tài khoản nhân sự thấy đúng 0 biên bản, mở thẳng đường dẫn thì
+   * 404.
+   *
+   * Giờ thấy biên bản của chính việc mình làm: mình lập, mình đứng tên yêu cầu,
+   * hoặc trên biên bản có thiết bị mình đang giữ. Vẫn KHÔNG thấy biên bản của
+   * người khác — phạm vi chỉ mở đúng phần thuộc về mình.
+   */
+  return {
+    deletedAt: null,
+    OR: [
+      { createdById: nguoiDung.id },
+      { request: { createdById: nguoiDung.id } },
+      { items: { some: { asset: { holderUserId: nguoiDung.id } } } },
+    ],
+  };
 }
 
 export async function danhSach(

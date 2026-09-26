@@ -119,11 +119,14 @@ function DongHo() {
 function OThongKe({
   nhan,
   gia,
+  phu,
   icon: Icon,
   canhBao,
 }: {
   nhan: string;
   gia: number;
+  /** Dòng nhỏ dưới con số, ví dụ "bộ · 1.850 hàng lẻ". */
+  phu?: string;
   icon: typeof Boxes;
   canhBao?: boolean;
 }) {
@@ -149,6 +152,9 @@ function OThongKe({
         <span className={`block text-2xl font-semibold leading-tight ${doi ? 'text-amber-300' : ''}`}>
           {so(gia)}
         </span>
+        {phu ? (
+          <span className="block text-[0.7rem] leading-tight text-white/70">{phu}</span>
+        ) : null}
       </span>
     </div>
   );
@@ -462,8 +468,21 @@ export function ManHinhKiosk() {
               className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
               aria-label="Thống kê kho"
             >
-              <OThongKe nhan="Đơn vị tại kho" gia={soLieu.donViTaiKho} icon={Boxes} />
-              <OThongKe nhan="Đơn vị ở trường" gia={soLieu.donViOTruong} icon={MapPin} />
+              {/* Tách BỘ và LẺ như trang Tổng quan: người đứng ở kho cần biết
+                  còn mấy BỘ thiết bị để phân về trường, và còn mấy quyển sách
+                  để phát — gộp thành một số thì không trả lời được câu nào. */}
+              <OThongKe
+                nhan="Bộ tại kho"
+                gia={soLieu.taiKho.bo}
+                phu={`${so(soLieu.taiKho.le)} hàng lẻ`}
+                icon={Boxes}
+              />
+              <OThongKe
+                nhan="Bộ ở trường"
+                gia={soLieu.oTruong.bo}
+                phu={`${so(soLieu.oTruong.le)} hàng lẻ`}
+                icon={MapPin}
+              />
               <OThongKe nhan="Mã đang cho mượn" gia={soLieu.maChoMuon} icon={Truck} />
               <OThongKe nhan="Quá hạn trả" gia={soLieu.maQuaHan} icon={TimerOff} canhBao />
               <OThongKe nhan="Hỏng / mất" gia={soLieu.maHong} icon={PackageX} canhBao />

@@ -479,8 +479,19 @@ export function TongThe() {
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <O nhan="Mã thiết bị" gia={dl.soLieu.soMa} icon={ClipboardList} den="/thiet-bi" />
-            <O nhan="Đơn vị tại kho" gia={dl.soLieu.donViTaiKho} icon={Warehouse} />
-            <O nhan="Đơn vị ở trường" gia={dl.soLieu.donViOTruong} icon={MapPin} />
+            {/* Tách BỘ và LẺ như trang Tổng quan và màn hình kho. */}
+            <O
+              nhan="Tại kho"
+              gia={dl.soLieu.taiKho.bo}
+              phu={`bộ · ${so(dl.soLieu.taiKho.le)} hàng lẻ`}
+              icon={Warehouse}
+            />
+            <O
+              nhan="Ở trường"
+              gia={dl.soLieu.oTruong.bo}
+              phu={`bộ · ${so(dl.soLieu.oTruong.le)} hàng lẻ`}
+              icon={MapPin}
+            />
           </div>
 
           <p className="text-xs text-muted-foreground">
