@@ -36,6 +36,7 @@ import { CotRaVao } from '@/components/bieu-do/CotRaVao';
 import { ThanhNgang } from '@/components/bieu-do/ThanhNgang';
 import { VanhKhuyen } from '@/components/bieu-do/VanhKhuyen';
 import { MAU_TINH_TRANG } from '@/lib/bieu-do';
+import { dem } from '@/lib/so-lieu';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import { so } from '@/lib/bieu-do';
@@ -195,8 +196,8 @@ export function TongQuan() {
               dùng tưởng máy không ghi nhận. */}
           <O
             nhan="Đang chuyển"
-            gia={s.dangChuyen.bo}
-            phu={`bộ · ${so(s.dangChuyen.le)} hàng lẻ`}
+            gia={dem(s.dangChuyen).bo}
+            phu={`bộ · ${so(dem(s.dangChuyen).le)} hàng lẻ`}
             icon={Truck}
             den="/yeu-cau?status=DA_XUAT"
           />
@@ -207,14 +208,14 @@ export function TongQuan() {
               và "đang cho mượn" là đủ mọi chỗ thiết bị có thể nằm. */}
           <O
             nhan="Ở kho sự kiện"
-            gia={s.oSuKien.bo}
-            phu={`bộ · ${so(s.oSuKien.le)} hàng lẻ`}
+            gia={dem(s.oSuKien).bo}
+            phu={`bộ · ${so(dem(s.oSuKien).le)} hàng lẻ`}
             icon={PartyPopper}
           />
           <O
             nhan="Ở chỗ đối tác"
-            gia={s.oDoiTac.bo}
-            phu={`bộ · ${so(s.oDoiTac.le)} hàng lẻ`}
+            gia={dem(s.oDoiTac).bo}
+            phu={`bộ · ${so(dem(s.oDoiTac).le)} hàng lẻ`}
             icon={Handshake}
           />
           <O
@@ -352,7 +353,7 @@ export function TongQuan() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {dl ? <ThanhNgang dong={dl.theoPhanBo} donVi="mã" /> : null}
+            {dl ? <ThanhNgang dong={dl.theoPhanBo ?? []} donVi="mã" /> : null}
           </CardContent>
         </Card>
 

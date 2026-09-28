@@ -37,6 +37,7 @@ import { goiApi, LoiApi } from '@/lib/api';
 import { docAnh, type AnhDaTai } from '@/lib/anh';
 import { useAuth } from '@/lib/auth';
 import { so, thuNgayDayDu } from '@/lib/bieu-do';
+import { dem } from '@/lib/so-lieu';
 import { ngayGio } from '@/lib/dinh-dang';
 import type { CaiDatKiosk, SoLieuNhanh, ThietBi, ViecChoXuLy } from '@/lib/kieu';
 import { SU_KIEN, useRealtime } from '@/hooks/useRealtime';
@@ -485,8 +486,8 @@ export function ManHinhKiosk() {
               />
               <OThongKe
                 nhan="Đang chuyển"
-                gia={soLieu.dangChuyen.bo}
-                phu={`${so(soLieu.dangChuyen.le)} hàng lẻ`}
+                gia={dem(soLieu.dangChuyen).bo}
+                phu={`${so(dem(soLieu.dangChuyen).le)} hàng lẻ`}
                 icon={Truck}
               />
               <OThongKe nhan="Mã đang cho mượn" gia={soLieu.maChoMuon} icon={PackageOpen} />

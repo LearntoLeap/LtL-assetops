@@ -45,6 +45,7 @@ import { ThanhChong } from '@/components/bieu-do/ThanhChong';
 import { ThanhNgang } from '@/components/bieu-do/ThanhNgang';
 import { goiApi, LoiApi } from '@/lib/api';
 import { so } from '@/lib/bieu-do';
+import { dem } from '@/lib/so-lieu';
 import { ngayGio } from '@/lib/dinh-dang';
 import type { DuLieuTongThe } from '@/lib/kieu';
 import { SU_KIEN, useRealtime } from '@/hooks/useRealtime';
@@ -499,21 +500,21 @@ export function TongThe() {
                 hai giỏ trên. */}
             <O
               nhan="Đang chuyển"
-              gia={dl.soLieu.dangChuyen.bo}
-              phu={`bộ · ${so(dl.soLieu.dangChuyen.le)} hàng lẻ`}
+              gia={dem(dl.soLieu.dangChuyen).bo}
+              phu={`bộ · ${so(dem(dl.soLieu.dangChuyen).le)} hàng lẻ`}
               icon={Truck}
             />
             {/* Đủ bốn loại điểm lưu trữ, không để loại nào không có ô. */}
             <O
               nhan="Ở kho sự kiện"
-              gia={dl.soLieu.oSuKien.bo}
-              phu={`bộ · ${so(dl.soLieu.oSuKien.le)} hàng lẻ`}
+              gia={dem(dl.soLieu.oSuKien).bo}
+              phu={`bộ · ${so(dem(dl.soLieu.oSuKien).le)} hàng lẻ`}
               icon={PartyPopper}
             />
             <O
               nhan="Ở chỗ đối tác"
-              gia={dl.soLieu.oDoiTac.bo}
-              phu={`bộ · ${so(dl.soLieu.oDoiTac.le)} hàng lẻ`}
+              gia={dem(dl.soLieu.oDoiTac).bo}
+              phu={`bộ · ${so(dem(dl.soLieu.oDoiTac).le)} hàng lẻ`}
               icon={Handshake}
             />
           </div>

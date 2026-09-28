@@ -489,14 +489,23 @@ export interface SoLieuNhanh {
   donViOTruong: number;
   taiKho: DemTachLoai;
   oTruong: DemTachLoai;
+  /*
+   * BỐN TRƯỜNG DƯỚI ĐÂY CÓ THỂ VẮNG — và phải khai là có thể vắng.
+   *
+   * Giao diện lên Vercel ngay khi đẩy mã, còn API trên VPS chỉ đổi khi người
+   * quản trị chạy script cập nhật. Giữa hai mốc đó, trang chủ mới gọi API cũ và
+   * nhận về gói số liệu thiếu mấy trường này. Khai là bắt buộc thì `s.oSuKien.bo`
+   * ném lỗi và cả trang chủ trắng xoá — hỏng nặng hơn hẳn việc thiếu một ô.
+   * Khai tuỳ chọn thì TypeScript bắt mọi chỗ đọc phải có giá trị thay thế.
+   */
   /** Đã rời kho, bên nhận chưa xác nhận — không ở kho, cũng chưa tới trường. */
-  dangChuyen: DemTachLoai;
+  dangChuyen?: DemTachLoai;
   /** Ở kho sự kiện. */
-  oSuKien: DemTachLoai;
+  oSuKien?: DemTachLoai;
   /** Ở chỗ đối tác mượn. */
-  oDoiTac: DemTachLoai;
+  oDoiTac?: DemTachLoai;
   maChoMuon: number;
-  maDangChuyen: number;
+  maDangChuyen?: number;
   maQuaHan: number;
   maHong: number;
   maCanBaoTri: number;
@@ -524,8 +533,9 @@ export interface DuLieuDashboard {
   theoDongGiaiPhap: DongDem[];
   theoDiaDiem: DongDem[];
   theoTinhTrang: DongDem[];
-  /** Tình trạng phân bổ — đủ cả năm trạng thái, cộng lại bằng số mã. */
-  theoPhanBo: DongDem[];
+  /** Tình trạng phân bổ — đủ cả năm trạng thái, cộng lại bằng số mã.
+   *  Tuỳ chọn vì API cũ chưa trả về (xem chú thích ở `SoLieuNhanh`). */
+  theoPhanBo?: DongDem[];
   theoKieuQuanLy: DongDem[];
   raVao: DongRaVao[];
   quaHan: Array<{
