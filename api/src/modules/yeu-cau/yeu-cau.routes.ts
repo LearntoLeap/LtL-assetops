@@ -182,6 +182,22 @@ yeuCauRouter.post(
   }),
 );
 
+/**
+ * GHI NHẬN BÀN GIAO THEO BIÊN BẢN ĐÃ XUẤT — không cần ảnh, nhưng bắt buộc đã có
+ * file biên bản. Cùng lớp quyền với xuất / nhập kho vì cùng làm đổi tồn kho.
+ */
+yeuCauRouter.post(
+  '/:id/ghi-nhan-bien-ban',
+  batAsync(async (req, res) => {
+    const nguoiDung = nguoiDungHienTai(req);
+    dv.batBuocQuyenThucHien(nguoiDung);
+    res.json({
+      ok: true,
+      yeuCau: await dv.ghiNhanTheoBienBan(String(req.params['id']), nguoiDung, boiCanh(req)),
+    });
+  }),
+);
+
 yeuCauRouter.post(
   '/:id/nhap-kho',
   batAsync(async (req, res) => {

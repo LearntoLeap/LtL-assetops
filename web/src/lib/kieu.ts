@@ -197,7 +197,12 @@ export interface YeuCau {
   deletedAt: string | null;
   deletedBy: { id: string; fullName: string } | null;
   /** Biên bản đã lập cho phiếu này (bỏ bản bị từ chối và bản đã xoá). */
-  handoverNotes: Array<{ id: string; code: string; status: TrangThaiBBBG }>;
+  handoverNotes: Array<{
+    id: string;
+    code: string;
+    status: TrangThaiBBBG;
+    fileName: string | null;
+  }>;
 }
 
 export interface CanhBao {
@@ -484,7 +489,10 @@ export interface SoLieuNhanh {
   donViOTruong: number;
   taiKho: DemTachLoai;
   oTruong: DemTachLoai;
+  /** Đã rời kho, bên nhận chưa xác nhận — không ở kho, cũng chưa tới trường. */
+  dangChuyen: DemTachLoai;
   maChoMuon: number;
+  maDangChuyen: number;
   maQuaHan: number;
   maHong: number;
   maCanBaoTri: number;

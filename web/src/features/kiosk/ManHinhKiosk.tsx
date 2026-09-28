@@ -483,7 +483,13 @@ export function ManHinhKiosk() {
                 phu={`${so(soLieu.oTruong.le)} hàng lẻ`}
                 icon={MapPin}
               />
-              <OThongKe nhan="Mã đang cho mượn" gia={soLieu.maChoMuon} icon={Truck} />
+              <OThongKe
+                nhan="Đang chuyển"
+                gia={soLieu.dangChuyen.bo}
+                phu={`${so(soLieu.dangChuyen.le)} hàng lẻ`}
+                icon={Truck}
+              />
+              <OThongKe nhan="Mã đang cho mượn" gia={soLieu.maChoMuon} icon={PackageOpen} />
               <OThongKe nhan="Quá hạn trả" gia={soLieu.maQuaHan} icon={TimerOff} canhBao />
               <OThongKe nhan="Hỏng / mất" gia={soLieu.maHong} icon={PackageX} canhBao />
               <OThongKe

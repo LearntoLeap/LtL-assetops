@@ -61,6 +61,7 @@ export function YeuCauChiTiet() {
   const [dangChay, datDangChay] = useState(false);
   const [dangXuatBBBG, datDangXuatBBBG] = useState(false);
   const [hoiXoa, datHoiXoa] = useState(false);
+  const [hoiGhiNhan, datHoiGhiNhan] = useState(false);
 
   const tai = useCallback(async () => {
     if (!id) return;
@@ -170,6 +171,18 @@ export function YeuCauChiTiet() {
       yeuCau.status === 'DA_XUAT' ||
       yeuCau.status === 'DA_HOAN_TAT');
 
+  /*
+   * BIÊN BẢN ĐÃ XUẤT MÀ TỒN KHO CHƯA ĐỔI — trạng thái nửa vời phải nhìn thấy.
+   *
+   * Duyệt xong bấm "Xuất biên bản" là có tờ giấy hai bên ký, hàng rời kho ngay
+   * lúc đó; nhưng tồn kho và tình trạng chỉ đổi ở bước xuất/nhập kho. Không nói
+   * ra thì người dùng tưởng xong việc rồi, còn dashboard thì vẫn báo thiết bị
+   * nằm trong kho — đúng lỗi đã dựng lại được.
+   */
+  const bienBanDaCoFile = Boolean(yeuCau.handoverNotes[0]?.fileName);
+  const duocGhiNhanTheoBienBan =
+    laKho && yeuCau.status === 'DA_DUYET' && bienBanDaCoFile && (duocXuat || duocNhap);
+
   /**
    * XUẤT BIÊN BẢN WORD THẲNG TỪ ĐÂY — không phải sang trang Biên bản chọn lại.
    *
@@ -186,10 +199,17 @@ export function YeuCauChiTiet() {
         { method: 'POST' },
       );
       await taiTep(`/api/bbbg/${kq.bbbg.id}/tep`, kq.bbbg.fileName ?? `${kq.bbbg.code}.docx`);
+      // Nói luôn phần việc CÒN LẠI. Xuất biên bản chỉ ra tờ giấy; tồn kho và
+      // tình trạng chỉ đổi khi ghi nhận xuất/nhập kho. Thiếu câu này thì người
+      // dùng tưởng đã xong và không hiểu vì sao số liệu đứng im.
+      const conPhaiGhiNhan = yc.status === 'DA_DUYET';
       datThongBao(
-        kq.moi
+        (kq.moi
           ? `Đã lập biên bản ${kq.bbbg.code} và tải file Word về máy. Bản mềm được lưu trong mục Biên bản.`
-          : `Yêu cầu này đã có biên bản ${kq.bbbg.code} — đã tải lại file Word về máy.`,
+          : `Yêu cầu này đã có biên bản ${kq.bbbg.code} — đã tải lại file Word về máy.`) +
+          (conPhaiGhiNhan
+            ? ' Tồn kho và tình trạng thiết bị CHƯA đổi — còn phải ghi nhận bàn giao (xem ô màu vàng bên dưới).'
+            : ''),
       );
       // Nạp lại để nút "Mở biên bản …" hiện ra ngay, khỏi phải tải lại trang.
       await tai();
@@ -324,6 +344,67 @@ export function YeuCauChiTiet() {
 
       {thongBao ? <Alert variant="success">{thongBao}</Alert> : null}
       {loi ? <Alert variant="destructive">{loi}</Alert> : null}
+
+      {duocGhiNhanTheoBienBan && !hoiGhiNhan ? (
+        <Alert
+          variant="warning"
+          tieuDe={`Đã có biên bản ${yeuCau.handoverNotes[0]?.code} nhưng CHƯA ghi nhận ${
+            duocNhap ? 'nhập kho' : 'xuất kho'
+          }`}
+        >
+          <div className="space-y-3">
+            <p className="text-sm">
+              Tồn kho và tình trạng thiết bị chưa đổi, nên các trang số liệu vẫn tính thiết bị
+              này nằm ở chỗ cũ. Chọn một trong hai cách để ghi nhận:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm">
+                <Link to={duocNhap ? `/kho/nhap/${yeuCau.id}` : `/kho/xuat/${yeuCau.id}`}>
+                  {duocNhap ? <PackageCheck aria-hidden /> : <PackageOpen aria-hidden />}
+                  {duocNhap ? 'Nhập kho kèm ảnh' : 'Xuất kho kèm ảnh'}
+                </Link>
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => datHoiGhiNhan(true)}>
+                <FileSignature aria-hidden />
+                Ghi nhận theo biên bản (không cần ảnh)
+              </Button>
+            </div>
+          </div>
+        </Alert>
+      ) : null}
+
+      {hoiGhiNhan ? (
+        <Alert variant="warning" tieuDe="Ghi nhận bàn giao theo biên bản?">
+          <div className="space-y-3">
+            <p className="text-sm">
+              Hệ thống sẽ ghi nhận đúng số lượng đã duyệt của yêu cầu{' '}
+              <strong>{yeuCau.code}</strong>, lấy biên bản{' '}
+              <strong>{yeuCau.handoverNotes[0]?.code}</strong> làm bằng chứng thay cho ảnh chụp.
+              Tồn kho và tình trạng thiết bị sẽ đổi ngay. Muốn có ảnh chụp thực tế thì dùng màn
+              hình {duocNhap ? 'Nhập kho' : 'Xuất kho'} thay vì cách này.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                disabled={dangChay}
+                onClick={() => {
+                  datHoiGhiNhan(false);
+                  void hanhDong(
+                    '/ghi-nhan-bien-ban',
+                    undefined,
+                    `Đã ghi nhận bàn giao theo biên bản ${yeuCau.handoverNotes[0]?.code}. Tồn kho và tình trạng đã cập nhật.`,
+                  );
+                }}
+              >
+                Ghi nhận
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => datHoiGhiNhan(false)}>
+                Thôi
+              </Button>
+            </div>
+          </div>
+        </Alert>
+      ) : null}
 
       {hoiXoa ? (
         <Alert variant="warning" tieuDe="Xoá yêu cầu này?">

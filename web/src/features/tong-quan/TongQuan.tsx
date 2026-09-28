@@ -10,6 +10,7 @@ import {
   Monitor,
   PackageOpen,
   RefreshCw,
+  Truck,
   Warehouse,
   Wifi,
   WifiOff,
@@ -186,6 +187,16 @@ export function TongQuan() {
             gia={s.oTruong.bo}
             phu={`bộ · ${so(s.oTruong.le)} hàng lẻ`}
             icon={MapPin}
+          />
+          {/* Hàng đã rời kho nhưng bên nhận chưa xác nhận. Phải có ô riêng:
+              không hiện ở đâu thì bấm "xuất kho" xong dashboard đứng im, người
+              dùng tưởng máy không ghi nhận. */}
+          <O
+            nhan="Đang chuyển"
+            gia={s.dangChuyen.bo}
+            phu={`bộ · ${so(s.dangChuyen.le)} hàng lẻ`}
+            icon={Truck}
+            den="/yeu-cau?status=DA_XUAT"
           />
           <O
             nhan="Đang cho mượn"

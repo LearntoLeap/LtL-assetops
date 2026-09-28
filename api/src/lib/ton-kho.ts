@@ -296,3 +296,35 @@ export async function hangDangTrenDuong(
   }
   return ra;
 }
+
+/**
+ * HÀNG ĐANG TRÊN ĐƯỜNG CỦA TOÀN BỘ TÀI SẢN, nhóm theo (tài sản, điểm xuất đi).
+ *
+ * Cùng con số như `hangDangTrenDuong` nhưng không giới hạn danh sách tài sản, để
+ * dashboard trừ ra được. Trả về đúng dáng `TonTheoDiaDiem` cho chỗ dùng ghép
+ * song song với `tonTatCa()` mà không phải đổi kiểu.
+ *
+ * VÌ SAO DASHBOARD PHẢI TRỪ: phân bổ về trường và luân chuyển trường chưa ghi
+ * movement lúc xuất kho (luồng C) — nên nhìn `movements` thì kho vẫn báo còn
+ * nguyên trong khi hàng đã lên xe. Đã dựng lại thật: xuất 1 robot + 30 quyển về
+ * trường, dashboard KHÔNG đổi một số nào — "TẠI KHO" vẫn đếm cả 31 đơn vị vừa
+ * rời kho, mà "Ở TRƯỜNG" thì chưa có vì bên nhận chưa xác nhận. Ba mươi mốt đơn
+ * vị biến mất khỏi mọi con số.
+ */
+export async function hangDangDiTatCa(db: PrismaTx = prisma): Promise<TonTheoDiaDiem[]> {
+  const dong = await db.$queryRaw<DongTho[]>(Prisma.sql`
+    SELECT dong.asset_id AS asset_id,
+           ts.current_location_id AS location_id,
+           SUM(COALESCE(dong.issued_quantity, dong.quantity)) AS ton
+      FROM request_items dong
+      JOIN requests yc ON yc.id = dong.request_id
+      JOIN assets ts ON ts.id = dong.asset_id AND ts.deleted_at IS NULL
+     WHERE yc.status = 'DA_XUAT'
+       AND yc.deleted_at IS NULL
+       AND yc.type IN ('PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG')
+       AND ts.current_location_id IS NOT NULL
+     GROUP BY dong.asset_id, ts.current_location_id
+    HAVING SUM(COALESCE(dong.issued_quantity, dong.quantity)) <> 0
+  `);
+  return dong.map(doiDong);
+}

@@ -55,6 +55,7 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
   const [dong, datDong] = useState<Record<string, TrangThaiDong>>({});
   const [diaDiem, datDiaDiem] = useState<DiaDiem[]>([]);
   const [veLocationId, datVeLocationId] = useState('');
+  const [tuLocationId, datTuLocationId] = useState('');
   const [ghiChuChung, datGhiChuChung] = useState('');
   const [loi, datLoi] = useState<string | null>(null);
   const [dangGui, datDangGui] = useState(false);
@@ -150,6 +151,9 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
         than: {
           muc,
           ...(laXuat ? {} : { veLocationId }),
+          // Chỉ gửi khi người ở kho tự chọn: để trống thì máy chủ tự suy ra
+          // nơi trả về, chỉ đòi chọn khi cùng một mã đang nằm ở nhiều nơi.
+          ...(laXuat || !tuLocationId ? {} : { tuLocationId }),
           ...(ghiChuChung ? { ghiChu: ghiChuChung } : {}),
         },
       });
@@ -230,23 +234,48 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
           <CardHeader>
             <CardTitle>Nhận hàng về kho</CardTitle>
           </CardHeader>
-          <CardContent className="max-w-sm space-y-1.5">
-            <Label htmlFor="k-ve-kho">Kho nhận *</Label>
-            <Select
-              id="k-ve-kho"
-              required
-              value={veLocationId}
-              onChange={(su) => datVeLocationId(su.target.value)}
-            >
-              <option value="">— Chọn kho —</option>
-              {diaDiem
-                .filter((d) => d.type === 'KHO_VAN_PHONG' || d.type === 'KHO_SU_KIEN')
-                .map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-            </Select>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="k-ve-kho">Kho nhận *</Label>
+              <Select
+                id="k-ve-kho"
+                required
+                value={veLocationId}
+                onChange={(su) => datVeLocationId(su.target.value)}
+              >
+                <option value="">— Chọn kho —</option>
+                {diaDiem
+                  .filter((d) => d.type === 'KHO_VAN_PHONG' || d.type === 'KHO_SU_KIEN')
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+              </Select>
+            </div>
+            {/* TRẢ VỀ TỪ ĐÂU — để trống thì máy chủ tự suy. Chỉ phải chọn khi
+                cùng một mã hàng lẻ đang nằm ở nhiều nơi: lúc đó không có cách
+                nào biết lô này về từ trường nào, đoán là trừ nhầm kho người khác. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="k-tu-dau">Trả về từ</Label>
+              <Select
+                id="k-tu-dau"
+                value={tuLocationId}
+                onChange={(su) => datTuLocationId(su.target.value)}
+              >
+                <option value="">— Để hệ thống tự xác định —</option>
+                {diaDiem
+                  .filter((d) => d.id !== veLocationId)
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Chỉ cần chọn khi hệ thống báo không rõ hàng trả về từ đâu.
+              </p>
+            </div>
           </CardContent>
         </Card>
       ) : null}

@@ -11,7 +11,7 @@
 import type { LocationType, Prisma } from '@prisma/client';
 import { NHAN_TINH_TRANG, TINH_TRANG } from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
-import { tonTatCa } from '../../lib/ton-kho.js';
+import { hangDangDiTatCa, tonTatCa } from '../../lib/ton-kho.js';
 import {
   dieuKienDiaDiem,
   dieuKienTaiSan,
@@ -61,7 +61,17 @@ export interface SoLieuNhanh {
   /** Tách bộ / lẻ — con số dùng để ra quyết định. */
   taiKho: DemTachLoai;
   oTruong: DemTachLoai;
+  /**
+   * ĐÃ RA KHỎI KHO, CHỜ BÊN NHẬN XÁC NHẬN — không còn ở kho, chưa tới trường.
+   *
+   * Phải là một con số riêng. Gộp vào "tại kho" thì kho báo còn hàng đã lên xe;
+   * gộp vào "ở trường" thì trường bị tính nhận hàng chưa hề nhận. Không hiện ở
+   * đâu cả thì số này biến mất khỏi dashboard — đúng lỗi đã dựng lại được.
+   */
+  dangChuyen: DemTachLoai;
   maChoMuon: number;
+  /** Số MÃ thiết bị (theo đơn vị) đang trên đường, chưa được xác nhận. */
+  maDangChuyen: number;
   maQuaHan: number;
   maHong: number;
   maCanBaoTri: number;
@@ -113,9 +123,14 @@ async function tonTrongPhamVi(nguoiDung: NguoiDungDaXacThuc): Promise<{
   tongTheoTaiSan: Map<string, number>;
   /** Cùng dữ liệu nhưng tách bộ / lẻ theo từng điểm. */
   tachTheoDiem: Map<string, DemTachLoai>;
+  /** Hàng đã rời điểm này nhưng bên nhận chưa xác nhận, tách bộ / lẻ. */
+  tachDangDiTheoDiem: Map<string, DemTachLoai>;
+  /** Tổng hàng đang trên đường theo từng điểm xuất đi. */
+  dangDiTheoDiem: Map<string, number>;
 }> {
-  const [ton, taiSanTrongPhamVi, diemTrongPhamVi] = await Promise.all([
+  const [ton, dangDi, taiSanTrongPhamVi, diemTrongPhamVi] = await Promise.all([
     tonTatCa(),
+    hangDangDiTatCa(),
     prisma.asset.findMany({
       where: dieuKienTaiSan(nguoiDung),
       select: { id: true, trackingType: true },
@@ -141,17 +156,44 @@ async function tonTrongPhamVi(nguoiDung: NguoiDungDaXacThuc): Promise<{
     else tach.le += d.ton;
     tachTheoDiem.set(d.locationId, tach);
   }
-  return { theoDiem, tongTheoTaiSan, tachTheoDiem };
+
+  // Hàng đang trên đường: lọc CÙNG phạm vi với tồn, để tài khoản trường không
+  // nhìn thấy phần hàng đang rời KHO của LtL.
+  const dangDiTheoDiem = new Map<string, number>();
+  const tachDangDiTheoDiem = new Map<string, DemTachLoai>();
+  for (const d of dangDi) {
+    const kieuTaiSan = kieu.get(d.assetId);
+    if (kieuTaiSan === undefined || !coDiem.has(d.locationId)) continue;
+    dangDiTheoDiem.set(d.locationId, (dangDiTheoDiem.get(d.locationId) ?? 0) + d.ton);
+    const tach = tachDangDiTheoDiem.get(d.locationId) ?? { bo: 0, le: 0 };
+    if (kieuTaiSan === 'DON_VI') tach.bo += d.ton;
+    else tach.le += d.ton;
+    tachDangDiTheoDiem.set(d.locationId, tach);
+  }
+  return { theoDiem, tongTheoTaiSan, tachTheoDiem, tachDangDiTheoDiem, dangDiTheoDiem };
 }
 
 export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieuNhanh> {
   const dieuKien = dieuKienTaiSan(nguoiDung);
   const bayGio = new Date();
 
-  const [soMa, maChoMuon, maQuaHan, maHong, maCanBaoTri, diem, ton, choDuyet, choXuat, choXacNhan] =
+  const [
+    soMa,
+    maChoMuon,
+    maDangChuyen,
+    maQuaHan,
+    maHong,
+    maCanBaoTri,
+    diem,
+    ton,
+    choDuyet,
+    choXuat,
+    choXacNhan,
+  ] =
     await Promise.all([
       prisma.asset.count({ where: { ...dieuKien, isActive: true } }),
       prisma.asset.count({ where: { ...dieuKien, allocationStatus: 'CHO_MUON' } }),
+      prisma.asset.count({ where: { ...dieuKien, allocationStatus: 'DANG_VAN_CHUYEN' } }),
       prisma.asset.count({
         where: {
           ...dieuKien,
@@ -181,16 +223,36 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
   let donViOTruong = 0;
   const taiKho: DemTachLoai = { bo: 0, le: 0 };
   const oTruong: DemTachLoai = { bo: 0, le: 0 };
-  for (const [idDiem, so] of ton.theoDiem) {
+  const dangChuyen: DemTachLoai = { bo: 0, le: 0 };
+  /*
+   * TRỪ HÀNG ĐÃ LÊN XE RA KHỎI "TẠI KHO".
+   *
+   * Phân bổ về trường / luân chuyển trường chưa ghi movement lúc xuất kho (bên
+   * nhận xác nhận mới ghi — luồng C), nên `movements` vẫn tính hàng đó ở điểm
+   * xuất đi. Không trừ thì bấm "xuất kho" xong dashboard KHÔNG đổi một số nào,
+   * đúng như đã dựng lại: 1 robot + 30 quyển rời kho mà "TẠI KHO" vẫn nguyên và
+   * "Ở TRƯỜNG" vẫn 0.
+   *
+   * Tồn sổ sách (Σ movements) KHÔNG bị sửa — nguyên tắc bất biến #5 còn nguyên.
+   * Đây chỉ là cách CHIA con số đó ra ba giỏ khi hiển thị: ở kho, đang chuyển,
+   * ở trường. Cộng ba giỏ lại vẫn đúng bằng tổng tồn.
+   */
+  const moiDiem = new Set([...ton.theoDiem.keys(), ...ton.dangDiTheoDiem.keys()]);
+  for (const idDiem of moiDiem) {
+    const so = ton.theoDiem.get(idDiem) ?? 0;
     const tach = ton.tachTheoDiem.get(idDiem) ?? { bo: 0, le: 0 };
+    const di = ton.dangDiTheoDiem.get(idDiem) ?? 0;
+    const tachDi = ton.tachDangDiTheoDiem.get(idDiem) ?? { bo: 0, le: 0 };
+    dangChuyen.bo += tachDi.bo;
+    dangChuyen.le += tachDi.le;
     if (laKho.has(idDiem)) {
-      donViTaiKho += so;
-      taiKho.bo += tach.bo;
-      taiKho.le += tach.le;
+      donViTaiKho += so - di;
+      taiKho.bo += tach.bo - tachDi.bo;
+      taiKho.le += tach.le - tachDi.le;
     } else if (laTruong.has(idDiem)) {
-      donViOTruong += so;
-      oTruong.bo += tach.bo;
-      oTruong.le += tach.le;
+      donViOTruong += so - di;
+      oTruong.bo += tach.bo - tachDi.bo;
+      oTruong.le += tach.le - tachDi.le;
     }
   }
 
@@ -200,7 +262,9 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
     donViOTruong,
     taiKho,
     oTruong,
+    dangChuyen,
     maChoMuon,
+    maDangChuyen,
     maQuaHan,
     maHong,
     maCanBaoTri,
@@ -339,8 +403,15 @@ export async function dashboard(
   }
 
   const tenDiem = new Map(diem.map((d) => [d.id, d.name]));
+  // Trừ luôn phần đang trên đường để cột "theo địa điểm" khớp với ô "TẠI KHO"
+  // ngay bên trên nó. Hai con số cạnh nhau mà lệch thì người đọc không biết tin
+  // cái nào.
   const theoDiaDiem: DongDem[] = [...ton.theoDiem.entries()]
-    .map(([id, so]) => ({ ma: id, nhan: tenDiem.get(id) ?? id, so }))
+    .map(([id, so]) => ({
+      ma: id,
+      nhan: tenDiem.get(id) ?? id,
+      so: so - (ton.dangDiTheoDiem.get(id) ?? 0),
+    }))
     .filter((d) => d.so !== 0)
     .sort((a, b) => b.so - a.so);
 

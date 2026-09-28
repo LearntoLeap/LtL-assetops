@@ -113,6 +113,12 @@ export type DuLieuXuatKho = z.infer<typeof luocDoXuatKho>;
  */
 export const luocDoNhapKho = z.object({
   veLocationId: z.string().trim().min(1, 'Chưa chọn kho nhận hàng về.').max(30),
+  /**
+   * NƠI HÀNG TRẢ VỀ TỪ ĐÂU. Tuỳ chọn: hệ thống tự suy ra được thì không phải
+   * khai. Chỉ cần khi cùng một mã hàng lẻ đang nằm ở NHIỀU nơi — lúc đó máy
+   * không có cách nào biết 30 quyển này về từ trường nào.
+   */
+  tuLocationId: chuoiTuyChon(30),
   muc: z
     .array(
       z.object({

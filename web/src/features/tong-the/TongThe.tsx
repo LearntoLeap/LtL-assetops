@@ -11,6 +11,7 @@ import {
   PackageOpen,
   RefreshCw,
   Timer,
+  Truck,
   Warehouse,
   Wifi,
   WifiOff,
@@ -491,6 +492,14 @@ export function TongThe() {
               gia={dl.soLieu.oTruong.bo}
               phu={`bộ · ${so(dl.soLieu.oTruong.le)} hàng lẻ`}
               icon={MapPin}
+            />
+            {/* Đã rời kho, bên nhận chưa xác nhận — giỏ thứ ba, không gộp vào
+                hai giỏ trên. */}
+            <O
+              nhan="Đang chuyển"
+              gia={dl.soLieu.dangChuyen.bo}
+              phu={`bộ · ${so(dl.soLieu.dangChuyen.le)} hàng lẻ`}
+              icon={Truck}
             />
           </div>
 
