@@ -6,9 +6,11 @@ import {
   ClipboardList,
   FileSignature,
   Gauge,
+  Handshake,
   MapPin,
   Monitor,
   PackageOpen,
+  PartyPopper,
   RefreshCw,
   Truck,
   Warehouse,
@@ -198,11 +200,29 @@ export function TongQuan() {
             icon={Truck}
             den="/yeu-cau?status=DA_XUAT"
           />
+          {/* Hai ô dưới đây trước kia KHÔNG tồn tại: hàng ở kho sự kiện bị gộp
+              vào "Tại kho", còn hàng ở chỗ đối tác thì không được đếm vào ô nào
+              cả. Nên xuất kho đi hai nơi đó xong, trang chủ trông như chưa có gì
+              xảy ra. Giờ bốn loại điểm là bốn ô riêng — cộng với "đang chuyển"
+              và "đang cho mượn" là đủ mọi chỗ thiết bị có thể nằm. */}
+          <O
+            nhan="Ở kho sự kiện"
+            gia={s.oSuKien.bo}
+            phu={`bộ · ${so(s.oSuKien.le)} hàng lẻ`}
+            icon={PartyPopper}
+          />
+          <O
+            nhan="Ở chỗ đối tác"
+            gia={s.oDoiTac.bo}
+            phu={`bộ · ${so(s.oDoiTac.le)} hàng lẻ`}
+            icon={Handshake}
+          />
           <O
             nhan="Đang cho mượn"
             gia={s.maChoMuon}
             phu="mã"
             icon={PackageOpen}
+            den="/thiet-bi?allocationStatus=CHO_MUON"
           />
           <O
             nhan="Quá hạn trả"
@@ -316,6 +336,23 @@ export function TongQuan() {
                 nhanTong="mã thiết bị"
               />
             ) : null}
+          </CardContent>
+        </Card>
+
+        {/* TÌNH TRẠNG PHÂN BỔ — đủ cả năm, cộng lại đúng bằng số mã.
+            Trước đây trang chủ chỉ hiện đúng một trạng thái ("đang cho mượn"),
+            nên thiết bị chuyển sang "Đang vận chuyển" hay "Đang phục vụ sự kiện"
+            thì không thấy ở đâu cả — nhìn như máy không ghi nhận gì. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Tình trạng phân bổ</CardTitle>
+            <CardDescription>
+              Mỗi mã thuộc đúng một tình trạng. Xuất kho, nhập kho hay bàn giao xong là con số
+              ở đây đổi ngay.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dl ? <ThanhNgang dong={dl.theoPhanBo} donVi="mã" /> : null}
           </CardContent>
         </Card>
 

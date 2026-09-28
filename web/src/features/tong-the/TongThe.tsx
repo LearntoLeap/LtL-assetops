@@ -6,9 +6,11 @@ import {
   ClipboardList,
   FileSignature,
   Gauge,
+  Handshake,
   History,
   MapPin,
   PackageOpen,
+  PartyPopper,
   RefreshCw,
   Timer,
   Truck,
@@ -500,6 +502,19 @@ export function TongThe() {
               gia={dl.soLieu.dangChuyen.bo}
               phu={`bộ · ${so(dl.soLieu.dangChuyen.le)} hàng lẻ`}
               icon={Truck}
+            />
+            {/* Đủ bốn loại điểm lưu trữ, không để loại nào không có ô. */}
+            <O
+              nhan="Ở kho sự kiện"
+              gia={dl.soLieu.oSuKien.bo}
+              phu={`bộ · ${so(dl.soLieu.oSuKien.le)} hàng lẻ`}
+              icon={PartyPopper}
+            />
+            <O
+              nhan="Ở chỗ đối tác"
+              gia={dl.soLieu.oDoiTac.bo}
+              phu={`bộ · ${so(dl.soLieu.oDoiTac.le)} hàng lẻ`}
+              icon={Handshake}
             />
           </div>
 

@@ -491,6 +491,10 @@ export interface SoLieuNhanh {
   oTruong: DemTachLoai;
   /** Đã rời kho, bên nhận chưa xác nhận — không ở kho, cũng chưa tới trường. */
   dangChuyen: DemTachLoai;
+  /** Ở kho sự kiện. */
+  oSuKien: DemTachLoai;
+  /** Ở chỗ đối tác mượn. */
+  oDoiTac: DemTachLoai;
   maChoMuon: number;
   maDangChuyen: number;
   maQuaHan: number;
@@ -520,6 +524,8 @@ export interface DuLieuDashboard {
   theoDongGiaiPhap: DongDem[];
   theoDiaDiem: DongDem[];
   theoTinhTrang: DongDem[];
+  /** Tình trạng phân bổ — đủ cả năm trạng thái, cộng lại bằng số mã. */
+  theoPhanBo: DongDem[];
   theoKieuQuanLy: DongDem[];
   raVao: DongRaVao[];
   quaHan: Array<{

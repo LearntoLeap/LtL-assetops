@@ -9,7 +9,12 @@
  * nhân sự chỉ thấy thiết bị mình đang giữ. Gọi thẳng API cũng không ra ngoài được.
  */
 import type { LocationType, Prisma } from '@prisma/client';
-import { NHAN_TINH_TRANG, TINH_TRANG } from '@ltl/taisan-shared';
+import {
+  NHAN_TINH_TRANG,
+  NHAN_TRANG_THAI_PHAN_BO,
+  TINH_TRANG,
+  TRANG_THAI_PHAN_BO,
+} from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
 import { hangDangDiTatCa, tonTatCa } from '../../lib/ton-kho.js';
 import {
@@ -22,8 +27,22 @@ import {
 } from '../../lib/pham-vi.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
 
-/** Loại điểm được coi là "kho của LtL" khi chia tồn kho / ở trường. */
-const LOAI_KHO = new Set<LocationType>(['KHO_VAN_PHONG', 'KHO_SU_KIEN']);
+/*
+ * CHIA GIỎ THEO LOẠI ĐIỂM — mỗi loại đúng MỘT giỏ, và phải đủ CẢ BỐN loại.
+ *
+ * Trước đây chỉ có hai giỏ: "kho" gộp cả KHO_VAN_PHONG lẫn KHO_SU_KIEN, "trường"
+ * là DIEM_TRUONG — còn DOI_TAC_MUON KHÔNG thuộc giỏ nào. Hệ quả đo được trên số
+ * liệu thật của LtL: 42 mã, xuất 1 mã đi khỏi kho văn phòng (nhật ký ghi rõ
+ * "Vào kho 43 / Ra kho 1") mà ô "TẠI KHO" vẫn đứng nguyên 42 và không ô nào đổi
+ * — vì nơi đến lại là một điểm kiểu kho, nên nó nhảy từ giỏ "kho" sang chính giỏ
+ * "kho". Hàng gửi đối tác còn tệ hơn: biến mất khỏi mọi ô.
+ *
+ * Giờ bốn loại điểm là bốn giỏ riêng, cộng thêm giỏ "đang chuyển". Bất kỳ lần
+ * xuất / nhập kho nào cũng làm ít nhất một ô đổi số.
+ */
+const LOAI_KHO = new Set<LocationType>(['KHO_VAN_PHONG']);
+const LOAI_SU_KIEN = new Set<LocationType>(['KHO_SU_KIEN']);
+const LOAI_DOI_TAC = new Set<LocationType>(['DOI_TAC_MUON']);
 
 export interface DongDem {
   ma: string;
@@ -69,6 +88,10 @@ export interface SoLieuNhanh {
    * đâu cả thì số này biến mất khỏi dashboard — đúng lỗi đã dựng lại được.
    */
   dangChuyen: DemTachLoai;
+  /** Đang ở kho sự kiện — đã rời kho văn phòng, đang phục vụ sự kiện. */
+  oSuKien: DemTachLoai;
+  /** Đang ở chỗ đối tác mượn. Trước đây con số này không hiện ở đâu cả. */
+  oDoiTac: DemTachLoai;
   maChoMuon: number;
   /** Số MÃ thiết bị (theo đơn vị) đang trên đường, chưa được xác nhận. */
   maDangChuyen: number;
@@ -218,12 +241,16 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
 
   const laKho = new Set(diem.filter((d) => LOAI_KHO.has(d.type)).map((d) => d.id));
   const laTruong = new Set(diem.filter((d) => d.type === 'DIEM_TRUONG').map((d) => d.id));
+  const laSuKien = new Set(diem.filter((d) => LOAI_SU_KIEN.has(d.type)).map((d) => d.id));
+  const laDoiTac = new Set(diem.filter((d) => LOAI_DOI_TAC.has(d.type)).map((d) => d.id));
 
   let donViTaiKho = 0;
   let donViOTruong = 0;
   const taiKho: DemTachLoai = { bo: 0, le: 0 };
   const oTruong: DemTachLoai = { bo: 0, le: 0 };
   const dangChuyen: DemTachLoai = { bo: 0, le: 0 };
+  const oSuKien: DemTachLoai = { bo: 0, le: 0 };
+  const oDoiTac: DemTachLoai = { bo: 0, le: 0 };
   /*
    * TRỪ HÀNG ĐÃ LÊN XE RA KHỎI "TẠI KHO".
    *
@@ -253,6 +280,12 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
       donViOTruong += so - di;
       oTruong.bo += tach.bo - tachDi.bo;
       oTruong.le += tach.le - tachDi.le;
+    } else if (laSuKien.has(idDiem)) {
+      oSuKien.bo += tach.bo - tachDi.bo;
+      oSuKien.le += tach.le - tachDi.le;
+    } else if (laDoiTac.has(idDiem)) {
+      oDoiTac.bo += tach.bo - tachDi.bo;
+      oDoiTac.le += tach.le - tachDi.le;
     }
   }
 
@@ -263,6 +296,8 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
     taiKho,
     oTruong,
     dangChuyen,
+    oSuKien,
+    oDoiTac,
     maChoMuon,
     maDangChuyen,
     maQuaHan,
@@ -281,6 +316,16 @@ export interface DuLieuDashboard {
   theoDiaDiem: DongDem[];
   /** Tình trạng thiết bị — đếm theo SỐ MÃ, để vẽ vành khuyên trên trang chủ. */
   theoTinhTrang: DongDem[];
+  /**
+   * TÌNH TRẠNG PHÂN BỔ — tại kho / đang vận chuyển / đã phân bổ / cho mượn /
+   * đang phục vụ sự kiện, đếm theo SỐ MÃ.
+   *
+   * Trước đây chỉ có đúng một trạng thái phân bổ hiện trên trang chủ ("đang cho
+   * mượn"); bốn trạng thái còn lại không xuất hiện ở đâu, nên xuất kho xong mà
+   * máy đặt sang "Đang phục vụ sự kiện" thì trang chủ trông như không có gì xảy
+   * ra. Vành khuyên này liệt kê đủ cả năm, cộng lại đúng bằng số mã.
+   */
+  theoPhanBo: DongDem[];
   /** Bộ (quản lý theo đơn vị) và hàng lẻ (quản lý theo số lượng) — tách hẳn. */
   theoKieuQuanLy: DongDem[];
   raVao: DongRaVao[];
@@ -330,6 +375,7 @@ export async function dashboard(
         id: true,
         condition: true,
         trackingType: true,
+        allocationStatus: true,
         category: { select: { id: true, name: true } },
         productLine: { select: { id: true, name: true } },
       },
@@ -387,10 +433,12 @@ export async function dashboard(
   const demLoai = new Map<string, { nhan: string; so: number }>();
   const demDong = new Map<string, { nhan: string; so: number }>();
   const demTinhTrang = new Map<string, number>();
+  const demPhanBo = new Map<string, number>();
   let soMaBo = 0;
   let soMaLe = 0;
   for (const t of taiSan) {
     demTinhTrang.set(t.condition, (demTinhTrang.get(t.condition) ?? 0) + 1);
+    demPhanBo.set(t.allocationStatus, (demPhanBo.get(t.allocationStatus) ?? 0) + 1);
     if (t.trackingType === 'DON_VI') soMaBo += 1;
     else soMaLe += 1;
     const l = demLoai.get(t.category.id) ?? { nhan: t.category.name, so: 0 };
@@ -451,6 +499,11 @@ export async function dashboard(
       ma,
       nhan: NHAN_TINH_TRANG[ma],
       so: demTinhTrang.get(ma) ?? 0,
+    })).filter((d) => d.so > 0),
+    theoPhanBo: TRANG_THAI_PHAN_BO.map((ma) => ({
+      ma,
+      nhan: NHAN_TRANG_THAI_PHAN_BO[ma],
+      so: demPhanBo.get(ma) ?? 0,
     })).filter((d) => d.so > 0),
     theoKieuQuanLy: [
       { ma: 'DON_VI', nhan: 'Theo bộ', so: soMaBo },

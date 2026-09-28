@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Plus, QrCode, RefreshCw, Search, Trash2, Undo2, Upload } from 'lucide-react';
 import {
   DS_TINH_TRANG,
@@ -99,7 +99,13 @@ export function ThietBiList() {
   const [locLoai, datLocLoai] = useState('');
   const [locDiem, datLocDiem] = useState('');
   const [locTinhTrang, datLocTinhTrang] = useState('');
-  const [locPhanBo, datLocPhanBo] = useState('');
+  /*
+   * Mở sẵn bộ lọc theo ĐỊA CHỈ TRANG. Ô "Đang cho mượn" trên trang chủ dẫn tới
+   * `/thiet-bi?allocationStatus=CHO_MUON`; không đọc tham số này thì bấm vào ô
+   * đó ra danh sách toàn bộ thiết bị — con số nói một đằng, danh sách một nẻo.
+   */
+  const [thamSo] = useSearchParams();
+  const [locPhanBo, datLocPhanBo] = useState(thamSo.get('allocationStatus') ?? '');
   const [locMucDich, datLocMucDich] = useState('');
 
   const [loaiTaiSan, datLoaiTaiSan] = useState<DanhMuc[]>([]);
