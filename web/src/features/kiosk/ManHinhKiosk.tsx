@@ -175,15 +175,15 @@ const O_LON: ReadonlyArray<{
 }> = [
   {
     nhan: 'Xuất kho',
-    phu: 'Yêu cầu đã duyệt',
-    den: '/yeu-cau?status=DA_DUYET',
+    phu: 'Phiếu chờ xuất',
+    den: '/yeu-cau?status=BAN_NHAP',
     icon: PackageOpen,
     mau: 'bg-emerald-400/20 text-emerald-200 ring-emerald-300/40',
   },
   {
     nhan: 'Nhập kho',
     phu: 'Nhận hàng về',
-    den: '/yeu-cau?status=DA_DUYET&type=NHAP_KHO',
+    den: '/yeu-cau?status=BAN_NHAP&type=NHAP_KHO',
     icon: PackageCheck,
     mau: 'bg-sky-400/20 text-sky-200 ring-sky-300/40',
   },
@@ -490,15 +490,60 @@ export function ManHinhKiosk() {
                 phu={`${so(dem(soLieu.dangChuyen).le)} hàng lẻ`}
                 icon={Truck}
               />
-              <OThongKe nhan="Mã đang cho mượn" gia={soLieu.maChoMuon} icon={PackageOpen} />
+              {/* Hai loại điểm còn lại — trước đây không có ô nên hàng đưa sang kho
+                  sự kiện / đối tác biến khỏi màn hình kho. */}
+              <OThongKe
+                nhan="Ở kho sự kiện"
+                gia={dem(soLieu.oSuKien).bo}
+                phu={`${so(dem(soLieu.oSuKien).le)} hàng lẻ`}
+                icon={Boxes}
+              />
+              <OThongKe
+                nhan="Ở chỗ đối tác"
+                gia={dem(soLieu.oDoiTac).bo}
+                phu={`${so(dem(soLieu.oDoiTac).le)} hàng lẻ`}
+                icon={MapPin}
+              />
+              <OThongKe
+                nhan="Nhân sự đang mượn"
+                gia={soLieu.nhanSuGiu ? soLieu.nhanSuGiu.bo : soLieu.maChoMuon}
+                {...(soLieu.nhanSuGiu ? { phu: `${so(soLieu.nhanSuGiu.le)} hàng lẻ` } : {})}
+                icon={PackageOpen}
+              />
               <OThongKe nhan="Quá hạn trả" gia={soLieu.maQuaHan} icon={TimerOff} canhBao />
               <OThongKe nhan="Hỏng / mất" gia={soLieu.maHong} icon={PackageX} canhBao />
               <OThongKe
                 nhan="Chờ xuất kho"
-                gia={soLieu.yeuCauChoXuat}
+                gia={soLieu.choXuatKho ?? soLieu.yeuCauChoXuat}
                 icon={PackageOpen}
                 canhBao
               />
+              <OThongKe
+                nhan="Chờ nhập kho"
+                gia={soLieu.choNhapKho ?? 0}
+                icon={PackageOpen}
+                canhBao
+              />
+            </section>
+          ) : null}
+
+          {/* TỪNG KHO một dòng: có nhiều kho (vd Kho Ngoại Giao Đoàn) thì người
+              đứng quầy phải biết hàng nằm ở kho nào, không chỉ tổng. */}
+          {soLieu?.theoDiem && soLieu.theoDiem.some((d) => d.loai === 'KHO_VAN_PHONG' || d.loai === 'KHO_SU_KIEN') ? (
+            <section className="flex flex-wrap gap-2" aria-label="Theo từng kho">
+              {soLieu.theoDiem
+                .filter((d) => d.loai === 'KHO_VAN_PHONG' || d.loai === 'KHO_SU_KIEN')
+                .map((d) => (
+                  <span
+                    key={d.id}
+                    className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white/90 ring-1 ring-white/15"
+                  >
+                    <strong className="font-semibold">{d.ten}</strong>: {so(d.bo)} bộ · {so(d.le)} hàng lẻ
+                    {d.dangDiBo + d.dangDiLe > 0
+                      ? ` (đang chuyển đi ${so(d.dangDiBo)} bộ, ${so(d.dangDiLe)} lẻ)`
+                      : ''}
+                  </span>
+                ))}
             </section>
           ) : null}
 

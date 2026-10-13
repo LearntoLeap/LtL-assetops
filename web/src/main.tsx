@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import { CungCapAuth } from '@/lib/auth';
+import { CungCapXacNhan } from '@/components/ui/hop-xac-nhan';
 import { apDungCheDo, docCheDo } from '@/lib/giao-dien';
 import '@/index.css';
 
@@ -15,7 +16,9 @@ createRoot(goc).render(
   <StrictMode>
     <BrowserRouter>
       <CungCapAuth>
-        <App />
+        <CungCapXacNhan>
+          <App />
+        </CungCapXacNhan>
       </CungCapAuth>
     </BrowserRouter>
   </StrictMode>,

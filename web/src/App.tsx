@@ -36,6 +36,10 @@ const ThietBiChiTiet = lazy(() => import('@/features/thiet-bi/ThietBiChiTiet').t
 const ThungRacThietBi = lazy(() => import('@/features/thiet-bi/ThungRacThietBi').then((m) => ({ default: m.ThungRacThietBi })));
 const FormThietBi = lazy(() => import('@/features/thiet-bi/FormThietBi').then((m) => ({ default: m.FormThietBi })));
 const DiaDiemList = lazy(() => import('@/features/dia-diem/DiaDiemList').then((m) => ({ default: m.DiaDiemList })));
+const OnsiteTheoTruong = lazy(() => import('@/features/onsite/OnsiteTheoTruong').then((m) => ({ default: m.OnsiteTheoTruong })));
+const OnsiteTruong = lazy(() => import('@/features/onsite/OnsiteTruong').then((m) => ({ default: m.OnsiteTruong })));
+const FormOnsite = lazy(() => import('@/features/onsite/FormOnsite').then((m) => ({ default: m.FormOnsite })));
+const TrangTonKho = lazy(() => import('@/features/tong-quan/TrangTonKho').then((m) => ({ default: m.TrangTonKho })));
 const ThungRacDiaDiem = lazy(() => import('@/features/dia-diem/ThungRacDiaDiem').then((m) => ({ default: m.ThungRacDiaDiem })));
 const DanhMucHome = lazy(() => import('@/features/danh-muc/DanhMucHome').then((m) => ({ default: m.DanhMucHome })));
 const NhapLieuHangLoat = lazy(() => import('@/features/nhap-xuat/NhapLieuHangLoat').then((m) => ({ default: m.NhapLieuHangLoat })));
@@ -210,22 +214,11 @@ export default function App() {
             }
           />
           <Route path="yeu-cau/:id" element={<YeuCauChiTiet />} />
-          <Route
-            path="kho/xuat/:id"
-            element={
-              <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
-                <ManHinhKho che_do="xuat" />
-              </CanDangNhap>
-            }
-          />
-          <Route
-            path="kho/nhap/:id"
-            element={
-              <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
-                <ManHinhKho che_do="nhap" />
-              </CanDangNhap>
-            }
-          />
+          {/* Mọi vai trò mở được màn hình chụp ảnh xuất / nhập cho phiếu MÌNH
+              lập — không còn chờ duyệt. Máy chủ mới là chỗ chặn: người lập hoặc
+              kho, tài khoản trường chỉ với hàng của trường mình. */}
+          <Route path="kho/xuat/:id" element={<ManHinhKho che_do="xuat" />} />
+          <Route path="kho/nhap/:id" element={<ManHinhKho che_do="nhap" />} />
 
           {/* Biên bản bàn giao — bên nhận phải xác nhận thì vị trí mới đổi */}
           <Route path="bbbg" element={<BienBanList />} />
@@ -330,6 +323,12 @@ export default function App() {
             }
           />
           <Route path="dia-diem" element={<DiaDiemList />} />
+          {/* Cập nhật onsite — mọi vai trò; máy chủ giới hạn trường theo tài khoản. */}
+          <Route path="onsite" element={<OnsiteTheoTruong />} />
+          <Route path="onsite/:locationId" element={<OnsiteTruong />} />
+          <Route path="onsite/:locationId/moi" element={<FormOnsite />} />
+          {/* Tồn theo điểm có bộ lọc — mọi vai trò; máy chủ lọc theo phạm vi điểm. */}
+          <Route path="ton-kho" element={<TrangTonKho />} />
           <Route
             path="danh-muc"
             element={

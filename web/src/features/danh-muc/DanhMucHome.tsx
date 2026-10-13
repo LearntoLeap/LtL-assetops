@@ -16,6 +16,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
+import { DiaDiemList } from '@/features/dia-diem/DiaDiemList';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { DanhMuc, TrangDuLieu } from '@/lib/kieu';
@@ -53,6 +55,7 @@ function KhoiDanhMuc({
    */
   coVietTat?: boolean;
 }) {
+  const hoi = useXacNhan();
   const { nguoiDung } = useAuth();
   const duocSua = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
   const laAdmin = nguoiDung?.role === 'ADMIN';
@@ -190,13 +193,15 @@ function KhoiDanhMuc({
     // Nói rõ xoá cái gì và hậu quả, thay vì một câu "Xoá hẳn ...?" cụt lủn.
     const dangDung = d._count?.assets ?? 0;
     if (
-      !window.confirm(
-        `Xoá hẳn "${d.name}" khỏi ${tieuDe.toLowerCase()}?\n\n` +
+      !(await hoi({
+        tieuDe: `Xoá hẳn "${d.name}" khỏi ${tieuDe.toLowerCase()}?`,
+        noiDung:
           (dangDung > 0
-            ? `Đang có ${dangDung} thiết bị dùng mục này nên hệ thống sẽ chặn — hãy đặt Ngừng dùng thay vì xoá.\n\n`
-            : 'Mục này chưa thiết bị nào dùng nên xoá được. Thiết bị đã cấp mã giữ nguyên mã cũ.\n\n') +
+          ? `Đang có ${dangDung} thiết bị dùng mục này nên hệ thống sẽ chặn — hãy đặt Ngừng dùng thay vì xoá.\n\n`
+          : 'Mục này chưa thiết bị nào dùng nên xoá được. Thiết bị đã cấp mã giữ nguyên mã cũ.\n\n') +
           'Không khôi phục lại được.',
-      )
+        nutCo: 'Có, xoá hẳn',
+      }))
     ) {
       return;
     }
@@ -472,6 +477,14 @@ export function DanhMucHome() {
           coKieuQuanLy={false}
           maTuDong
         />
+      </div>
+      {/*
+        ĐIỂM NHẬN / TRẢ nằm ngay trong Danh mục: điểm thêm nhanh từ form yêu cầu
+        hiện ở đây để bổ sung địa chỉ, người liên hệ; điểm trường có lối tắt sang
+        Cập nhật onsite.
+      */}
+      <div className="min-w-0 border-t pt-4">
+        <DiaDiemList nhung />
       </div>
     </div>
   );

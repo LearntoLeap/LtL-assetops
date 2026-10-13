@@ -154,9 +154,13 @@ export function TongThe() {
   );
 
   const c = dl?.dangCho;
+  // Không còn bước duyệt: việc chờ là xuất / nhập kho. API cũ chưa có hai số
+  // mới thì dùng "chờ duyệt + đã duyệt" như trước.
+  const choXuat = c ? (c.choXuatKho ?? c.yeuCauChoDuyet + c.yeuCauChoXuat) : 0;
+  const choNhap = c?.choNhapKho ?? 0;
   const tongDangCho = c
-    ? c.yeuCauChoDuyet +
-      c.yeuCauChoXuat +
+    ? choXuat +
+      choNhap +
       c.bienBanChoXacNhan +
       c.kiemKeDangMo +
       c.baoHongDangMo +
@@ -252,20 +256,20 @@ export function TongThe() {
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                 <O
-                  nhan="Chờ duyệt"
-                  gia={c?.yeuCauChoDuyet ?? 0}
-                  phu="yêu cầu"
-                  icon={ClipboardList}
-                  mau={c && c.yeuCauChoDuyet > 0 ? 'text-warning-dam' : ''}
-                  den="/yeu-cau?status=CHO_DUYET"
+                  nhan="Chờ xuất kho"
+                  gia={choXuat}
+                  phu="phiếu chưa chụp ảnh xuất"
+                  icon={PackageOpen}
+                  mau={choXuat > 0 ? 'text-warning-dam' : ''}
+                  den="/yeu-cau?status=BAN_NHAP"
                 />
                 <O
-                  nhan="Chờ xuất kho"
-                  gia={c?.yeuCauChoXuat ?? 0}
-                  phu="yêu cầu đã duyệt"
-                  icon={PackageOpen}
-                  mau={c && c.yeuCauChoXuat > 0 ? 'text-warning-dam' : ''}
-                  den="/yeu-cau?status=DA_DUYET"
+                  nhan="Chờ nhập kho"
+                  gia={choNhap}
+                  phu="phiếu chưa chụp ảnh nhận"
+                  icon={ClipboardList}
+                  mau={choNhap > 0 ? 'text-warning-dam' : ''}
+                  den="/yeu-cau?status=BAN_NHAP&type=NHAP_KHO"
                 />
                 <O
                   nhan="Biên bản chờ ký"

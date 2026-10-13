@@ -166,14 +166,14 @@ yeuCauRouter.post(
 );
 
 /**
- * Hoàn tất XUẤT KHO. Chốt chặn nằm ở service: phải đã duyệt, mã quét phải khớp,
- * và phải có ảnh chụp thực tế — thiếu một thứ là 422, không ghi gì.
+ * Hoàn tất XUẤT KHO. Không còn bước duyệt: người lập tự thực hiện phiếu của mình,
+ * kho / quản trị thực hiện mọi phiếu. Quyền theo từng phiếu, mã quét phải khớp,
+ * ảnh chụp thực tế — đều kiểm trong service; thiếu một thứ là 422/403, không ghi gì.
  */
 yeuCauRouter.post(
   '/:id/xuat-kho',
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
-    dv.batBuocQuyenThucHien(nguoiDung);
     const duLieu = luocDoXuatKho.parse(req.body);
     res.json({
       ok: true,
@@ -202,7 +202,6 @@ yeuCauRouter.post(
   '/:id/nhap-kho',
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
-    dv.batBuocQuyenThucHien(nguoiDung);
     const duLieu = luocDoNhapKho.parse(req.body);
     res.json({
       ok: true,

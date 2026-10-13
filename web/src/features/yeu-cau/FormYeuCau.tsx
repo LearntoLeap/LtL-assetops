@@ -1,8 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, PackagePlus, Plus, Save, Trash2 } from 'lucide-react';
-import { DS_LOAI_YEU_CAU } from '@ltl/taisan-shared';
-import { MAU_YEU_CAU, NOI_KHAC, type MauYeuCau } from './mau-yeu-cau';
+import { NHAN_LOAI_YEU_CAU } from '@ltl/taisan-shared';
+import {
+  LOAI_LAP_MOI,
+  MAU_YEU_CAU,
+  NGUON_NGOAI,
+  NGUON_NHAN_SU,
+  type LoaiLapMoi,
+  type MauYeuCau,
+} from './mau-yeu-cau';
 import { TaoNhanhThietBi } from './TaoNhanhThietBi';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -11,16 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { NutQuetQR } from '@/components/QuetQR';
+import { OChonDiaDiem } from '@/components/OChonDiaDiem';
 import { goiApi, LoiApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { OGoiYMaThietBi } from '@/components/OGoiYMaThietBi';
 import { OChonHangLe } from './OChonHangLe';
-import type { NoiDen, ThietBi, TrangDuLieu, YeuCau } from '@/lib/kieu';
-
-/** Loại lập được ở form này — BÁO HỎNG có trang riêng vì bắt buộc kèm ảnh. */
-type LoaiLapDuoc = keyof typeof MAU_YEU_CAU;
-const LOAI_LAP_DUOC = DS_LOAI_YEU_CAU.filter(
-  (l) => l.ma !== 'BAO_HONG',
-) as ReadonlyArray<{ ma: LoaiLapDuoc; nhan: string }>;
+import type { ThietBi, YeuCau } from '@/lib/kieu';
 
 interface DongMuc {
   code: string;
@@ -28,35 +31,52 @@ interface DongMuc {
   /** Tên thiết bị tra được, để người dùng thấy mình chọn đúng cái. */
   ten?: string | undefined;
   loi?: string | undefined;
+  /** Dòng chọn từ ô hàng lẻ — chỉ để hiện nhãn, máy chủ tự biết kiểu quản lý. */
+  hangLe?: boolean;
+}
+
+const LOP_O_CHU =
+  'flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+
+function laLoaiLapMoi(v: string | null): v is LoaiLapMoi {
+  return v !== null && (LOAI_LAP_MOI as ReadonlyArray<string>).includes(v);
+}
+
+/** Giá trị ô "Nhận từ" là một điểm thật trong danh mục (không phải lựa chọn đặc biệt). */
+function laDiemThat(v: string): boolean {
+  return v !== '' && v !== NGUON_NGOAI && v !== NGUON_NHAN_SU;
 }
 
 export function FormYeuCau() {
   const dieuHuong = useNavigate();
-  const [type, datType] = useState<LoaiLapDuoc>('CHO_MUON');
+  const [thamSo] = useSearchParams();
+  const { nguoiDung } = useAuth();
+  const laTruong = nguoiDung?.role === 'TRUONG';
+  const truongCuaToi = laTruong ? (nguoiDung?.locationId ?? '') : '';
+
+  const loaiTuUrl = thamSo.get('loai');
+  const [type, datType] = useState<LoaiLapMoi>(laLoaiLapMoi(loaiTuUrl) ? loaiTuUrl : 'CHO_MUON');
   /** Dòng đang mở bảng tạo nhanh thiết bị; null = không mở. */
   const [dongTaoNhanh, datDongTaoNhanh] = useState<number | null>(null);
+  const [moThemHangLe, datMoThemHangLe] = useState(false);
   const [reason, datReason] = useState('');
+  const [note, datNote] = useState('');
+  const [fromLocationId, datFromLocationId] = useState('');
   const [toLocationId, datToLocationId] = useState('');
-  const [destinationNote, datDestinationNote] = useState('');
   const [expectedReturnAt, datExpectedReturnAt] = useState('');
   const [muc, datMuc] = useState<DongMuc[]>([{ code: '', quantity: '1' }]);
-  const [diaDiem, datDiaDiem] = useState<NoiDen[]>([]);
   const [loi, datLoi] = useState<string | null>(null);
   const [dangGui, datDangGui] = useState(false);
 
+  const mau: MauYeuCau = MAU_YEU_CAU[type];
+  const laNhap = mau.chieu === 'nhap';
+
+  // Tài khoản trường: luân chuyển / trả hàng thì nơi đi mặc định là trường mình.
   useEffect(() => {
-    async function tai(): Promise<void> {
-      try {
-        // Danh sách NƠI ĐẾN (chỉ mã/tên) chứ không phải danh sách đã lọc phạm vi:
-        // luân chuyển giữa các trường thì trường A phải chọn được trường B.
-        const kq = await goiApi<TrangDuLieu<NoiDen>>('/api/dia-diem/noi-den?chiHoatDong=true');
-        datDiaDiem(kq.muc);
-      } catch {
-        // Thiếu danh mục điểm thì vẫn tạo được yêu cầu không cần nơi đến.
-      }
+    if (laTruong && truongCuaToi && (type === 'LUAN_CHUYEN_TRUONG' || type === 'NHAP_KHO')) {
+      datFromLocationId(truongCuaToi);
     }
-    void tai();
-  }, []);
+  }, [type, laTruong, truongCuaToi]);
 
   /** Tra mã ngay khi nhập xong để báo sai sớm, không đợi bấm Lưu. */
   async function traMa(i: number, code: string): Promise<void> {
@@ -89,12 +109,46 @@ export function FormYeuCau() {
     }
   }
 
+  /** Thêm một mã vào phiếu; đã có thì thôi — hai dòng cùng mã thì không biết lấy số nào. */
+  function themDong(dong: DongMuc): void {
+    datMuc((cu) => {
+      if (cu.some((d) => d.code.trim().toUpperCase() === dong.code)) return cu;
+      const trong = cu.findIndex((d) => d.code.trim() === '');
+      if (trong >= 0) return cu.map((d, j) => (j === trong ? dong : d));
+      return [...cu, dong];
+    });
+  }
+
+  /** Tạo xong thì người lập làm luôn bước chụp ảnh — không còn chờ duyệt. */
+  function noiDenSauKhiTao(yc: YeuCau): string {
+    // Tài khoản trường chỉ tự thực hiện được khi hàng đi từ chính trường mình;
+    // còn lại (vd xin kho phân bổ về) thì kho làm, người lập xem ở trang chi tiết.
+    if (laTruong && yc.fromLocation?.id !== truongCuaToi) return `/yeu-cau/${yc.id}`;
+    // Nhập "hàng mới" hay "nhân sự trả lại" không lưu thành điểm trên phiếu —
+    // truyền sang màn hình kho để chọn sẵn đúng nguồn.
+    const nguon =
+      laNhap && fromLocationId === NGUON_NGOAI
+        ? '?nguon=NGOAI'
+        : laNhap && fromLocationId === NGUON_NHAN_SU
+          ? '?nguon=NHAN_SU'
+          : '';
+    return `/kho/${mau.chieu}/${yc.id}${nguon}`;
+  }
+
   async function gui(su: FormEvent): Promise<void> {
     su.preventDefault();
     datLoi(null);
     const dong = muc.filter((d) => d.code.trim() !== '');
     if (dong.length === 0) {
       datLoi('Yêu cầu phải có ít nhất một thiết bị.');
+      return;
+    }
+    if (mau.noiDi === 'bat-buoc' && !fromLocationId) {
+      datLoi(`Chưa chọn ${mau.nhanNoiDi.toLowerCase()}.`);
+      return;
+    }
+    if (mau.noiDen === 'bat-buoc' && !toLocationId) {
+      datLoi(`Chưa chọn ${mau.nhanNoiDen.toLowerCase()}.`);
       return;
     }
     datDangGui(true);
@@ -104,18 +158,21 @@ export function FormYeuCau() {
         than: {
           type,
           reason,
-          // Chọn "Nơi khác" thì KHÔNG gửi toLocationId — giá trị NOI_KHAC chỉ
-          // là cờ của giao diện, gửi lên server sẽ thành id không tồn tại.
-          ...(toLocationId && toLocationId !== NOI_KHAC ? { toLocationId } : {}),
-          ...(destinationNote.trim() ? { destinationNote: destinationNote.trim() } : {}),
-          ...(expectedReturnAt ? { expectedReturnAt: new Date(expectedReturnAt).toISOString() } : {}),
+          // "Hàng mới / nhân sự trả" không phải điểm trong danh mục: để trống
+          // nơi đi, máy chủ ghi lượt nhập từ ngoài vào / từ người mượn.
+          ...(mau.noiDi !== 'an' && laDiemThat(fromLocationId) ? { fromLocationId } : {}),
+          ...(mau.noiDen !== 'an' && toLocationId ? { toLocationId } : {}),
+          ...(note.trim() ? { note: note.trim() } : {}),
+          ...(mau.hanTra !== 'an' && expectedReturnAt
+            ? { expectedReturnAt: new Date(expectedReturnAt).toISOString() }
+            : {}),
           muc: dong.map((d) => ({
             code: d.code.trim().toUpperCase(),
             quantity: Number(d.quantity || '1'),
           })),
         },
       });
-      dieuHuong(`/yeu-cau/${kq.yeuCau.id}`);
+      dieuHuong(noiDenSauKhiTao(kq.yeuCau));
     } catch (e) {
       datLoi(e instanceof LoiApi ? e.message : 'Tạo yêu cầu thất bại.');
     } finally {
@@ -123,8 +180,11 @@ export function FormYeuCau() {
     }
   }
 
-  const mau: MauYeuCau = MAU_YEU_CAU[type];
-  const noiKhac = toLocationId === NOI_KHAC;
+  // Ô hàng lẻ: lấy ra thì chỉ hiện thứ CÒN LẤY ĐƯỢC ở nơi lấy; nhập về thì hiện
+  // mọi mã, kể cả đang hết — hết hàng chính là lúc cần nhập thêm.
+  const diemLayHangLe = !laNhap && laDiemThat(fromLocationId) ? fromLocationId : undefined;
+  const khoChoHangMoi = laNhap ? toLocationId : diemLayHangLe;
+  const duocThemThietBi = !laTruong;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -142,36 +202,38 @@ export function FormYeuCau() {
         <CardHeader>
           <CardTitle>{mau.tieuDe}</CardTitle>
           <CardDescription>
-            {mau.moTa} Tạo xong ở trạng thái Nháp; bấm Gửi duyệt ở trang chi tiết thì người có
-            quyền duyệt mới thấy.
+            {mau.moTa} Tạo xong là chuyển ngay sang bước chụp ảnh xác nhận{' '}
+            {laNhap ? 'nhập' : 'xuất'} kho, không phải chờ duyệt. Biên bản bàn giao tự lập, quản
+            trị được báo tự động.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={(su) => void gui(su)} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="y-loai">Loại yêu cầu *</Label>
                 <Select
                   id="y-loai"
                   required
                   value={type}
                   onChange={(su) => {
-                    datType(su.target.value as LoaiLapDuoc);
-                    // Đổi loại thì xoá nơi đến và hạn trả: mỗi loại có bộ ô
-                    // riêng, giữ lại giá trị cũ dễ gửi đi thứ không áp dụng.
+                    datType(su.target.value as LoaiLapMoi);
+                    // Đổi loại thì xoá nơi đi / nơi đến và hạn trả: mỗi loại có
+                    // bộ ô riêng, giữ giá trị cũ dễ gửi đi thứ không áp dụng.
+                    datFromLocationId('');
                     datToLocationId('');
-                    datDestinationNote('');
                     datExpectedReturnAt('');
+                    datMoThemHangLe(false);
                   }}
                 >
-                  {LOAI_LAP_DUOC.map((l) => (
-                    <option key={l.ma} value={l.ma}>
-                      {l.nhan}
+                  {LOAI_LAP_MOI.map((l) => (
+                    <option key={l} value={l}>
+                      {NHAN_LOAI_YEU_CAU[l]}
                     </option>
                   ))}
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Thiết bị hỏng thì lập ở{' '}
+                  Hàng trả về kho cũng lập ở loại Nhập kho. Thiết bị hỏng thì lập ở{' '}
                   <Link to="/bao-hong/moi" className="font-medium text-primary underline">
                     trang Báo hỏng
                   </Link>{' '}
@@ -179,50 +241,41 @@ export function FormYeuCau() {
                 </p>
               </div>
 
-              {mau.noiDen !== 'an' ? (
-                <div className="space-y-1.5">
-                  <Label htmlFor="y-noi-den">
-                    {mau.nhanNoiDen} {mau.noiDen === 'bat-buoc' ? '*' : '(không bắt buộc)'}
-                  </Label>
-                  <Select
-                    id="y-noi-den"
-                    required={mau.noiDen === 'bat-buoc'}
-                    value={toLocationId}
-                    onChange={(su) => datToLocationId(su.target.value)}
-                  >
-                    <option value="">— Chưa chọn —</option>
-                    {diaDiem.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                    <option value={NOI_KHAC}>— Nơi khác, tự điền —</option>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">{mau.giaiThichNoiDen}</p>
-                </div>
+              {mau.noiDi !== 'an' ? (
+                <OChonDiaDiem
+                  key={`di-${type}`}
+                  id="y-noi-di"
+                  nhan={`${mau.nhanNoiDi} ${mau.noiDi === 'bat-buoc' ? '*' : '(không bắt buộc)'}`}
+                  giaTri={fromLocationId}
+                  onDoi={datFromLocationId}
+                  loai={mau.loaiNoiDi}
+                  boDiem={toLocationId || undefined}
+                  required={mau.noiDi === 'bat-buoc'}
+                  nhanTrong={mau.noiDi === 'bat-buoc' ? '— Chưa chọn —' : '— Để hệ thống tự chọn —'}
+                  luaChonThem={
+                    laNhap
+                      ? [
+                          { giaTri: NGUON_NGOAI, nhan: 'Hàng mới / từ bên ngoài (mua, tặng…)' },
+                          { giaTri: NGUON_NHAN_SU, nhan: 'Nhân sự trả lại hàng đã mượn' },
+                        ]
+                      : undefined
+                  }
+                  goiY={mau.giaiThichNoiDi}
+                />
               ) : null}
 
-              {/*
-                Ô tự điền chỉ hiện khi chọn "Nơi khác". Trước đây nó luôn hiện
-                dưới tên "Ghi chú nơi đến" nên không ai hiểu khi nào thì dùng —
-                giờ nó là đường chính thức để ghi nơi đến ngoài danh mục.
-              */}
-              {noiKhac ? (
-                <div className="space-y-1.5">
-                  <Label htmlFor="y-noi-tu-dien">Nơi đến — tự điền *</Label>
-                  <Input
-                    id="y-noi-tu-dien"
-                    required
-                    value={destinationNote}
-                    onChange={(su) => datDestinationNote(su.target.value)}
-                    placeholder="VD: Nhà thi đấu Cầu Giấy — giải ROBOG vòng khu vực"
-                    maxLength={255}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Ghi rõ để kho biết giao đi đâu. Nơi dùng thường xuyên thì nên nhờ quản trị
-                    thêm vào danh mục Điểm lưu trữ.
-                  </p>
-                </div>
+              {mau.noiDen !== 'an' ? (
+                <OChonDiaDiem
+                  key={`den-${type}`}
+                  id="y-noi-den"
+                  nhan={`${mau.nhanNoiDen} ${mau.noiDen === 'bat-buoc' ? '*' : '(không bắt buộc)'}`}
+                  giaTri={toLocationId}
+                  onDoi={datToLocationId}
+                  loai={mau.loaiNoiDen}
+                  boDiem={laDiemThat(fromLocationId) ? fromLocationId : undefined}
+                  required={mau.noiDen === 'bat-buoc'}
+                  goiY={mau.giaiThichNoiDen}
+                />
               ) : null}
 
               <div className="space-y-1.5 sm:col-span-2">
@@ -232,7 +285,7 @@ export function FormYeuCau() {
                   required
                   minLength={5}
                   rows={3}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className={LOP_O_CHU}
                   value={reason}
                   onChange={(su) => datReason(su.target.value)}
                   placeholder={mau.goiYLyDo}
@@ -254,6 +307,23 @@ export function FormYeuCau() {
                   <p className="text-xs text-muted-foreground">{mau.giaiThichHanTra}</p>
                 </div>
               ) : null}
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="y-ghi-chu">Ghi chú (không bắt buộc)</Label>
+                <textarea
+                  id="y-ghi-chu"
+                  rows={2}
+                  maxLength={2000}
+                  className={LOP_O_CHU}
+                  value={note}
+                  onChange={(su) => datNote(su.target.value)}
+                  placeholder="VD: Kho văn phòng thiếu 20 quyển, mượn thêm 20 quyển từ Kho Ngoại Giao Đoàn."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Ghi lại nếu phải mượn thêm thiết bị từ kho khác, hoặc điều gì kho cần biết. Ghi
+                  chú in kèm phiếu, không làm đổi số lượng.
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -293,7 +363,10 @@ export function FormYeuCau() {
                           ariaLabel={`Mã thiết bị dòng ${i + 1}`}
                         />
                         {d.ten ? (
-                          <p className="text-xs text-success-dam">{d.ten}</p>
+                          <p className="text-xs text-success-dam">
+                            {d.ten}
+                            {d.hangLe ? ' · hàng lẻ' : ''}
+                          </p>
                         ) : d.loi ? (
                           <div className="space-y-1">
                             <p className="text-xs text-destructive-dam">{d.loi}</p>
@@ -304,22 +377,25 @@ export function FormYeuCau() {
                               vẫn đòi ảnh nên không có gì vào sổ mà không ai
                               thấy mặt.
                             */}
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => datDongTaoNhanh(dongTaoNhanh === i ? null : i)}
-                              aria-expanded={dongTaoNhanh === i}
-                            >
-                              <PackagePlus aria-hidden />
-                              Thiết bị chưa có mã — thêm ngay
-                            </Button>
+                            {duocThemThietBi ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => datDongTaoNhanh(dongTaoNhanh === i ? null : i)}
+                                aria-expanded={dongTaoNhanh === i}
+                              >
+                                <PackagePlus aria-hidden />
+                                Thiết bị chưa có mã — thêm ngay
+                              </Button>
+                            ) : null}
                           </div>
                         ) : null}
                         {dongTaoNhanh === i ? (
                           <div className="mt-2">
                             <TaoNhanhThietBi
                               goiYTen=""
+                              khoMacDinh={khoChoHangMoi}
                               onHuy={() => datDongTaoNhanh(null)}
                               onTaoXong={(tb) => {
                                 datMuc((cu) =>
@@ -377,41 +453,68 @@ export function FormYeuCau() {
                 HÀNG LẺ tách thành phần riêng, KHÔNG trộn vào danh sách trên.
                 Người ở kho biết rõ thứ mình cần là robot có mã hay là sách lẻ;
                 tách hai phần thì mỗi phần chỉ hỏi đúng thứ nó cần — trên gõ mã,
-                dưới tìm theo tên. Cả hai cùng đổ vào MỘT danh sách gửi lên, nên
-                phía sau (duyệt → xuất → nhập) không phải biết gì về chuyện này.
+                dưới tìm theo tên. Cả hai cùng đổ vào MỘT danh sách gửi lên.
               */}
               <div className="space-y-2 pt-2">
-                <div>
-                  <p className="text-sm font-medium">Hàng lẻ — chọn theo tên</p>
-                  <p className="text-xs text-muted-foreground">
-                    Sách, cờ, standee, ấn phẩm in… không dán mã lên từng cái. Chọn tên rồi sửa số
-                    lượng ở danh sách trên; lấy ra bao nhiêu thì lúc trả hệ thống đối chiếu bấy nhiêu.
-                  </p>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Hàng lẻ — chọn theo tên</p>
+                    <p className="text-xs text-muted-foreground">
+                      Sách, cờ, standee, ấn phẩm in… không dán mã lên từng cái. Chọn tên rồi sửa số
+                      lượng ở danh sách trên.
+                      {laNhap
+                        ? ' Mã đang hết hàng vẫn chọn được để nhập thêm.'
+                        : ' Số "Lấy được" đã trừ hàng đang trên đường đi.'}
+                    </p>
+                  </div>
+                  {duocThemThietBi ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => datMoThemHangLe((v) => !v)}
+                      aria-expanded={moThemHangLe}
+                    >
+                      <PackagePlus aria-hidden />
+                      Thêm hàng lẻ mới
+                    </Button>
+                  ) : null}
                 </div>
+                {moThemHangLe ? (
+                  <TaoNhanhThietBi
+                    hangLe={laNhap ? 'danh-muc' : 'co-ton'}
+                    khoMacDinh={khoChoHangMoi}
+                    onHuy={() => datMoThemHangLe(false)}
+                    onDaCo={(t) => {
+                      themDong({ code: t.code, quantity: '1', ten: t.name, hangLe: true });
+                      datMoThemHangLe(false);
+                    }}
+                    onTaoXong={(tb, soLuongNhap) => {
+                      themDong({
+                        code: tb.code,
+                        quantity: String(Math.max(1, soLuongNhap)),
+                        ten: tb.name,
+                        hangLe: true,
+                      });
+                      datMoThemHangLe(false);
+                    }}
+                  />
+                ) : null}
                 <OChonHangLe
-                  locationId={undefined}
+                  locationId={diemLayHangLe}
+                  cheDoNhap={laNhap}
                   daThem={new Set(muc.map((d) => d.code.trim().toUpperCase()).filter(Boolean))}
-                  onChon={(t) =>
-                    datMuc((cu) => {
-                      // Đã có trong phiếu thì thôi — tránh hai dòng cùng một mã,
-                      // lúc duyệt sẽ không biết lấy số lượng của dòng nào.
-                      if (cu.some((d) => d.code.trim().toUpperCase() === t.code)) return cu;
-                      const trong = cu.findIndex((d) => d.code.trim() === '');
-                      const dong = { code: t.code, quantity: '1', ten: t.name };
-                      if (trong >= 0) return cu.map((d, j) => (j === trong ? dong : d));
-                      return [...cu, dong];
-                    })
-                  }
+                  onChon={(t) => themDong({ code: t.code, quantity: '1', ten: t.name, hangLe: true })}
                 />
               </div>
             </div>
 
             {loi ? <Alert variant="destructive">{loi}</Alert> : null}
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button type="submit" disabled={dangGui}>
                 {dangGui ? <Loader2 className="animate-spin" aria-hidden /> : <Save aria-hidden />}
-                Tạo yêu cầu
+                Tạo &amp; chụp ảnh {laNhap ? 'nhập' : 'xuất'} kho
               </Button>
               <Button type="button" variant="outline" asChild>
                 <Link to="/yeu-cau">Huỷ</Link>

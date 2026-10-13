@@ -2,7 +2,9 @@
  * NGHIỆP VỤ YÊU CẦU — trái tim của hệ thống.
  *
  * Ba chốt chặn không ai đi vòng được, vì đều nằm ở service phía server:
- *   1. Thiết bị chỉ rời kho khi yêu cầu ở trạng thái ĐÃ DUYỆT (nguyên tắc #2).
+ *   1. Không còn bước duyệt (chủ doanh nghiệp bỏ từ 10/2026): người lập tự xuất /
+ *      nhập kho phiếu của mình, quản trị được BÁO bằng cảnh báo lưu lại. Quyền
+ *      và phạm vi vẫn kiểm ở đây (`kiemQuyenThucHien`).
  *   2. Hoàn tất xuất/nhập kho BẮT BUỘC có ảnh chụp thực tế (nguyên tắc #3).
  *   3. Mã quét được phải KHỚP mã thiết bị trong yêu cầu — chặn cầm nhầm thiết bị.
  *
@@ -10,13 +12,18 @@
  * với việc cập nhật hình chiếu trạng thái trên bảng assets, nên tồn kho suy ra
  * từ movements không bao giờ lệch với trạng thái hiển thị.
  */
-import type { AssetCondition, Prisma, RequestType } from '@prisma/client';
+import {
+  Prisma,
+  type AssetCondition,
+  type RequestStatus,
+  type RequestType,
+} from '@prisma/client';
 import { prisma, type PrismaTx } from '../../prisma.js';
 import { loi400, loi403, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
 import { dieuKienYeuCau, phamViCua } from '../../lib/pham-vi.js';
-import { tonCuaTaiSan, tonTaiDiaDiem } from '../../lib/ton-kho.js';
+import { hangDangTrenDuong, tonCuaTaiSan, tonTaiDiaDiem } from '../../lib/ton-kho.js';
 import {
   phatChoDiaDiem,
   phatChoKho,
@@ -44,6 +51,7 @@ const CHON_YEU_CAU = {
   status: true,
   reason: true,
   destinationNote: true,
+  note: true,
   expectedReturnAt: true,
   submittedAt: true,
   approvedAt: true,
@@ -229,6 +237,12 @@ export async function tao(
   actor: NguoiThaoTac,
   ctx: BoiCanhGoi,
 ): Promise<YeuCauDayDu> {
+  // Không còn bước duyệt nên lập xong là sang ngay màn hình chụp ảnh. Bắt thiếu
+  // nơi đến / trường gửi NGAY LÚC LẬP — đừng để người dùng chụp ảnh từng thiết bị
+  // xong mới bị chặn ở nút "Hoàn tất".
+  kiemNoiDen(duLieu.type, duLieu.toLocationId ?? null);
+  kiemTruongGuiNhan(duLieu.type, duLieu.fromLocationId ?? null, duLieu.toLocationId ?? null);
+  await kiemDiemHopLe(duLieu.type, duLieu.fromLocationId ?? null, duLieu.toLocationId ?? null);
   const dong = await doiMaThanhTaiSan(duLieu.muc);
 
   const yeuCau = await prisma.$transaction(async (tx) => {
@@ -237,12 +251,16 @@ export async function tao(
       data: {
         code,
         type: duLieu.type,
+        // BAN_NHAP giờ mang nghĩa "chờ xuất / nhập kho" (xem nhãn ở shared):
+        // người lập còn sửa / xoá được cho tới lúc chụp ảnh hoàn tất.
         status: 'BAN_NHAP',
+        submittedAt: new Date(),
         createdById: actor.id,
         reason: duLieu.reason,
         fromLocationId: duLieu.fromLocationId ?? null,
         toLocationId: duLieu.toLocationId ?? null,
         destinationNote: duLieu.destinationNote ?? null,
+        note: duLieu.note ?? null,
         expectedReturnAt: duLieu.expectedReturnAt ? new Date(duLieu.expectedReturnAt) : null,
         items: {
           create: dong.map((d) => ({ assetId: d.assetId, quantity: d.quantity, note: d.note })),
@@ -265,6 +283,17 @@ export async function tao(
     return taoMoi;
   });
 
+  // Báo nhóm quản trị và kho NGAY khi có phiếu — quản trị nắm được việc gì sắp
+  // ra / vào kho, và vẫn kịp từ chối nếu thấy không ổn (xem `tuChoi`).
+  const thongTin = {
+    id: yeuCau.id,
+    code: yeuCau.code,
+    type: yeuCau.type,
+    status: yeuCau.status,
+    thongDiep: `${yeuCau.createdBy.fullName} vừa lập ${yeuCau.code}, đang chờ chụp ảnh xuất / nhập kho.`,
+  };
+  phatChoNguoiDuyet(SU_KIEN.YEU_CAU_MOI, thongTin);
+  phatChoKho(SU_KIEN.YEU_CAU_MOI, thongTin);
   return yeuCau;
 }
 
@@ -275,13 +304,28 @@ export async function sua(
   actor: NguoiThaoTac,
   ctx: BoiCanhGoi,
 ): Promise<YeuCauDayDu> {
-  const truoc = await prisma.request.findUnique({
-    where: { id },
-    select: { id: true, code: true, status: true, createdById: true },
+  const truoc = await prisma.request.findFirst({
+    where: { id, deletedAt: null },
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      createdById: true,
+      type: true,
+      fromLocationId: true,
+      toLocationId: true,
+    },
   });
   if (!truoc) throw loi404('Không tìm thấy yêu cầu.');
   if (truoc.status !== 'BAN_NHAP') {
-    throw loi409('Chỉ sửa được yêu cầu còn ở trạng thái Nháp.');
+    throw loi409('Chỉ sửa được phiếu chưa xuất / nhập kho.');
+  }
+  {
+    const tu = duLieu.fromLocationId === undefined ? truoc.fromLocationId : duLieu.fromLocationId;
+    const den = duLieu.toLocationId === undefined ? truoc.toLocationId : duLieu.toLocationId;
+    kiemNoiDen(truoc.type, den);
+    kiemTruongGuiNhan(truoc.type, tu, den);
+    await kiemDiemHopLe(truoc.type, tu, den);
   }
   if (truoc.createdById !== actor.id && actor.role !== 'ADMIN') {
     throw loi403('Chỉ người tạo yêu cầu (hoặc quản trị viên) mới sửa được.');
@@ -310,6 +354,7 @@ export async function sua(
         ...(duLieu.destinationNote === undefined
           ? {}
           : { destinationNote: duLieu.destinationNote }),
+        ...(duLieu.note === undefined ? {} : { note: duLieu.note }),
         ...(duLieu.expectedReturnAt === undefined
           ? {}
           : {
@@ -418,6 +463,74 @@ function kiemNoiDen(type: RequestType, toLocationId: string | null): void {
   }
 }
 
+/**
+ * ĐIỂM TRÊN PHIẾU PHẢI CÓ THẬT VÀ ĐÚNG LOẠI.
+ *
+ * Trước đây gửi một id điểm không tồn tại là lỗi khoá ngoại không ai đọc nổi
+ * (HTTP 500); id của điểm trong thùng rác thì lọt qua; "phân bổ về trường" chọn
+ * nhầm một kho cũng được nhận. Giờ chặn ngay lúc lập với lời báo rõ ràng.
+ */
+const LOAI_DIEM_THEO_YEU_CAU: Partial<
+  Record<RequestType, { den?: ReadonlyArray<string>; di?: ReadonlyArray<string> }>
+> = {
+  PHAN_BO_VE_TRUONG: { den: ['DIEM_TRUONG'], di: ['KHO_VAN_PHONG', 'KHO_SU_KIEN'] },
+  LUAN_CHUYEN_TRUONG: { den: ['DIEM_TRUONG'], di: ['DIEM_TRUONG'] },
+  NHAP_KHO: { den: ['KHO_VAN_PHONG', 'KHO_SU_KIEN'] },
+  TRA_VE_KHO: { den: ['KHO_VAN_PHONG', 'KHO_SU_KIEN'] },
+};
+
+async function kiemDiemHopLe(
+  type: RequestType,
+  fromLocationId: string | null,
+  toLocationId: string | null,
+): Promise<void> {
+  const ids = [fromLocationId, toLocationId].filter((x): x is string => Boolean(x));
+  if (ids.length === 0) return;
+  const diem = await prisma.location.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, type: true, deletedAt: true, isActive: true },
+  });
+  const theoId = new Map(diem.map((d) => [d.id, d]));
+  const quyTac = LOAI_DIEM_THEO_YEU_CAU[type];
+  const kiem = (id: string | null, vaiTro: 'đi' | 'đến', cho?: ReadonlyArray<string>): void => {
+    if (!id) return;
+    const d = theoId.get(id);
+    if (!d || d.deletedAt) {
+      throw loi422(`Điểm ${vaiTro} không tồn tại hoặc đã bị xoá. Chọn lại điểm khác.`, 'DIEM_KHONG_HOP_LE');
+    }
+    if (!d.isActive) {
+      throw loi422(`Điểm "${d.name}" đã ngừng sử dụng.`, 'DIEM_NGUNG_DUNG');
+    }
+    if (cho && !cho.includes(d.type)) {
+      throw loi422(
+        `"${d.name}" không dùng làm điểm ${vaiTro} cho loại yêu cầu này được.`,
+        'DIEM_SAI_LOAI',
+      );
+    }
+  };
+  kiem(fromLocationId, 'đi', quyTac?.di);
+  kiem(toLocationId, 'đến', quyTac?.den);
+}
+
+/**
+ * LUÂN CHUYỂN TRƯỜNG phải có ĐỦ trường gửi và trường nhận, và là hai trường khác
+ * nhau. Trước đây chỉ có ô "trường nhận", trường gửi ghi tay trong lý do, nên
+ * biên bản không điền được bên giao và máy phải đoán hàng rời đi từ đâu.
+ */
+function kiemTruongGuiNhan(
+  type: RequestType,
+  fromLocationId: string | null,
+  toLocationId: string | null,
+): void {
+  if (type !== 'LUAN_CHUYEN_TRUONG') return;
+  if (!fromLocationId) {
+    throw loi422('Luân chuyển trường phải chọn TRƯỜNG GỬI.', 'THIEU_TRUONG_GUI');
+  }
+  if (fromLocationId === toLocationId) {
+    throw loi422('Trường gửi và trường nhận phải là hai trường khác nhau.', 'TRUNG_TRUONG');
+  }
+}
+
 export async function duyet(
   id: string,
   ghiChu: string | undefined,
@@ -496,11 +609,13 @@ export async function tuChoi(
     select: { id: true, code: true, status: true, createdById: true },
   });
   if (!truoc) throw loi404('Không tìm thấy yêu cầu.');
-  if (truoc.status !== 'CHO_DUYET') {
-    throw loi409('Chỉ từ chối được yêu cầu đang ở trạng thái Chờ duyệt.');
+  // Không còn bước duyệt, nhưng quản trị vẫn phải DỪNG được một phiếu chưa thực
+  // hiện khi thấy không ổn — đó là lý do họ được báo ngay lúc phiếu được lập.
+  if (!TRANG_THAI_CHO_THUC_HIEN.has(truoc.status)) {
+    throw loi409('Chỉ từ chối được yêu cầu chưa xuất / nhập kho.');
   }
   if (truoc.createdById === actor.id) {
-    throw loi403('Không được tự xử lý yêu cầu của chính mình.');
+    throw loi403('Không được tự xử lý yêu cầu của chính mình — tự xoá phiếu của mình thì dùng nút Xoá.');
   }
 
   const sau = await prisma.$transaction(async (tx) => {
@@ -520,7 +635,7 @@ export async function tuChoi(
         action: 'request.reject',
         entityType: 'request',
         entityId: id,
-        beforeValue: { status: 'CHO_DUYET' },
+        beforeValue: { status: truoc.status },
         afterValue: { status: 'TU_CHOI' },
         note: rejectionNote,
         ...ctx,
@@ -762,27 +877,266 @@ interface TuyChonGhiNhan {
   nguonGhiNhan?: string | undefined;
 }
 
+/**
+ * PHIẾU CHỜ THỰC HIỆN — xuất / nhập kho được ngay, không phải chờ ai duyệt.
+ *
+ * Chủ doanh nghiệp đã bỏ bước duyệt: lập phiếu xong là dẫn thẳng tới màn hình
+ * chụp ảnh xuất / nhập kho, quản trị được báo sau. Gồm cả CHO_DUYET và DA_DUYET
+ * để các phiếu lập theo quy trình cũ, đang nằm chờ, cũng làm tiếp được mà không
+ * phải sửa dữ liệu.
+ */
+export const TRANG_THAI_CHO_THUC_HIEN: ReadonlySet<RequestStatus> = new Set<RequestStatus>([
+  'BAN_NHAP',
+  'CHO_DUYET',
+  'DA_DUYET',
+]);
+
+/** Loại điểm là KHO của LtL — nơi hàng được nhập về và mặc định xuất đi. */
+const LOAI_DIEM_KHO: ReadonlySet<string> = new Set(['KHO_VAN_PHONG', 'KHO_SU_KIEN']);
+
+/** Giá trị đặc biệt của "Lấy từ / Nhận từ": hàng ở NGOÀI hệ thống (mua mới, người mượn trả). */
+export const NGUON_NGOAI = 'NGOAI';
+/** Nguồn nhập = NHÂN SỰ TRẢ LẠI hàng đã mượn (không phải hàng mới). */
+export const NGUON_NHAN_SU = 'NHAN_SU';
+
+/**
+ * KHOÁ PHIẾU + THIẾT BỊ trong transaction rồi đọc lại trạng thái.
+ *
+ * Bỏ bước duyệt thì người lập và người ở kho có thể cùng đứng ở màn hình chụp
+ * ảnh của MỘT phiếu. Trước đây trạng thái được đọc NGOÀI transaction và phép kiểm
+ * tồn là SELECT không khoá, nên hai lượt bấm "Hoàn tất" gần nhau cùng lọt qua và
+ * ghi hai lần bút toán — kho bị trừ gấp đôi. Khoá dòng phiếu (FOR UPDATE) thì
+ * lượt sau phải đợi lượt trước xong, đọc lại thấy phiếu đã thực hiện và dừng.
+ *
+ * Thiết bị khoá theo thứ tự id để hai phiếu khác nhau cùng lấy một mã hàng lẻ
+ * cũng xếp hàng, không cùng đọc một con số tồn rồi cùng cho qua.
+ */
+async function khoaPhieuVaThietBi(
+  tx: PrismaTx,
+  id: string,
+  assetIds: readonly string[],
+): Promise<void> {
+  const dong = await tx.$queryRaw<Array<{ status: string; deleted_at: Date | null }>>(
+    Prisma.sql`SELECT status, deleted_at FROM requests WHERE id = ${id} FOR UPDATE`,
+  );
+  const phieu = dong[0];
+  if (!phieu || phieu.deleted_at) throw loi404('Không tìm thấy yêu cầu.');
+  if (!TRANG_THAI_CHO_THUC_HIEN.has(phieu.status as RequestStatus)) {
+    throw loi409(
+      phieu.status === 'DA_XUAT' || phieu.status === 'DA_HOAN_TAT'
+        ? 'Yêu cầu này vừa được thực hiện xong — không ghi thêm lần nữa.'
+        : `Yêu cầu đang ở trạng thái "${phieu.status}" nên không thực hiện được.`,
+      { maLoi: 'DA_THUC_HIEN', trangThai: phieu.status },
+    );
+  }
+  if (assetIds.length > 0) {
+    const sapXep = [...assetIds].sort();
+    await tx.$queryRaw(
+      Prisma.sql`SELECT id FROM assets WHERE id IN (${Prisma.join(sapXep)}) ORDER BY id FOR UPDATE`,
+    );
+  }
+}
+
+/** Tồn DÙNG ĐƯỢC tại một điểm = tồn sổ sách − phần đã xuất đi nhưng bên nhận chưa xác nhận. */
+async function tonDungDuoc(assetId: string, locationId: string, tx: PrismaTx): Promise<number> {
+  const [ton, dangDi] = await Promise.all([
+    tonTaiDiaDiem(assetId, locationId, tx),
+    hangDangTrenDuong([assetId], tx),
+  ]);
+  const di = (dangDi.get(assetId) ?? [])
+    .filter((x) => x.locationId === locationId)
+    .reduce((a, x) => a + x.soLuong, 0);
+  return ton - di;
+}
+
+/**
+ * LẤY HÀNG TỪ ĐÂU khi xuất kho.
+ *
+ * Trước đây luôn lấy `assets.current_location_id`. Cột đó chỉ ghi được MỘT nơi
+ * mà hàng lẻ nằm rải nhiều nơi — và nó còn bị đổi sai: bên nhận xác nhận một lô
+ * 30 quyển về trường là cả dòng 100 quyển bị dời vị trí sang trường. Từ đó mọi
+ * lần xuất sau đều trừ vào TRƯỜNG chứ không trừ KHO, đúng điều chủ doanh nghiệp
+ * thấy: "xuất kho mà số lượng tại kho không trừ đi".
+ *
+ * Giờ nguồn được xác định theo TỒN THẬT, dừng ở cái đầu tiên có:
+ *   1. Người thực hiện chọn "Lấy từ" trên màn hình xuất kho.
+ *   2. "Lấy từ" ghi trên phiếu (bắt buộc với luân chuyển trường).
+ *   3. Thiết bị theo đơn vị: nơi nó đang nằm. Đang trong tay người mượn thì
+ *      không xuất được — chưa về kho thì không có gì để lấy.
+ *   4. Hàng lẻ: KHO duy nhất còn đủ hàng dùng được. Nhiều kho cùng đủ thì lấy
+ *      kho đang ghi ở cột vị trí nếu nó đủ; không thì báo để người dùng chọn —
+ *      đoán sai kho là trừ nhầm sổ của kho khác.
+ */
+async function nguonXuatTheoDong(
+  yeuCau: YeuCauDayDu,
+  dong: DongDaSoat[],
+  tuLocationId: string | null,
+  tx: PrismaTx,
+): Promise<Map<string, string>> {
+  const ra = new Map<string, string>();
+  const khaiSan = tuLocationId ?? yeuCau.fromLocation?.id ?? null;
+  const diemKho = await tx.location.findMany({
+    where: { deletedAt: null, type: { in: [...LOAI_DIEM_KHO] as Array<'KHO_VAN_PHONG' | 'KHO_SU_KIEN'> } },
+    select: { id: true, name: true },
+  });
+  const tenKho = new Map(diemKho.map((d) => [d.id, d.name]));
+
+  for (const d of dong) {
+    const kieu = yeuCau.items.find((i) => i.asset.id === d.assetId)?.asset.trackingType;
+    if (khaiSan) {
+      ra.set(d.assetId, khaiSan);
+      continue;
+    }
+    if (kieu === 'DON_VI') {
+      if (!d.currentLocationId) {
+        throw loi422(
+          `Thiết bị ${d.code} đang trong tay người mượn, chưa về kho — nhập kho trước rồi mới xuất được.`,
+          'THIET_BI_DANG_MUON',
+          { ma: d.code },
+        );
+      }
+      ra.set(d.assetId, d.currentLocationId);
+      continue;
+    }
+    // Hàng lẻ: tìm kho còn đủ hàng dùng được.
+    const ton = await tonCuaTaiSan(d.assetId, tx);
+    const dangDi = (await hangDangTrenDuong([d.assetId], tx)).get(d.assetId) ?? [];
+    const conTheoKho = ton.theoDiaDiem
+      .filter((t) => tenKho.has(t.locationId))
+      .map((t) => ({
+        locationId: t.locationId,
+        con:
+          t.ton -
+          dangDi.filter((x) => x.locationId === t.locationId).reduce((a, x) => a + x.soLuong, 0),
+      }));
+    const du = conTheoKho.filter((x) => x.con >= d.soLuong);
+    const chon =
+      du.length === 1
+        ? du[0]
+        : (du.find((x) => x.locationId === d.currentLocationId) ?? undefined);
+    if (chon) {
+      ra.set(d.assetId, chon.locationId);
+      continue;
+    }
+    if (du.length > 1) {
+      throw loi422(
+        `Thiết bị ${d.code} có đủ hàng ở ${du.length} kho (${du
+          .map((x) => `${tenKho.get(x.locationId)}: ${x.con}`)
+          .join(', ')}). Chọn "Lấy từ kho" để biết trừ ở kho nào.`,
+        'KHONG_RO_NOI_XUAT',
+        { ma: d.code, noi: du.map((x) => ({ id: x.locationId, ten: tenKho.get(x.locationId), con: x.con })) },
+      );
+    }
+    const tong = conTheoKho.reduce((a, x) => a + Math.max(0, x.con), 0);
+    throw loi422(
+      tong > 0
+        ? `Thiết bị ${d.code}: cần ${d.soLuong} nhưng không kho nào còn đủ (${conTheoKho
+            .filter((x) => x.con > 0)
+            .map((x) => `${tenKho.get(x.locationId)}: ${x.con}`)
+            .join(', ')}). Giảm số lượng hoặc tách phiếu theo từng kho.`
+        : `Thiết bị ${d.code}: các kho đã hết hàng dùng được.`,
+      'KHONG_DU_TON',
+      { ma: d.code, khai: d.soLuong },
+    );
+  }
+  return ra;
+}
+
+/**
+ * AI ĐƯỢC TỰ THỰC HIỆN PHIẾU (không còn bước duyệt).
+ *
+ *   - ADMIN, VAN_HANH, KHO: mọi phiếu.
+ *   - Người lập phiếu: phiếu của chính mình.
+ *   - Tài khoản TRƯỜNG thì thêm điều kiện nơi chốn: chỉ xác nhận được hàng rời đi
+ *     từ chính trường mình, hoặc hàng trả về từ chính trường mình. Trường không
+ *     đứng ở kho LtL nên không thể chụp ảnh "xuất kho" cho kho LtL.
+ *
+ * Kiểm ở SERVER — ẩn nút ở giao diện chỉ là phụ.
+ */
+function kiemQuyenThucHien(
+  nguoiDung: NguoiDungDaXacThuc,
+  yeuCau: YeuCauDayDu,
+  nguon: ReadonlyMap<string, string | null>,
+  chieu: 'xuất' | 'nhập',
+): void {
+  if (phamViCua(nguoiDung).toanBoKho) return;
+  if (yeuCau.createdBy.id !== nguoiDung.id) {
+    throw loi403(
+      `Chỉ người lập phiếu, tài khoản kho hoặc quản trị mới ${chieu} kho cho phiếu này.`,
+    );
+  }
+  if (nguoiDung.role === 'TRUONG') {
+    const sai = [...nguon.values()].some((n) => n !== nguoiDung.locationId);
+    if (sai || !nguoiDung.locationId) {
+      throw loi403(
+        chieu === 'xuất'
+          ? 'Tài khoản trường chỉ xác nhận được hàng rời đi từ chính trường mình.'
+          : 'Tài khoản trường chỉ xác nhận được hàng trả về từ chính trường mình.',
+      );
+    }
+  }
+}
+
+/**
+ * BÁO QUẢN TRỊ: có người vừa tự xuất / nhập kho, không qua duyệt.
+ *
+ * Ghi thành một dòng CẢNH BÁO (lưu lại, đánh dấu "đã xem" được) chứ không chỉ
+ * phát tín hiệu realtime — quản trị không trực tuyến lúc đó vẫn thấy khi mở máy.
+ * Quản trị tự làm thì không báo chính mình.
+ */
+async function baoQuanTriTuThucHien(
+  tx: PrismaTx,
+  nguoiDung: NguoiDungDaXacThuc,
+  yeuCau: YeuCauDayDu,
+  chieu: 'xuất' | 'nhập',
+  dong: DongDaSoat[],
+): Promise<boolean> {
+  if (nguoiDung.role === 'ADMIN') return false;
+  const tom = dong
+    .slice(0, 5)
+    .map((d) => `${d.code} × ${d.soLuong}`)
+    .join(', ');
+  await tx.alert.create({
+    data: {
+      type: 'XUAT_NHAP_TRUC_TIEP',
+      severity: 'THAP',
+      title: `${nguoiDung.fullName} đã ${chieu} kho ${yeuCau.code}`.slice(0, 191),
+      message:
+        `${nguoiDung.fullName} (${nguoiDung.email}) đã ${chieu} kho theo yêu cầu ${yeuCau.code} ` +
+        `— ${dong.length} dòng: ${tom}${dong.length > 5 ? ', …' : ''}. Không qua bước duyệt.`,
+      requestId: yeuCau.id,
+      entityType: 'request',
+      entityId: yeuCau.id,
+    },
+  });
+  return true;
+}
+
 export async function xuatKho(
   id: string,
   duLieu: DuLieuXuatKho,
-  actor: NguoiThaoTac,
+  nguoiDung: NguoiDungDaXacThuc,
   ctx: BoiCanhGoi,
   tuyChon: TuyChonGhiNhan = {},
 ): Promise<YeuCauDayDu> {
-  const yeuCau = await prisma.request.findUnique({ where: { id }, select: CHON_YEU_CAU });
+  const actor = nguoiDung;
+  const yeuCau = await prisma.request.findFirst({
+    where: { id, deletedAt: null },
+    select: CHON_YEU_CAU,
+  });
   if (!yeuCau) throw loi404('Không tìm thấy yêu cầu.');
 
   if (!laLoaiXuat(yeuCau.type)) {
     throw loi409('Loại yêu cầu này không phải xuất kho.');
   }
-  // Nguyên tắc bất biến #2: chưa duyệt thì không thứ gì rời kho.
-  if (yeuCau.status !== 'DA_DUYET') {
+  if (!TRANG_THAI_CHO_THUC_HIEN.has(yeuCau.status)) {
     throw loi422(
-      `Yêu cầu chưa được duyệt (đang ở trạng thái "${yeuCau.status}") nên không xuất kho được.`,
-      'CHUA_DUOC_DUYET',
+      `Yêu cầu đang ở trạng thái "${yeuCau.status}" nên không xuất kho được.`,
+      'KHONG_O_TRANG_THAI_THUC_HIEN',
     );
   }
   kiemNoiDen(yeuCau.type, yeuCau.toLocation?.id ?? null);
+  kiemTruongGuiNhan(yeuCau.type, yeuCau.fromLocation?.id ?? null, yeuCau.toLocation?.id ?? null);
 
   const dong = await soatDongThucHien(yeuCau, duLieu.muc, 'ANH_XUAT', tuyChon.boQuaAnh ?? false);
   const choXacNhan = choBenNhanXacNhan(yeuCau.type);
@@ -797,33 +1151,57 @@ export async function xuatKho(
    */
   const muonNoiBo = yeuCau.type === 'CHO_MUON' && noiDenId === null;
   const bayGio = new Date();
+  const truocTrangThai = yeuCau.status;
+  let daBaoQuanTri = false;
 
   const sau = await prisma.$transaction(async (tx) => {
-    // KHÔNG ĐƯỢC XUẤT NHIỀU HƠN SỐ ĐANG CÓ Ở KHO.
+    await khoaPhieuVaThietBi(
+      tx,
+      id,
+      dong.map((d) => d.assetId),
+    );
+    const nguon = await nguonXuatTheoDong(
+      yeuCau,
+      dong,
+      duLieu.tuLocationId ?? null,
+      tx,
+    );
+    kiemQuyenThucHien(nguoiDung, yeuCau, nguon, 'xuất');
+
+    // Luồng C chưa ghi bút toán lúc xuất — bên nhận xác nhận mới ghi — nên phải
+    // nhớ hàng ĐI TỪ ĐÂU vào phiếu. Một phiếu chỉ được lấy từ một nơi.
+    const cacNguon = new Set(nguon.values());
+    if (choXacNhan && cacNguon.size > 1) {
+      throw loi422(
+        'Phân bổ / luân chuyển chỉ được lấy hàng từ MỘT nơi trong một phiếu. Chọn "Lấy từ" hoặc tách phiếu.',
+        'NHIEU_NGUON',
+      );
+    }
+
+    // KHÔNG ĐƯỢC XUẤT NHIỀU HƠN SỐ DÙNG ĐƯỢC Ở NƠI LẤY.
     //
-    // Kiểm TRONG transaction để hai lượt xuất chạy song song không cùng đọc một
-    // con số tồn rồi cùng cho qua. Trước khi có phép kiểm này, tồn kho suy ra từ
-    // movements có thể xuống ÂM — đã dựng lại thật: xuất 5000 từ một kho chỉ có
-    // 80 đơn vị, API trả 200, tồn còn −4920. Tồn âm nghĩa là sổ sách nói kho đang
-    // nợ hàng cho chính mình, mọi báo cáo từ đó trở đi đều sai.
-    // Tồn tại nguồn ĐỌC TRƯỚC KHI ghi movement. Vòng dưới cần lại con số này để
-    // biết lấy xong nguồn còn gì không; đọc lại ở đó thì movement vừa ghi đã trừ
-    // rồi, trừ thêm một lần nữa là sai gấp đôi.
-    const tonNguonTruoc = new Map<string, number>();
+    // "Dùng được" = tồn sổ sách − phần đã xuất đi theo luồng C mà bên nhận chưa
+    // xác nhận. Trước đây chỉ trừ tồn sổ sách, nên hai phiếu phân bổ 80 cùng lấy
+    // từ một kho chỉ có 80 đều lọt qua, và khi cả hai trường xác nhận thì tồn
+    // kho thành −80 — con số không thể có thật.
+    const conLaiSau = new Map<string, number>();
     for (const d of dong) {
-      if (!d.currentLocationId) continue;
-      const dangCo = await tonTaiDiaDiem(d.assetId, d.currentLocationId, tx);
-      tonNguonTruoc.set(d.assetId, dangCo);
-      if (d.soLuong > dangCo) {
+      const tuDau = nguon.get(d.assetId);
+      if (!tuDau) continue;
+      const dungDuoc = await tonDungDuoc(d.assetId, tuDau, tx);
+      if (d.soLuong > dungDuoc) {
+        const ten = (await tx.location.findUnique({ where: { id: tuDau }, select: { name: true } }))?.name;
         throw loi422(
-          `Thiết bị ${d.code}: khai mang ra ${d.soLuong} nhưng kho chỉ còn ${dangCo}. Kiểm lại số lượng hoặc kiểm kê trước khi xuất.`,
+          `Thiết bị ${d.code}: khai mang ra ${d.soLuong} nhưng ${ten ?? 'nơi lấy'} chỉ còn ${Math.max(0, dungDuoc)} dùng được. Kiểm lại số lượng hoặc chọn nơi lấy khác.`,
           'KHONG_DU_TON',
-          { ma: d.code, khai: d.soLuong, conLai: dangCo },
+          { ma: d.code, khai: d.soLuong, conLai: Math.max(0, dungDuoc) },
         );
       }
+      conLaiSau.set(d.assetId, dungDuoc - d.soLuong);
     }
 
     for (const d of dong) {
+      const tuDau = nguon.get(d.assetId) ?? null;
       let movementId: string | null = null;
 
       // Loại phải chờ bên nhận xác nhận thì CHƯA ghi movement: hàng còn trên
@@ -834,7 +1212,7 @@ export async function xuatKho(
           data: {
             assetId: d.assetId,
             type: yeuCau.type === 'CHO_MUON' ? 'CHO_MUON' : 'XUAT_KHO',
-            fromLocationId: d.currentLocationId,
+            fromLocationId: tuDau,
             toLocationId: noiDenId,
             requestId: yeuCau.id,
             quantity: d.soLuong,
@@ -866,30 +1244,21 @@ export async function xuatKho(
       /*
        * CHỈ DỜI VỊ TRÍ KHI NGUỒN ĐÃ HẾT SẠCH.
        *
-       * `current_location_id` ghi được đúng MỘT nơi, mà hàng lẻ (sách, cờ,
-       * standee) nằm rải nhiều nơi cùng lúc. Lấy 30 trong 100 quyển mà dời cả
-       * dòng sang trường thì 70 quyển còn nằm trong kho biến mất khỏi mọi danh
-       * sách lọc theo vị trí: kho vẫn còn hàng mà máy bảo không có, và người ở
-       * kho không lập nổi yêu cầu cho chính số hàng đang cầm trên tay.
-       *
-       * Tồn thật vẫn suy từ `movements` (nguyên tắc bất biến #5) nên không mất
-       * số; cột này chỉ là "đang chủ yếu nằm đâu" để lọc nhanh. Tài sản quản lý
-       * theo đơn vị luôn đi trọn vẹn nên nhánh này không đổi gì với chúng.
+       * `current_location_id` ghi được đúng MỘT nơi, mà hàng lẻ nằm rải nhiều
+       * nơi cùng lúc. Tồn thật vẫn suy từ `movements` (nguyên tắc bất biến #5)
+       * và nơi lấy hàng giờ xác định theo tồn thật, nên cột này chỉ còn là "đang
+       * chủ yếu nằm đâu" để lọc nhanh. Thiết bị theo đơn vị luôn đi trọn vẹn.
        */
-      const conLaiONguon =
-        d.currentLocationId === null ? 0 : (tonNguonTruoc.get(d.assetId) ?? 0) - d.soLuong;
-      const dayHetKhoiNguon = conLaiONguon <= 0;
+      const dayHetKhoiNguon = (conLaiSau.get(d.assetId) ?? 0) <= 0;
 
       await tx.asset.update({
         where: { id: d.assetId },
         data: {
-          // Còn hàng ở nguồn thì thiết bị vẫn "tại kho" — không thể vừa ở kho
-          // vừa mang trạng thái đã phân bổ đi nơi khác.
           ...(dayHetKhoiNguon ? { allocationStatus: trangThaiMoi } : {}),
-          // Chờ bên nhận xác nhận thì vị trí giữ nguyên; còn lại chuyển theo nơi
-          // đến (null = đang trong tay người giữ, không ở điểm lưu trữ nào).
           ...(choXacNhan || !dayHetKhoiNguon ? {} : { currentLocationId: noiDenId }),
-          ...(muonNoiBo && dayHetKhoiNguon ? { holderUserId: yeuCau.createdBy.id } : {}),
+          // Người mượn LUÔN được gắn, kể cả khi kho còn hàng: không gắn thì phần
+          // hàng lẻ đang nằm trong tay họ biến mất khỏi phạm vi họ xem được.
+          ...(muonNoiBo ? { holderUserId: yeuCau.createdBy.id } : {}),
           ...(yeuCau.expectedReturnAt ? { dueReturnAt: yeuCau.expectedReturnAt } : {}),
         },
       });
@@ -906,13 +1275,13 @@ export async function xuatKho(
               .allocationStatus,
           },
           afterValue: {
-            currentLocationId:
-              choXacNhan || !dayHetKhoiNguon ? d.currentLocationId : noiDenId,
-            nguoiGiu: muonNoiBo && dayHetKhoiNguon ? yeuCau.createdBy.email : null,
+            layTu: tuDau,
+            currentLocationId: choXacNhan || !dayHetKhoiNguon ? d.currentLocationId : noiDenId,
+            nguoiGiu: muonNoiBo ? yeuCau.createdBy.email : null,
             allocationStatus: dayHetKhoiNguon
               ? trangThaiMoi
               : yeuCau.items.find((i) => i.asset.id === d.assetId)?.asset.allocationStatus,
-            conLaiONguon: Math.max(0, conLaiONguon),
+            conLaiONguon: Math.max(0, conLaiSau.get(d.assetId) ?? 0),
             movementId,
             soLuong: d.soLuong,
           },
@@ -924,15 +1293,21 @@ export async function xuatKho(
       );
     }
 
+    const motNguon = cacNguon.size === 1 ? [...cacNguon][0] : undefined;
     const capNhat = await tx.request.update({
       where: { id },
       data: {
         status: choXacNhan ? 'DA_XUAT' : 'DA_HOAN_TAT',
         issuedAt: bayGio,
+        ...(yeuCau.submittedAt ? {} : { submittedAt: bayGio }),
         ...(choXacNhan ? {} : { completedAt: bayGio }),
+        // Luồng C cần nơi đi để lúc bên nhận xác nhận trừ đúng chỗ.
+        ...(choXacNhan && motNguon && !yeuCau.fromLocation ? { fromLocationId: motNguon } : {}),
       },
       select: CHON_YEU_CAU,
     });
+
+    daBaoQuanTri = await baoQuanTriTuThucHien(tx, nguoiDung, yeuCau, 'xuất', dong);
 
     await ghiAudit(
       {
@@ -940,10 +1315,11 @@ export async function xuatKho(
         action: 'request.xuat_kho',
         entityType: 'request',
         entityId: id,
-        beforeValue: { status: 'DA_DUYET' },
+        beforeValue: { status: truocTrangThai },
         afterValue: {
           status: capNhat.status,
           soDong: dong.length,
+          khongQuaDuyet: !yeuCau.approvedBy,
           ...(tuyChon.nguonGhiNhan ? { nguonGhiNhan: tuyChon.nguonGhiNhan } : {}),
         },
         photoIds: dong.flatMap((d) => d.anhIds),
@@ -975,6 +1351,13 @@ export async function xuatKho(
       thongDiep: `Có lô thiết bị đang chuyển tới, chờ bạn xác nhận.`,
     });
   }
+  if (daBaoQuanTri) {
+    phatChoNguoiDuyet(SU_KIEN.CANH_BAO_MOI, {
+      id: sau.id,
+      code: sau.code,
+      thongDiep: `${nguoiDung.fullName} vừa xuất kho ${sau.code} (không qua duyệt).`,
+    });
+  }
   phatChoTatCa(SU_KIEN.KHO_DOI, { id: sau.id, code: sau.code, thongDiep: 'Tồn kho vừa thay đổi.' });
   return sau;
 }
@@ -982,23 +1365,21 @@ export async function xuatKho(
 /**
  * HÀNG NHẬN VỀ THÌ LẤY ĐI TỪ ĐÂU?
  *
- * Trước đây luôn lấy `assets.current_location_id`. Với thiết bị theo đơn vị thì
- * đúng — nó chỉ ở một chỗ. Với HÀNG LẺ thì cột đó chỉ là "chủ yếu nằm đâu": lấy
- * 30 trong 200 quyển đi trường thì cột vẫn trỏ về kho (170 quyển còn ở đó).
+ * "Nhập kho" và "trả về kho" giờ là MỘT việc với người dùng: hàng đi vào kho.
+ * Nên nơi đi phải xác định rõ, không đoán bừa — đoán sai là cộng kho mà nơi kia
+ * không giảm (đếm hai lần) hoặc trừ nhầm sổ một trường khác.
  *
- * ĐÃ DỰNG LẠI THẬT: kho 200 → xuất 30 về trường (kho 170, trường 30) → trường
- * trả 30 về kho. Bút toán ghi "từ kho về kho" nên cộng trừ triệt tiêu: kho vẫn
- * 170, trường vẫn 30. Ba mươi quyển đã cầm trên tay mà sổ sách nói vẫn ở trường,
- * và kho thì mất luôn 30 quyển đó — nhập kho xong số liệu sai cả hai đầu.
- *
- * Thứ tự suy ra, dừng ở cái đầu tiên có:
- *   1. Người ở kho chọn "Trả về từ" trên màn hình nhập kho.
- *   2. "Nơi đi" ghi trên phiếu yêu cầu.
- *   3. NHẬP KHO (hàng mới vào hệ thống): `null` — từ ngoài vào, không trừ của ai.
- *   4. Thiết bị theo đơn vị: vị trí hiện tại của chính nó (kể cả `null` khi đang
- *      trong tay người mượn).
- *   5. Hàng lẻ: nơi DUY NHẤT còn tồn ngoài kho đang nhận. Nhiều hơn một nơi thì
- *      KHÔNG ĐOÁN — báo lỗi kèm danh sách để người ở kho chọn.
+ * Thứ tự, dừng ở cái đầu tiên có:
+ *   1. Người thực hiện chọn "Nhận từ" trên màn hình nhập kho (`NGOAI` = hàng mới
+ *      từ ngoài vào, hoặc người mượn trả).
+ *   2. "Nhận từ" ghi trên phiếu.
+ *   3. Thiết bị theo đơn vị: nơi nó đang nằm (null = đang trong tay người mượn).
+ *      Đã nằm sẵn ở chính kho nhận thì CHẶN — nhập lần nữa là một con robot
+ *      thành hai.
+ *   4. Hàng lẻ, phiếu loại TRA_VE_KHO cũ: nơi DUY NHẤT còn tồn ngoài kho nhận;
+ *      nhiều nơi thì báo để chọn.
+ *   5. Hàng lẻ, phiếu NHAP_KHO không ghi nơi đi: hàng từ NGOÀI vào (mua mới,
+ *      người mượn trả). Form bắt buộc chọn "Nhận từ" nên đây là lựa chọn có chủ ý.
  */
 async function nguonNhapTheoDong(
   yeuCau: YeuCauDayDu,
@@ -1008,8 +1389,29 @@ async function nguonNhapTheoDong(
   tx: PrismaTx,
 ): Promise<Map<string, string | null>> {
   const ra = new Map<string, string | null>();
-  const khaiSan = tuLocationId ?? yeuCau.fromLocation?.id ?? null;
+  // "Hàng mới" và "nhân sự trả" đều đến từ NGOÀI mọi điểm — không trừ ở đâu.
+  const khaiNgoai = tuLocationId === NGUON_NGOAI || tuLocationId === NGUON_NHAN_SU;
+  const khaiSan = khaiNgoai ? null : (tuLocationId ?? yeuCau.fromLocation?.id ?? null);
   for (const d of dong) {
+    const kieu = yeuCau.items.find((i) => i.asset.id === d.assetId)?.asset.trackingType;
+    if (kieu === 'DON_VI') {
+      // Một con robot chỉ ở một chỗ — sự thật nằm ở tồn, không ở lời khai.
+      const ton = await tonCuaTaiSan(d.assetId, tx);
+      const dangO = ton.theoDiaDiem.find((t) => t.ton > 0)?.locationId ?? null;
+      if (dangO === khoNhanId) {
+        throw loi422(
+          `Thiết bị ${d.code} đang nằm sẵn ở kho này rồi — nhập lần nữa sẽ thành hai cái.`,
+          'DA_O_KHO',
+          { ma: d.code },
+        );
+      }
+      ra.set(d.assetId, dangO);
+      continue;
+    }
+    if (khaiNgoai) {
+      ra.set(d.assetId, null);
+      continue;
+    }
     if (khaiSan) {
       ra.set(d.assetId, khaiSan);
       continue;
@@ -1018,15 +1420,9 @@ async function nguonNhapTheoDong(
       ra.set(d.assetId, null);
       continue;
     }
-    const kieu = yeuCau.items.find((i) => i.asset.id === d.assetId)?.asset.trackingType;
-    if (kieu === 'DON_VI') {
-      ra.set(d.assetId, d.currentLocationId);
-      continue;
-    }
     const ton = await tonCuaTaiSan(d.assetId, tx);
     const noiCon = ton.theoDiaDiem.filter((t) => t.ton > 0 && t.locationId !== khoNhanId);
     if (noiCon.length === 0) {
-      // Không còn ở đâu ngoài kho đang nhận: coi như hàng từ ngoài vào.
       ra.set(d.assetId, null);
     } else if (noiCon.length === 1) {
       ra.set(d.assetId, noiCon[0]?.locationId ?? null);
@@ -1038,7 +1434,7 @@ async function nguonNhapTheoDong(
       throw loi422(
         `Thiết bị ${d.code} đang nằm ở ${noiCon.length} nơi ` +
           `(${ten.map((t) => t.name).join(', ')}) nên không tự biết lô này trả về từ đâu. ` +
-          'Chọn "Trả về từ" trên màn hình Nhập kho.',
+          'Chọn "Nhận từ" trên màn hình Nhập kho.',
         'KHONG_RO_NOI_TRA_VE',
         { ma: d.code, noiCon: ten },
       );
@@ -1047,22 +1443,59 @@ async function nguonNhapTheoDong(
   return ra;
 }
 
+/**
+ * Số HÀNG LẺ đang nằm trong tay nhân sự mượn (chưa trả), suy từ bút toán:
+ * Σ cho mượn ra khỏi hệ thống − Σ trả về từ ngoài hệ thống.
+ */
+async function dangChoNhanSuMuon(assetId: string, tx: PrismaTx): Promise<number> {
+  const [ra, ve] = await Promise.all([
+    tx.movement.aggregate({
+      where: { assetId, type: 'CHO_MUON', toLocationId: null },
+      _sum: { quantity: true },
+    }),
+    tx.movement.aggregate({
+      where: { assetId, type: 'TRA_VE_KHO', fromLocationId: null },
+      _sum: { quantity: true },
+    }),
+  ]);
+  return (ra._sum.quantity ?? 0) - (ve._sum.quantity ?? 0);
+}
+
+/** Số hàng lẻ MỘT NGƯỜI đang mượn (theo các phiếu cho mượn họ lập) mà chưa trả. */
+async function dangMuonCuaNguoi(assetId: string, userId: string, tx: PrismaTx): Promise<number> {
+  const [ra, ve] = await Promise.all([
+    tx.movement.aggregate({
+      where: { assetId, type: 'CHO_MUON', toLocationId: null, request: { createdById: userId } },
+      _sum: { quantity: true },
+    }),
+    tx.movement.aggregate({
+      where: { assetId, type: 'TRA_VE_KHO', fromLocationId: null, request: { createdById: userId } },
+      _sum: { quantity: true },
+    }),
+  ]);
+  return (ra._sum.quantity ?? 0) - (ve._sum.quantity ?? 0);
+}
+
 export async function nhapKho(
   id: string,
   duLieu: DuLieuNhapKho,
-  actor: NguoiThaoTac,
+  nguoiDung: NguoiDungDaXacThuc,
   ctx: BoiCanhGoi,
   tuyChon: TuyChonGhiNhan = {},
 ): Promise<YeuCauDayDu> {
-  const yeuCau = await prisma.request.findUnique({ where: { id }, select: CHON_YEU_CAU });
+  const actor = nguoiDung;
+  const yeuCau = await prisma.request.findFirst({
+    where: { id, deletedAt: null },
+    select: CHON_YEU_CAU,
+  });
   if (!yeuCau) throw loi404('Không tìm thấy yêu cầu.');
   if (!laLoaiNhap(yeuCau.type)) {
     throw loi409('Loại yêu cầu này không phải nhập kho / trả về kho.');
   }
-  if (yeuCau.status !== 'DA_DUYET') {
+  if (!TRANG_THAI_CHO_THUC_HIEN.has(yeuCau.status)) {
     throw loi422(
-      `Yêu cầu chưa được duyệt (đang ở trạng thái "${yeuCau.status}") nên không nhập kho được.`,
-      'CHUA_DUOC_DUYET',
+      `Yêu cầu đang ở trạng thái "${yeuCau.status}" nên không nhập kho được.`,
+      'KHONG_O_TRANG_THAI_THUC_HIEN',
     );
   }
 
@@ -1073,13 +1506,24 @@ export async function nhapKho(
     select: { id: true, name: true, type: true },
   });
   if (!kho) throw loi400('Kho nhận hàng về không tồn tại hoặc đã bị xoá.', 'KHO_KHONG_TON_TAI');
+  // Nhập kho là VỀ KHO — không để một lần "nhập kho" đặt hàng xuống một trường.
+  if (!LOAI_DIEM_KHO.has(kho.type)) {
+    throw loi422(`"${kho.name}" không phải kho nên không nhập kho về đó được.`, 'KHONG_PHAI_KHO');
+  }
 
   const dong = await soatDongThucHien(yeuCau, duLieu.muc, 'ANH_NHAN', tuyChon.boQuaAnh ?? false);
   const tinhTrangTheoAsset = new Map(duLieu.muc.map((m) => [m.assetId, m.tinhTrang]));
   const bayGio = new Date();
   const canhBao: Array<{ code: string; truoc: AssetCondition; sau: AssetCondition }> = [];
+  const truocTrangThai = yeuCau.status;
+  let daBaoQuanTri = false;
 
   const sau = await prisma.$transaction(async (tx) => {
+    await khoaPhieuVaThietBi(
+      tx,
+      id,
+      dong.map((d) => d.assetId),
+    );
     const nguon = await nguonNhapTheoDong(
       yeuCau,
       dong,
@@ -1087,6 +1531,41 @@ export async function nhapKho(
       duLieu.tuLocationId ?? null,
       tx,
     );
+    kiemQuyenThucHien(nguoiDung, yeuCau, nguon, 'nhập');
+
+    /*
+     * NHÂN SỰ TRẢ LẠI hàng lẻ đã mượn — phải ghi là TRẢ VỀ, không phải nhập mới.
+     *
+     * Cho mượn 5 trong 100 quyển thì trạng thái vẫn "tại kho" (còn 95), nên trước
+     * đây trả lại qua phiếu Nhập kho bị ghi thành hàng mới: kho cộng đúng nhưng
+     * số "nhân sự đang mượn" không bao giờ giảm. Giờ coi là trả về khi người dùng
+     * chọn "Nhân sự trả lại", hoặc khi chính người lập phiếu đang mượn đủ số đó.
+     * Chọn "Hàng mới" thì luôn là nhập mới.
+     */
+    const traNhanSu = new Set<string>();
+    const khongRoNguon =
+      !duLieu.tuLocationId && !yeuCau.fromLocation && yeuCau.type === 'NHAP_KHO';
+    for (const d of dong) {
+      const kieu = yeuCau.items.find((i) => i.asset.id === d.assetId)?.asset.trackingType;
+      if (kieu !== 'SO_LUONG' || nguon.get(d.assetId)) continue;
+      if (duLieu.tuLocationId === NGUON_NHAN_SU) {
+        const dangMuon = await dangChoNhanSuMuon(d.assetId, tx);
+        if (d.soLuong > dangMuon) {
+          throw loi422(
+            `Thiết bị ${d.code}: khai trả ${d.soLuong} nhưng nhân sự chỉ đang mượn ${Math.max(0, dangMuon)}. ` +
+              'Phần dư là hàng mới thì lập phiếu nhập riêng, chọn "Hàng mới / từ bên ngoài".',
+            'VUOT_SO_DANG_MUON',
+            { ma: d.code, khai: d.soLuong, dangMuon },
+          );
+        }
+        traNhanSu.add(d.assetId);
+      } else if (
+        khongRoNguon &&
+        (await dangMuonCuaNguoi(d.assetId, yeuCau.createdBy.id, tx)) >= d.soLuong
+      ) {
+        traNhanSu.add(d.assetId);
+      }
+    }
 
     // KHÔNG ĐƯỢC TRẢ VỀ NHIỀU HƠN SỐ ĐANG CÓ Ở NƠI TRẢ. Thiếu phép kiểm này thì
     // trả 30 từ một trường chỉ còn 20 sẽ đẩy tồn của trường đó xuống −10; tồn âm
@@ -1107,12 +1586,17 @@ export async function nhapKho(
 
     for (const d of dong) {
       const tinhTrangMoi = tinhTrangTheoAsset.get(d.assetId) ?? d.condition;
+      const tuDau = nguon.get(d.assetId) ?? null;
+      const dong0 = yeuCau.items.find((i) => i.asset.id === d.assetId)?.asset;
+      const dangMuon = dong0?.allocationStatus === 'CHO_MUON';
+      const laTraVe =
+        tuDau !== null || dangMuon || yeuCau.type === 'TRA_VE_KHO' || traNhanSu.has(d.assetId);
 
       const movement = await tx.movement.create({
         data: {
           assetId: d.assetId,
-          type: yeuCau.type === 'TRA_VE_KHO' ? 'TRA_VE_KHO' : 'NHAP_KHO',
-          fromLocationId: nguon.get(d.assetId) ?? null,
+          type: laTraVe ? 'TRA_VE_KHO' : 'NHAP_KHO',
+          fromLocationId: tuDau,
           toLocationId: kho.id,
           requestId: yeuCau.id,
           quantity: d.soLuong,
@@ -1131,14 +1615,35 @@ export async function nhapKho(
         data: { movementId: movement.id, requestId: yeuCau.id, assetId: d.assetId },
       });
 
+      /*
+       * HÀNG LẺ TRẢ MỘT PHẦN thì KHÔNG xoá người giữ / hạn trả / trạng thái.
+       *
+       * Trước đây nhập kho luôn đặt lại cả dòng: trả 30 trong 60 quyển đang mượn
+       * là 30 quyển còn lại mất người giữ, mất hạn trả, rơi khỏi "Đang cho mượn"
+       * và khỏi cảnh báo quá hạn. Giờ chỉ đặt lại khi nơi trả (hoặc người mượn)
+       * không còn gì. Thiết bị theo đơn vị luôn về trọn vẹn nên đặt lại như cũ.
+       */
+      let veHet = true;
+      if (dong0?.trackingType === 'SO_LUONG') {
+        if (tuDau) {
+          veHet = (await tonTaiDiaDiem(d.assetId, tuDau, tx)) <= 0;
+        } else if (dangMuon || (await dangChoNhanSuMuon(d.assetId, tx)) > 0) {
+          veHet = (await dangChoNhanSuMuon(d.assetId, tx)) <= 0;
+        }
+      }
+
       await tx.asset.update({
         where: { id: d.assetId },
         data: {
-          currentLocationId: kho.id,
-          allocationStatus: 'TAI_KHO',
           condition: tinhTrangMoi,
-          holderUserId: null,
-          dueReturnAt: null,
+          ...(veHet
+            ? {
+                currentLocationId: kho.id,
+                allocationStatus: 'TAI_KHO',
+                holderUserId: null,
+                dueReturnAt: null,
+              }
+            : {}),
         },
       });
 
@@ -1168,10 +1673,10 @@ export async function nhapKho(
           entityId: d.assetId,
           beforeValue: { currentLocationId: d.currentLocationId, condition: d.condition },
           afterValue: {
-            currentLocationId: kho.id,
-            nhanTu: nguon.get(d.assetId) ?? null,
+            currentLocationId: veHet ? kho.id : d.currentLocationId,
+            nhanTu: tuDau,
             condition: tinhTrangMoi,
-            allocationStatus: 'TAI_KHO',
+            ...(veHet ? { allocationStatus: 'TAI_KHO' } : {}),
             movementId: movement.id,
             soLuong: d.soLuong,
           },
@@ -1183,22 +1688,36 @@ export async function nhapKho(
       );
     }
 
+    const cacNguon = new Set(nguon.values());
+    const motNguon = cacNguon.size === 1 ? [...cacNguon][0] : undefined;
     const capNhat = await tx.request.update({
       where: { id },
-      data: { status: 'DA_HOAN_TAT', issuedAt: bayGio, completedAt: bayGio },
+      data: {
+        status: 'DA_HOAN_TAT',
+        issuedAt: bayGio,
+        completedAt: bayGio,
+        ...(yeuCau.submittedAt ? {} : { submittedAt: bayGio }),
+        // Ghi lại kho nhận và nơi đi đã xác định, để biên bản điền đúng hai bên.
+        ...(yeuCau.toLocation ? {} : { toLocationId: kho.id }),
+        ...(motNguon && !yeuCau.fromLocation ? { fromLocationId: motNguon } : {}),
+      },
       select: CHON_YEU_CAU,
     });
+
+    daBaoQuanTri = await baoQuanTriTuThucHien(tx, nguoiDung, yeuCau, 'nhập', dong);
+
     await ghiAudit(
       {
         actor,
         action: 'request.nhap_kho',
         entityType: 'request',
         entityId: id,
-        beforeValue: { status: 'DA_DUYET' },
+        beforeValue: { status: truocTrangThai },
         afterValue: {
           status: 'DA_HOAN_TAT',
           soDong: dong.length,
           veKho: kho.name,
+          khongQuaDuyet: !yeuCau.approvedBy,
           ...(tuyChon.nguonGhiNhan ? { nguonGhiNhan: tuyChon.nguonGhiNhan } : {}),
         },
         photoIds: dong.flatMap((d) => d.anhIds),
@@ -1219,11 +1738,14 @@ export async function nhapKho(
     status: sau.status,
     thongDiep: `Yêu cầu ${sau.code} đã hoàn tất nhập kho.`,
   });
-  if (canhBao.length > 0) {
+  if (canhBao.length > 0 || daBaoQuanTri) {
     phatChoNguoiDuyet(SU_KIEN.CANH_BAO_MOI, {
       id: sau.id,
       code: sau.code,
-      thongDiep: `${canhBao.length} thiết bị đổi tình trạng khi trả về kho.`,
+      thongDiep:
+        canhBao.length > 0
+          ? `${canhBao.length} thiết bị đổi tình trạng khi trả về kho.`
+          : `${nguoiDung.fullName} vừa nhập kho ${sau.code} (không qua duyệt).`,
     });
   }
   phatChoTatCa(SU_KIEN.KHO_DOI, { id: sau.id, code: sau.code, thongDiep: 'Tồn kho vừa thay đổi.' });
@@ -1256,7 +1778,7 @@ export async function nhapKho(
  */
 export async function ghiNhanTheoBienBan(
   id: string,
-  actor: NguoiThaoTac,
+  actor: NguoiDungDaXacThuc,
   ctx: BoiCanhGoi,
 ): Promise<YeuCauDayDu> {
   const yeuCau = await prisma.request.findFirst({
@@ -1267,11 +1789,11 @@ export async function ghiNhanTheoBienBan(
   if (!laLoaiXuat(yeuCau.type) && !laLoaiNhap(yeuCau.type)) {
     throw loi409('Loại yêu cầu này không làm thay đổi tồn kho nên không có gì để ghi nhận.');
   }
-  if (yeuCau.status !== 'DA_DUYET') {
+  if (!TRANG_THAI_CHO_THUC_HIEN.has(yeuCau.status)) {
     throw loi422(
       yeuCau.status === 'DA_XUAT' || yeuCau.status === 'DA_HOAN_TAT'
         ? 'Yêu cầu này đã được ghi nhận rồi — tồn kho và tình trạng đã đổi.'
-        : `Yêu cầu đang ở trạng thái "${yeuCau.status}" — phải được duyệt mới ghi nhận được.`,
+        : `Yêu cầu đang ở trạng thái "${yeuCau.status}" nên không ghi nhận được.`,
       'KHONG_O_TRANG_THAI_GHI_NHAN',
     );
   }
@@ -1319,7 +1841,17 @@ export async function ghiNhanTheoBienBan(
    * của phiếu → bên nhận ghi trên biên bản. Không có cả hai thì KHÔNG đoán: nhập
    * hàng về một kho đoán ra là làm sai sổ của một kho không liên quan.
    */
-  const veLocationId = yeuCau.toLocation?.id ?? bienBan.receiverLocationId;
+  // Cuối cùng: hệ thống chỉ có MỘT kho văn phòng thì đó là kho nhận — không
+  // phải đoán gì.
+  const khoDuyNhat = await prisma.location.findMany({
+    where: { deletedAt: null, isActive: true, type: 'KHO_VAN_PHONG' },
+    select: { id: true },
+    take: 2,
+  });
+  const veLocationId =
+    yeuCau.toLocation?.id ??
+    bienBan.receiverLocationId ??
+    (khoDuyNhat.length === 1 ? (khoDuyNhat[0]?.id ?? null) : null);
   if (!veLocationId) {
     throw loi422(
       'Yêu cầu và biên bản đều chưa ghi rõ kho nhận hàng về. Mở màn hình Nhập kho để chọn kho.',
@@ -1407,6 +1939,20 @@ export async function xoaMem(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): 
   });
   if (!truoc) throw loi404('Không tìm thấy yêu cầu.');
   if (truoc.deletedAt) throw loi409('Yêu cầu này đã nằm trong thùng rác.');
+  /*
+   * HÀNG ĐANG TRÊN ĐƯỜNG thì không xoá được phiếu. Phân bổ / luân chuyển chỉ ghi
+   * di chuyển lúc bên nhận xác nhận biên bản; xoá phiếu giữa chừng thì số "đang
+   * chuyển" biến mất khỏi tổng quan, còn biên bản xác nhận sau đó không biết ghi
+   * hàng vào đâu — hàng mất khỏi sổ. Bên nhận xác nhận hoặc từ chối biên bản
+   * trước (từ chối thì phiếu tự huỷ, hàng tính lại ở nơi gửi), rồi mới xoá.
+   */
+  if (truoc.status === 'DA_XUAT') {
+    throw loi409(
+      `Phiếu ${truoc.code} đang chờ bên nhận xác nhận biên bản — hàng đang trên đường. ` +
+        'Bên nhận xác nhận hoặc từ chối biên bản trước rồi mới xoá được phiếu.',
+      { maLoi: 'DANG_TREN_DUONG' },
+    );
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.request.update({

@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
@@ -33,6 +34,7 @@ import { MAU_TRANG_THAI_BBBG } from './tien-ich';
 const MOI_TRANG = 25;
 
 export function BienBanList() {
+  const hoi = useXacNhan();
   const { nguoiDung } = useAuth();
   const [muc, datMuc] = useState<BienBan[]>([]);
   const [tong, datTong] = useState(0);
@@ -107,10 +109,12 @@ export function BienBanList() {
     const ids = [...daChon];
     if (ids.length === 0) return;
     if (
-      !window.confirm(
-        `Chuyển ${ids.length} biên bản đã chọn vào thùng rác?\n\n` +
+      !(await hoi({
+        tieuDe: `Chuyển ${ids.length} biên bản đã chọn vào thùng rác?`,
+        noiDung:
           'Việc bàn giao KHÔNG bị hoàn tác: thiết bị vẫn ở nơi đã nhận, tồn kho giữ nguyên. Khôi phục được ở Biên bản → Thùng rác.',
-      )
+        nutCo: 'Có, chuyển vào thùng rác',
+      }))
     ) {
       return;
     }

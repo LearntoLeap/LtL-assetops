@@ -68,6 +68,7 @@ BANG_NGHIEP_VU=(
   wiki_revisions wiki_docs wiki_items wiki_links wiki_articles
   part_issues
   inventory_count_items inventory_counts
+  onsite_visit_items onsite_visits
   handover_note_items handover_notes
   request_items requests
   movements

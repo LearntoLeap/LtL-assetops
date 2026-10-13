@@ -82,7 +82,9 @@ export const NHAN_TRANG_THAI_PHAN_BO = {
 
 export const NHAN_LOAI_YEU_CAU = {
   XUAT_KHO: 'Xuất kho',
-  NHAP_KHO: 'Nhập kho',
+  // Nhập kho và trả về kho là MỘT việc với người dùng: hàng đi vào kho. Phiếu
+  // mới luôn lập loại NHAP_KHO; TRA_VE_KHO chỉ còn cho phiếu cũ.
+  NHAP_KHO: 'Nhập kho (trả về kho)',
   PHAN_BO_VE_TRUONG: 'Phân bổ về trường',
   LUAN_CHUYEN_TRUONG: 'Luân chuyển trường ↔ trường',
   CHO_MUON: 'Cho mượn',
@@ -91,7 +93,9 @@ export const NHAN_LOAI_YEU_CAU = {
 } satisfies Record<LoaiYeuCau, string>;
 
 export const NHAN_TRANG_THAI_YEU_CAU = {
-  BAN_NHAP: 'Nháp',
+  // Không còn bước duyệt: phiếu lập xong là chờ người lập chụp ảnh xuất / nhập
+  // kho. Giá trị trong CSDL giữ nguyên (BAN_NHAP) — chỉ đổi cách gọi.
+  BAN_NHAP: 'Chờ xuất / nhập kho',
   CHO_DUYET: 'Chờ duyệt',
   DA_DUYET: 'Đã duyệt',
   TU_CHOI: 'Từ chối',
@@ -121,6 +125,7 @@ export const NHAN_LOAI_ANH = {
   KIOSK_BACKGROUND: 'Ảnh nền màn hình kho',
   LINH_KIEN: 'Ảnh linh kiện',
   WIKI: 'Ảnh minh hoạ wiki',
+  ONSITE: 'Ảnh cập nhật onsite',
 } satisfies Record<LoaiAnh, string>;
 
 // --- Thư viện wiki thiết bị -------------------------------------------------
@@ -171,6 +176,11 @@ export const NHAN_TRANG_THAI_BBBG = {
   CHO_XAC_NHAN: 'Chờ bên nhận xác nhận',
   DA_XAC_NHAN: 'Đã xác nhận',
   TU_CHOI: 'Bên nhận từ chối',
+  // Biên bản hệ thống tự lập phải nhìn ra được là TỰ LẬP, và đã có ai sửa chưa:
+  // trước đây biên bản tự lập mang nhãn "Nháp" mãi kể cả khi hàng đã bàn giao
+  // xong, nên không ai biết tờ nào đã chốt, tờ nào còn phải xem lại.
+  TU_LAP: 'Tự lập — chưa chỉnh sửa',
+  DA_CHINH_SUA: 'Đã chỉnh sửa',
 } satisfies Record<TrangThaiBBBG, string>;
 
 /**
@@ -214,6 +224,7 @@ export const NHAN_LOAI_CANH_BAO = {
   CHENH_LECH_KIEM_KE: 'Chênh lệch kiểm kê',
   BAO_HONG: 'Báo hỏng',
   DANG_NHAP_NGOAI_VUNG: 'Đăng nhập ngoài vùng kho',
+  XUAT_NHAP_TRUC_TIEP: 'Xuất / nhập kho không qua duyệt',
 } satisfies Record<LoaiCanhBao, string>;
 
 export const NHAN_MUC_DO_CANH_BAO = {

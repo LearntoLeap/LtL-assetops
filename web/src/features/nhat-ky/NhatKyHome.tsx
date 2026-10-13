@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BellRing, MapPin, RefreshCw, ScrollText, ShieldCheck } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { BellRing, CheckCheck, MapPin, RefreshCw, ScrollText, ShieldCheck } from 'lucide-react';
 import {
   DS_LOAI_CANH_BAO,
   NHAN_LOAI_CANH_BAO,
@@ -32,11 +33,16 @@ const MAU_MUC_DO: Record<MucDoCanhBao, NonNullable<BadgeProps['variant']>> = {
   CAO: 'destructive',
 };
 
+/** Thông báo để biết (xuất / nhập kho không qua duyệt) — bấm "Đã xem" là xong. */
+const LOAI_CHI_DE_BIET = 'XUAT_NHAP_TRUC_TIEP';
+
 function KhoiCanhBao() {
+  const [thamSo] = useSearchParams();
   const [muc, datMuc] = useState<CanhBao[]>([]);
   const [daXuLy, datDaXuLy] = useState(false);
   const [loi, datLoi] = useState<string | null>(null);
-  const [locLoai, datLocLoai] = useState('');
+  // Bấm chuông trên đầu trang thì mở thẳng đúng loại cần xem.
+  const [locLoai, datLocLoai] = useState(thamSo.get('loai') ?? '');
 
   const tai = useCallback(async () => {
     datLoi(null);
@@ -54,6 +60,18 @@ function KhoiCanhBao() {
     void tai();
   }, [tai]);
   useRealtime([SU_KIEN.CANH_BAO_MOI], () => void tai());
+
+  /** Đánh dấu đã xem — một cái (ids) hoặc tất cả thông báo xuất / nhập trực tiếp. */
+  async function daXem(ids?: string[]): Promise<void> {
+    try {
+      await goiApi('/api/nhat-ky/canh-bao/da-xem', { method: 'POST', than: ids ? { ids } : {} });
+      await tai();
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Không đánh dấu được.');
+    }
+  }
+
+  const soChiDeBiet = muc.filter((c) => c.type === LOAI_CHI_DE_BIET && !c.resolvedAt).length;
 
   async function xuLy(c: CanhBao): Promise<void> {
     const ghiChu = window.prompt(`Đã xử lý thế nào? (cảnh báo: ${c.title})`);
@@ -78,7 +96,8 @@ function KhoiCanhBao() {
         </CardTitle>
         <CardDescription>
           Hệ thống tự sinh khi tình trạng thiết bị đổi lúc trả, quá hạn trả, chênh lệch kiểm kê,
-          hoặc tài khoản kho đăng nhập ngoài vùng.
+          tài khoản kho đăng nhập ngoài vùng — và mỗi lần nhân sự tự xuất / nhập kho không qua
+          duyệt (bấm &ldquo;Đã xem&rdquo; là xong).
         </CardDescription>
         <div className="flex flex-wrap gap-2 pt-2">
           <Select
@@ -106,6 +125,12 @@ function KhoiCanhBao() {
           <Button variant="outline" size="icon" onClick={() => void tai()} aria-label="Tải lại">
             <RefreshCw aria-hidden />
           </Button>
+          {soChiDeBiet > 0 ? (
+            <Button variant="outline" onClick={() => void daXem()}>
+              <CheckCheck aria-hidden />
+              Đã xem tất cả xuất / nhập trực tiếp
+            </Button>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -128,14 +153,42 @@ function KhoiCanhBao() {
                       {c.title}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">{c.message}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{ngayGio(c.createdAt)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {ngayGio(c.createdAt)}
+                      {c.request ? (
+                        <>
+                          {' · '}
+                          <Link
+                            to={`/yeu-cau/${c.request.id}`}
+                            className="font-mono text-primary-dam hover:underline"
+                          >
+                            {c.request.code}
+                          </Link>
+                        </>
+                      ) : c.asset ? (
+                        <>
+                          {' · '}
+                          <Link
+                            to={`/thiet-bi/${c.asset.id}`}
+                            className="font-mono text-primary-dam hover:underline"
+                          >
+                            {c.asset.code}
+                          </Link>
+                        </>
+                      ) : null}
+                    </p>
                     {c.resolvedAt ? (
                       <p className="mt-1 text-xs text-success-dam">
                         Đã xử lý bởi {c.resolvedBy?.fullName ?? '—'} · {c.resolutionNote}
                       </p>
                     ) : null}
                   </div>
-                  {c.resolvedAt ? null : (
+                  {c.resolvedAt ? null : c.type === LOAI_CHI_DE_BIET ? (
+                    <Button variant="outline" size="sm" onClick={() => void daXem([c.id])}>
+                      <CheckCheck aria-hidden />
+                      Đã xem
+                    </Button>
+                  ) : (
                     <Button variant="outline" size="sm" onClick={() => void xuLy(c)}>
                       Đánh dấu đã xử lý
                     </Button>

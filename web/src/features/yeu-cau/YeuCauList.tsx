@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ngayGio } from '@/lib/dinh-dang';
@@ -31,6 +32,7 @@ import { MAU_TRANG_THAI } from './tien-ich';
 const MOI_TRANG = 25;
 
 export function YeuCauList() {
+  const hoi = useXacNhan();
   const { nguoiDung } = useAuth();
   // Mở từ dashboard hoặc màn hình kho thì lọc sẵn theo ?status= và ?type=.
   const [thamSo] = useSearchParams();
@@ -89,10 +91,12 @@ export function YeuCauList() {
     const ids = [...daChon];
     if (ids.length === 0) return;
     if (
-      !window.confirm(
-        `Chuyển ${ids.length} yêu cầu đã chọn vào thùng rác?\n\n` +
+      !(await hoi({
+        tieuDe: `Chuyển ${ids.length} yêu cầu đã chọn vào thùng rác?`,
+        noiDung:
           'Chúng biến khỏi mọi danh sách và mọi con số, nhưng TỒN KHO, NHẬT KÝ DI CHUYỂN và ẢNH giữ nguyên — xoá phiếu không làm hàng quay về kho. Khôi phục được ở Yêu cầu → Thùng rác.',
-      )
+        nutCo: 'Có, chuyển vào thùng rác',
+      }))
     ) {
       return;
     }
@@ -143,7 +147,7 @@ export function YeuCauList() {
         <div>
           <h1 className="text-xl font-semibold sm:text-2xl">Yêu cầu</h1>
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            Mọi thiết bị rời kho đều phải qua một yêu cầu đã duyệt.
+            Mọi lần xuất / nhập kho đều qua một phiếu, kèm ảnh và biên bản tự lập.
             <span
               className={dangNoi ? 'text-success-dam' : 'text-muted-foreground'}
               title={dangNoi ? 'Đang đồng bộ realtime' : 'Mất kết nối realtime'}
@@ -269,7 +273,7 @@ export function YeuCauList() {
                     <TableHead>Số yêu cầu</TableHead>
                     <TableHead>Loại</TableHead>
                     <TableHead>Người tạo</TableHead>
-                    <TableHead>Nơi đến</TableHead>
+                    <TableHead>Từ → Đến</TableHead>
                     <TableHead className="text-right">Số dòng</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Biên bản</TableHead>
@@ -308,6 +312,8 @@ export function YeuCauList() {
                         ) : null}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
+                        {/* Luân chuyển / nhập về cần thấy cả hai đầu, không chỉ nơi đến. */}
+                        {y.fromLocation ? `${y.fromLocation.name} → ` : ''}
                         {y.toLocation?.name ?? y.destinationNote ?? '—'}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{y.items.length}</TableCell>

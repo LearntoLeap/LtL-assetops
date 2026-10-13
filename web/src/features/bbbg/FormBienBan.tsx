@@ -91,7 +91,10 @@ export function FormBienBan() {
     datDangTaiDs(true);
     datLoi(null);
     try {
-      const [ycDuyet, ycXuat, ycXong, dd, cd, mau] = await Promise.all([
+      // Không còn bước duyệt: phiếu "Chờ xuất / nhập kho" (BAN_NHAP) cũng lập
+      // biên bản được để in mang theo. Phiếu cũ "Đã duyệt" vẫn giữ.
+      const [ycCho, ycDuyet, ycXuat, ycXong, dd, cd, mau] = await Promise.all([
+        goiApi<TrangDuLieu<YeuCau>>('/api/yeu-cau?status=BAN_NHAP&moiTrang=100'),
         goiApi<TrangDuLieu<YeuCau>>('/api/yeu-cau?status=DA_DUYET&moiTrang=100'),
         goiApi<TrangDuLieu<YeuCau>>('/api/yeu-cau?status=DA_XUAT&moiTrang=100'),
         goiApi<TrangDuLieu<YeuCau>>('/api/yeu-cau?status=DA_HOAN_TAT&moiTrang=100'),
@@ -99,7 +102,7 @@ export function FormBienBan() {
         goiApi<{ ok: true; caiDat: CaiDatChung }>('/api/cai-dat'),
         goiApi<{ ok: true; mau: Record<LoaiYeuCau, MauBBBG> }>('/api/bbbg/mau'),
       ]);
-      datDsYeuCau([...ycDuyet.muc, ...ycXuat.muc, ...ycXong.muc]);
+      datDsYeuCau([...ycCho.muc, ...ycDuyet.muc, ...ycXuat.muc, ...ycXong.muc]);
       datDsDiaDiem(dd.muc);
       datCaiDat(cd.caiDat);
       datDsMau(mau.mau);
@@ -242,8 +245,8 @@ export function FormBienBan() {
         </Button>
         <h1 className="text-xl font-semibold sm:text-2xl">Lập biên bản bàn giao</h1>
         <p className="text-sm text-muted-foreground">
-          Chọn yêu cầu đã duyệt, mẫu biên bản tự chọn theo loại yêu cầu. Danh sách thiết bị lấy tự
-          động từ yêu cầu.
+          Chọn yêu cầu, mẫu biên bản tự chọn theo loại yêu cầu. Danh sách thiết bị lấy tự động từ
+          yêu cầu. Thường không cần lập tay: xuất / nhập kho xong là biên bản tự lập.
         </p>
       </div>
 
@@ -254,7 +257,7 @@ export function FormBienBan() {
           <CardHeader>
             <CardTitle>Yêu cầu nguồn và mẫu biên bản</CardTitle>
             <CardDescription>
-              Hiện yêu cầu đang ở trạng thái Đã duyệt, Đã xuất hoặc Đã hoàn tất.
+              Hiện yêu cầu đang chờ xuất / nhập kho, đã xuất hoặc đã hoàn tất.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -279,7 +282,7 @@ export function FormBienBan() {
                 </Select>
                 {!dangTaiDs && dsYeuCau.length === 0 ? (
                   <p className="text-sm text-warning-dam">
-                    Chưa có yêu cầu nào được duyệt. Hãy duyệt yêu cầu rồi quay lại lập biên bản.
+                    Chưa có yêu cầu nào để lập biên bản. Hãy tạo yêu cầu rồi quay lại.
                   </p>
                 ) : null}
               </div>

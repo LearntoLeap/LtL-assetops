@@ -9,16 +9,18 @@ import {
   Handshake,
   MapPin,
   Monitor,
+  PackageCheck,
   PackageOpen,
   PartyPopper,
   RefreshCw,
   Truck,
+  UserRound,
   Warehouse,
   Wifi,
   WifiOff,
   Wrench,
 } from 'lucide-react';
-import { NHAN_LOAI_DIEM_LUU_TRU, NHAN_TINH_TRANG } from '@ltl/taisan-shared';
+import { NHAN_TINH_TRANG } from '@ltl/taisan-shared';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,12 +38,13 @@ import { CotRaVao } from '@/components/bieu-do/CotRaVao';
 import { ThanhNgang } from '@/components/bieu-do/ThanhNgang';
 import { VanhKhuyen } from '@/components/bieu-do/VanhKhuyen';
 import { MAU_TINH_TRANG } from '@/lib/bieu-do';
-import { dem } from '@/lib/so-lieu';
+import { dem, moTaBienDong } from '@/lib/so-lieu';
+import { BangTonTheoDiem } from './BangTonTheoDiem';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import { so } from '@/lib/bieu-do';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
-import type { DiaDiem, DuLieuDashboard, TrangDuLieu } from '@/lib/kieu';
+import type { DuLieuDashboard, DongRaVao } from '@/lib/kieu';
 import { SU_KIEN, useRealtime } from '@/hooks/useRealtime';
 
 function O({
@@ -51,6 +54,7 @@ function O({
   icon: Icon,
   mau,
   den,
+  bienDong,
 }: {
   nhan: string;
   gia: number;
@@ -58,6 +62,8 @@ function O({
   icon: typeof Warehouse;
   mau?: string;
   den?: string;
+  /** Dòng tăng / giảm trong kỳ, vd "7 ngày: +1 / −0 bộ · +200 / −80 lẻ". */
+  bienDong?: string | null | undefined;
 }) {
   const noiDung = (
     <>
@@ -67,6 +73,11 @@ function O({
       </p>
       <p className={`mt-1 text-2xl font-semibold ${mau ?? ''}`}>{so(gia)}</p>
       {phu ? <p className="text-xs text-muted-foreground">{phu}</p> : null}
+      {bienDong ? (
+        <p className="mt-1 border-t pt-1 text-[11px] leading-tight text-muted-foreground">
+          {bienDong}
+        </p>
+      ) : null}
     </>
   );
   return den ? (
@@ -90,8 +101,9 @@ function O({
 export function TongQuan() {
   const { nguoiDung } = useAuth();
   const [dl, datDl] = useState<DuLieuDashboard | null>(null);
-  const [diaDiem, datDiaDiem] = useState<DiaDiem[] | null>(null);
-  const [soNgay, datSoNgay] = useState(30);
+  const [soNgay, datSoNgay] = useState(7);
+  /** Biểu đồ lưu chuyển: cả hai, chỉ bộ, hay chỉ hàng lẻ. */
+  const [kieuLuuChuyen, datKieuLuuChuyen] = useState<'tat-ca' | 'bo' | 'le'>('tat-ca');
   const [loi, datLoi] = useState<string | null>(null);
   const [dangTai, datDangTai] = useState(true);
 
@@ -112,11 +124,6 @@ export function TongQuan() {
     void tai();
   }, [tai]);
 
-  useEffect(() => {
-    goiApi<TrangDuLieu<DiaDiem>>('/api/dia-diem')
-      .then((kq) => datDiaDiem(kq.muc))
-      .catch(() => datDiaDiem([]));
-  }, []);
 
   const { dangNoi } = useRealtime(
     [SU_KIEN.KHO_DOI, SU_KIEN.YEU_CAU_MOI, SU_KIEN.YEU_CAU_DOI, SU_KIEN.CANH_BAO_MOI],
@@ -127,6 +134,22 @@ export function TongQuan() {
 
   const laKho = nguoiDung ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) : false;
   const s = dl?.soLieu;
+  const bd = dl?.bienDong;
+  const nhanKy = `${soNgay} ngày`;
+  const dongBienDong = (g: keyof NonNullable<typeof bd>): string | null => {
+    const m = moTaBienDong(bd?.[g]);
+    return m ? `${nhanKy}: ${m}` : null;
+  };
+  // Biểu đồ lưu chuyển theo kiểu: API cũ chưa tách thì dùng số gộp.
+  const dongLuuChuyen: DongRaVao[] = (dl?.raVao ?? []).map((d) =>
+    kieuLuuChuyen === 'bo'
+      ? { ngay: d.ngay, vao: d.vaoBo ?? 0, ra: d.raBo ?? 0 }
+      : kieuLuuChuyen === 'le'
+        ? { ngay: d.ngay, vao: d.vaoLe ?? 0, ra: d.raLe ?? 0 }
+        : d,
+  );
+  const coTachLuuChuyen = (dl?.raVao ?? []).some((d) => d.vaoBo !== undefined);
+  const theoDiem = s?.theoDiem ?? [];
 
   return (
     <div className="space-y-5">
@@ -150,6 +173,17 @@ export function TongQuan() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Kỳ so sánh dùng chung cho dòng tăng / giảm ở các ô và biểu đồ lưu chuyển. */}
+          <Select
+            className="w-auto"
+            value={String(soNgay)}
+            onChange={(su) => datSoNgay(Number(su.target.value))}
+            aria-label="Kỳ so sánh tăng / giảm"
+          >
+            <option value="7">Tăng / giảm 7 ngày</option>
+            <option value="30">Tăng / giảm 30 ngày</option>
+            <option value="90">Tăng / giảm 90 ngày</option>
+          </Select>
           {laKho ? (
             <Button variant="accent" asChild>
               <Link to="/kiosk">
@@ -176,7 +210,17 @@ export function TongQuan() {
 
       {s ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <O nhan="Mã thiết bị" gia={s.soMa} icon={ClipboardList} den="/thiet-bi" />
+          <O
+            nhan="Mã thiết bị"
+            gia={s.soMa}
+            phu={
+              s.soMaBo !== undefined
+                ? `${so(s.soMaBo)} mã bộ · ${so(s.soMaLe ?? 0)} mã hàng lẻ`
+                : 'mã'
+            }
+            icon={ClipboardList}
+            den="/thiet-bi"
+          />
           {/* Tách BỘ và LẺ: cộng 1 bộ robot với 200 quyển sách thành "201 đơn
               vị" là con số không dùng được vào việc gì. */}
           <O
@@ -184,12 +228,16 @@ export function TongQuan() {
             gia={s.taiKho.bo}
             phu={`bộ · ${so(s.taiKho.le)} hàng lẻ`}
             icon={Warehouse}
+            bienDong={dongBienDong('taiKho')}
+            den="/ton-kho?loaiDiem=KHO_VAN_PHONG"
           />
           <O
             nhan="Ở trường"
             gia={s.oTruong.bo}
             phu={`bộ · ${so(s.oTruong.le)} hàng lẻ`}
             icon={MapPin}
+            bienDong={dongBienDong('oTruong')}
+            den="/ton-kho?loaiDiem=DIEM_TRUONG"
           />
           {/* Hàng đã rời kho nhưng bên nhận chưa xác nhận. Phải có ô riêng:
               không hiện ở đâu thì bấm "xuất kho" xong dashboard đứng im, người
@@ -199,6 +247,7 @@ export function TongQuan() {
             gia={dem(s.dangChuyen).bo}
             phu={`bộ · ${so(dem(s.dangChuyen).le)} hàng lẻ`}
             icon={Truck}
+            bienDong={dongBienDong('dangChuyen')}
             den="/yeu-cau?status=DA_XUAT"
           />
           {/* Hai ô dưới đây trước kia KHÔNG tồn tại: hàng ở kho sự kiện bị gộp
@@ -211,18 +260,25 @@ export function TongQuan() {
             gia={dem(s.oSuKien).bo}
             phu={`bộ · ${so(dem(s.oSuKien).le)} hàng lẻ`}
             icon={PartyPopper}
+            bienDong={dongBienDong('oSuKien')}
+            den="/ton-kho?loaiDiem=KHO_SU_KIEN"
           />
           <O
             nhan="Ở chỗ đối tác"
             gia={dem(s.oDoiTac).bo}
             phu={`bộ · ${so(dem(s.oDoiTac).le)} hàng lẻ`}
             icon={Handshake}
+            bienDong={dongBienDong('oDoiTac')}
+            den="/ton-kho?loaiDiem=DOI_TAC_MUON"
           />
+          {/* Hàng nhân sự đang mượn — đã ra khỏi kho, chưa trả. Trước đây chỉ đếm
+              số MÃ, nên cho mượn 5 quyển trong 100 quyển thì không thấy ở đâu. */}
           <O
-            nhan="Đang cho mượn"
-            gia={s.maChoMuon}
-            phu="mã"
-            icon={PackageOpen}
+            nhan="Nhân sự đang mượn"
+            gia={s.nhanSuGiu ? s.nhanSuGiu.bo : s.maChoMuon}
+            phu={s.nhanSuGiu ? `bộ · ${so(s.nhanSuGiu.le)} hàng lẻ` : 'mã'}
+            icon={UserRound}
+            bienDong={dongBienDong('nhanSu')}
             den="/thiet-bi?allocationStatus=CHO_MUON"
           />
           <O
@@ -243,54 +299,73 @@ export function TongQuan() {
         </div>
       ) : null}
 
-      {s && (s.yeuCauChoDuyet > 0 || s.yeuCauChoXuat > 0 || s.bienBanChoXacNhan > 0) ? (
+      {s ? (
         <div className="grid gap-3 sm:grid-cols-3">
+          {/* Không còn bước duyệt: việc đang chờ là XUẤT kho và NHẬP kho. API cũ
+              chưa có hai số này thì dùng số "chờ duyệt + đã duyệt" như trước. */}
           <O
-            nhan="Yêu cầu chờ duyệt"
-            gia={s.yeuCauChoDuyet}
-            icon={ClipboardList}
-            mau={s.yeuCauChoDuyet > 0 ? 'text-warning-dam' : ''}
-            den="/yeu-cau?status=CHO_DUYET"
+            nhan="Phiếu chờ xuất kho"
+            gia={s.choXuatKho ?? s.yeuCauChoDuyet + s.yeuCauChoXuat}
+            icon={PackageOpen}
+            mau={(s.choXuatKho ?? s.yeuCauChoXuat) > 0 ? 'text-warning-dam' : ''}
+            phu="chụp ảnh xác nhận là xong, không chờ duyệt"
+            den="/yeu-cau?status=BAN_NHAP"
           />
           <O
-            nhan="Đã duyệt, chờ xuất kho"
-            gia={s.yeuCauChoXuat}
-            icon={PackageOpen}
-            mau={s.yeuCauChoXuat > 0 ? 'text-warning-dam' : ''}
-            den="/yeu-cau?status=DA_DUYET"
+            nhan="Phiếu chờ nhập kho"
+            gia={s.choNhapKho ?? 0}
+            icon={PackageCheck}
+            mau={(s.choNhapKho ?? 0) > 0 ? 'text-warning-dam' : ''}
+            phu="hàng về kho, nhân sự trả lại"
+            den="/yeu-cau?status=BAN_NHAP&type=NHAP_KHO"
           />
           <O
             nhan="Biên bản chờ xác nhận"
             gia={s.bienBanChoXacNhan}
             icon={FileSignature}
             mau={s.bienBanChoXacNhan > 0 ? 'text-warning-dam' : ''}
+            phu="bên nhận chưa bấm xác nhận"
             den="/bbbg"
           />
         </div>
       ) : null}
 
+      {/* SỐ LƯỢNG TẠI TỪNG ĐIỂM — mỗi kho, mỗi trường một dòng, tách bộ / lẻ, có
+          bộ lọc. Các ô ở trên gộp theo loại điểm; bảng này cho biết từng nơi. */}
+      <BangTonTheoDiem nhung />
+
       <Card>
         <CardHeader>
-          <CardTitle>Lưu chuyển kho theo ngày</CardTitle>
+          <CardTitle>Lưu chuyển theo ngày ({soNgay} ngày)</CardTitle>
           <CardDescription>
-            Mỗi bút toán trong nhật ký di chuyển được tính vào ngày thực hiện. Luân chuyển nội bộ
-            tính cả hai đầu vì kho vừa xuất vừa nhận.
+            Vào / ra tại các điểm bạn xem được, tính theo ngày giờ Việt Nam. Chọn xem riêng bộ
+            hoặc hàng lẻ — cộng robot với sách thành một cột thì không đọc được gì.
           </CardDescription>
-          <div className="pt-2 sm:max-w-[13rem]">
-            <Select
-              value={String(soNgay)}
-              onChange={(su) => datSoNgay(Number(su.target.value))}
-              aria-label="Khoảng thời gian"
-            >
-              <option value="7">7 ngày gần nhất</option>
-              <option value="30">30 ngày gần nhất</option>
-              <option value="90">90 ngày gần nhất</option>
-            </Select>
-          </div>
+          {coTachLuuChuyen ? (
+            <div className="flex flex-wrap gap-1 pt-2">
+              {(
+                [
+                  ['tat-ca', 'Tất cả'],
+                  ['bo', 'Chỉ bộ'],
+                  ['le', 'Chỉ hàng lẻ'],
+                ] as const
+              ).map(([ma, nhan]) => (
+                <Button
+                  key={ma}
+                  size="sm"
+                  variant={kieuLuuChuyen === ma ? 'default' : 'outline'}
+                  onClick={() => datKieuLuuChuyen(ma)}
+                  aria-pressed={kieuLuuChuyen === ma}
+                >
+                  {nhan}
+                </Button>
+              ))}
+            </div>
+          ) : null}
         </CardHeader>
         <CardContent>
           {dl ? (
-            <CotRaVao dong={dl.raVao} />
+            <CotRaVao dong={dongLuuChuyen} />
           ) : (
             <p className="text-sm text-muted-foreground">Đang tải…</p>
           )}
@@ -375,13 +450,44 @@ export function TongQuan() {
             {dl ? <ThanhNgang dong={dl.theoDongGiaiPhap} donVi="mã" /> : null}
           </CardContent>
         </Card>
+        {/* Theo điểm — TÁCH bộ và hàng lẻ. Trước đây cộng 1 robot với 200 quyển
+            sách thành "201 đơn vị". API cũ chưa tách thì giữ biểu đồ cũ. */}
         <Card>
           <CardHeader>
-            <CardTitle>Phân bổ theo điểm lưu trữ</CardTitle>
-            <CardDescription>Số lượng đơn vị suy ra từ nhật ký di chuyển.</CardDescription>
+            <CardTitle>Theo điểm lưu trữ</CardTitle>
+            <CardDescription>
+              {theoDiem.length > 0 ? 'Bộ và hàng lẻ tách riêng.' : 'Số lượng suy ra từ nhật ký di chuyển.'}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            {dl ? <ThanhNgang dong={dl.theoDiaDiem} donVi="đơn vị" /> : null}
+          <CardContent className="space-y-4">
+            {!dl ? null : theoDiem.length > 0 ? (
+              <>
+                <div>
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">Bộ</p>
+                  <ThanhNgang
+                    dong={theoDiem
+                      .filter((d) => d.bo > 0)
+                      .map((d) => ({ ma: d.id, nhan: d.ten, so: d.bo }))
+                      .sort((a, b) => b.so - a.so)}
+                    donVi="bộ"
+                    toiDaDong={12}
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">Hàng lẻ</p>
+                  <ThanhNgang
+                    dong={theoDiem
+                      .filter((d) => d.le > 0)
+                      .map((d) => ({ ma: d.id, nhan: d.ten, so: d.le }))
+                      .sort((a, b) => b.so - a.so)}
+                    donVi="cái"
+                    toiDaDong={12}
+                  />
+                </div>
+              </>
+            ) : (
+              <ThanhNgang dong={dl.theoDiaDiem} donVi="đơn vị" />
+            )}
           </CardContent>
         </Card>
       </div>
@@ -551,37 +657,6 @@ export function TongQuan() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MapPin className="text-muted-foreground" aria-hidden />
-              Điểm lưu trữ bạn xem được
-            </CardTitle>
-            <CardDescription>
-              Danh sách này do máy chủ lọc theo vai trò — không phải do giao diện ẩn bớt.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {diaDiem === null ? (
-              <p className="text-sm text-muted-foreground">Đang tải…</p>
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {diaDiem.map((d) => (
-                  <li key={d.id} className="flex items-start justify-between gap-3">
-                    <span>
-                      <span className="font-medium">{d.name}</span>
-                      <span className="block text-xs text-muted-foreground">{d.code}</span>
-                    </span>
-                    <Badge variant="muted">{NHAN_LOAI_DIEM_LUU_TRU[d.type]}</Badge>
-                  </li>
-                ))}
-                <li className="border-t pt-2 text-muted-foreground">
-                  Tổng: <strong className="text-foreground">{diaDiem.length}</strong> điểm
-                </li>
-              </ul>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

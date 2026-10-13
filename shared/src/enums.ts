@@ -98,6 +98,7 @@ export const LOAI_ANH = [
   'KIOSK_BACKGROUND',
   'LINH_KIEN',
   'WIKI',
+  'ONSITE',
 ] as const;
 export type LoaiAnh = (typeof LOAI_ANH)[number];
 
@@ -126,7 +127,14 @@ export type TrangThaiWiki = (typeof TRANG_THAI_WIKI)[number];
 export const LOAI_DICH_WIKI = ['THIET_BI', 'LOAI_TAI_SAN', 'DONG_GIAI_PHAP'] as const;
 export type LoaiDichWiki = (typeof LOAI_DICH_WIKI)[number];
 
-export const TRANG_THAI_BBBG = ['BAN_NHAP', 'CHO_XAC_NHAN', 'DA_XAC_NHAN', 'TU_CHOI'] as const;
+export const TRANG_THAI_BBBG = [
+  'BAN_NHAP',
+  'CHO_XAC_NHAN',
+  'DA_XAC_NHAN',
+  'TU_CHOI',
+  'TU_LAP',
+  'DA_CHINH_SUA',
+] as const;
 export type TrangThaiBBBG = (typeof TRANG_THAI_BBBG)[number];
 
 export const TRANG_THAI_KIEM_KE = [
@@ -144,6 +152,8 @@ export const LOAI_CANH_BAO = [
   'CHENH_LECH_KIEM_KE',
   'BAO_HONG',
   'DANG_NHAP_NGOAI_VUNG',
+  /** Ai đó tự xuất / nhập kho không qua duyệt — báo để quản trị nắm được. */
+  'XUAT_NHAP_TRUC_TIEP',
 ] as const;
 export type LoaiCanhBao = (typeof LOAI_CANH_BAO)[number];
 

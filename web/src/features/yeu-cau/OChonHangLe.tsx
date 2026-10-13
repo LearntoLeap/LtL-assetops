@@ -34,6 +34,11 @@ interface Props {
   onChon: (t: { code: string; name: string; ton: number }) => void;
   /** Mã đã có trong phiếu, để đánh dấu "đã thêm". */
   daThem: ReadonlySet<string>;
+  /**
+   * Phiếu NHẬP KHO: hàng đang về chứ không lấy ra, nên chọn được cả mã đang
+   * hết hàng — hết hàng chính là lúc cần nhập thêm.
+   */
+  cheDoNhap?: boolean;
 }
 
 /**
@@ -52,7 +57,7 @@ interface Props {
  * tách rõ từng điểm còn bao nhiêu, và trừ sẵn phần đã lên xe đi nhưng bên nhận
  * chưa xác nhận.
  */
-export function OChonHangLe({ locationId, onChon, daThem }: Props) {
+export function OChonHangLe({ locationId, onChon, daThem, cheDoNhap = false }: Props) {
   const [tuKhoa, datTuKhoa] = useState('');
   const [muc, datMuc] = useState<DongHangLe[]>([]);
   const [dangTim, datDangTim] = useState(false);
@@ -111,11 +116,12 @@ export function OChonHangLe({ locationId, onChon, daThem }: Props) {
         <ul className="max-h-56 space-y-1 overflow-auto">
           {muc.map((t) => {
             const roi = daThem.has(t.code);
+            const chonDuoc = cheDoNhap || t.khaDung > 0;
             return (
               <li key={t.id}>
                 <button
                   type="button"
-                  disabled={roi || t.khaDung <= 0}
+                  disabled={roi || !chonDuoc}
                   onClick={() => onChon({ code: t.code, name: t.name, ton: t.khaDung })}
                   className="flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-left hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -140,10 +146,14 @@ export function OChonHangLe({ locationId, onChon, daThem }: Props) {
                     {/* Hết hàng thì nói thẳng, đừng để bấm vào rồi mới báo. */}
                     <span
                       className={`block text-xs tabular-nums ${
-                        t.khaDung <= 0 ? 'text-destructive-dam' : 'text-muted-foreground'
+                        !cheDoNhap && t.khaDung <= 0 ? 'text-destructive-dam' : 'text-muted-foreground'
                       }`}
                     >
-                      {t.khaDung <= 0 ? 'Hết hàng' : `Lấy được ${t.khaDung}`}
+                      {cheDoNhap
+                        ? `Đang có ${t.khaDung}`
+                        : t.khaDung <= 0
+                          ? 'Hết hàng'
+                          : `Lấy được ${t.khaDung}`}
                     </span>
                     {t.dangDi > 0 ? (
                       <span className="block text-xs tabular-nums text-warning-dam">
@@ -152,7 +162,7 @@ export function OChonHangLe({ locationId, onChon, daThem }: Props) {
                     ) : null}
                     {roi ? (
                       <span className="block text-xs text-success-dam">Đã thêm</span>
-                    ) : t.khaDung > 0 ? (
+                    ) : chonDuoc ? (
                       <span className="inline-flex items-center gap-0.5 text-xs font-medium text-primary-dam">
                         <Plus className="size-3" aria-hidden />
                         Thêm

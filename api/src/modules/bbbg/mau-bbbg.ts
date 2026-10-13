@@ -38,6 +38,12 @@ export interface MauBBBG {
   coHanTra: boolean;
   /** Bên giao là kho của LtL (true) hay là đơn vị ngoài (false). */
   benGiaoLaLtL: boolean;
+  /**
+   * CẢ HAI BÊN đều là đơn vị ngoài (luân chuyển trường ↔ trường): bên giao là
+   * TRƯỜNG GỬI, bên nhận là TRƯỜNG NHẬN, LtL không đứng tên bên nào. Trước đây
+   * mẫu này in bên nhận là LtL — sai người ký.
+   */
+  haiBenNgoai?: boolean;
 }
 
 const CAM_KET_CHUNG =
@@ -139,6 +145,7 @@ export const MAU_THEO_LOAI: Record<RequestType, MauBBBG> = {
     camKet: CAM_KET_CHUNG,
     coHanTra: false,
     benGiaoLaLtL: false,
+    haiBenNgoai: true,
   },
 
   // --------------------------------------------------------------- cho mượn
@@ -230,6 +237,8 @@ export function mauCuaLoai(loai: RequestType | null | undefined): MauBBBG {
  * trên giấy tờ đưa cho trường ký.
  */
 export function vViecCuThe(mau: MauBBBG, benGiaoOrg: string, benNhanOrg?: string): string {
-  const doiTac = mau.benGiaoLaLtL ? (benNhanOrg ?? benGiaoOrg) : benGiaoOrg;
+  // Luân chuyển: "{noiNhan}" là TRƯỜNG NHẬN, không phải trường gửi.
+  const doiTac =
+    mau.benGiaoLaLtL || mau.haiBenNgoai ? (benNhanOrg ?? benGiaoOrg) : benGiaoOrg;
   return mau.vViec.replace('{noiNhan}', doiTac.trim() || '…………');
 }

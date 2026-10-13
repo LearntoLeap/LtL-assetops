@@ -11,11 +11,12 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../prisma.js';
 import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
-import { dieuKienTaiSan } from '../../lib/pham-vi.js';
-import { hangDangTrenDuong, tonCuaTaiSan, tonNhomTheoDiem } from '../../lib/ton-kho.js';
+import { dieuKienTaiSan, phamViCua } from '../../lib/pham-vi.js';
+import { hangDangTrenDuong, tonCuaTaiSan, tonNhomTheoDiem, tonTheoDiaDiem } from '../../lib/ton-kho.js';
 import { xoaFileAnh } from '../../lib/luu-anh.js';
 import { idMucDichHoacDauTien, idNguonGocHoacDauTien } from '../../lib/tra-ma-tai-san.js';
-import { maKeTiepTheoId } from '../../lib/sinh-ma-thiet-bi.js';
+import { capMaThietBi, dayBoDemQuaMa, tienToTheoId } from '../../lib/sinh-ma-thiet-bi.js';
+import { phatChoNguoiDuyet, phatChoTatCa, SU_KIEN } from '../../realtime.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
 import type { BoiCanhGoi } from '../auth/auth.service.js';
 import type {
@@ -67,14 +68,37 @@ function donDong(d: DongThietBi) {
 export async function danhSach(
   nguoiDung: NguoiDungDaXacThuc,
   loc: DuLieuLocThietBi,
-): Promise<{ muc: ReturnType<typeof donDong>[]; tong: number; trang: number; moiTrang: number }> {
+): Promise<{
+  muc: Array<ReturnType<typeof donDong> & { tonTaiDiem?: number }>;
+  tong: number;
+  trang: number;
+  moiTrang: number;
+}> {
+  /*
+   * LỌC THEO ĐIỂM bằng TỒN THẬT, không chỉ cột vị trí. Hàng lẻ nằm rải nhiều
+   * nơi: kho còn 70 quyển mà cột vị trí trỏ sang trường thì lọc "Kho văn phòng"
+   * trước đây không ra mã đó. Giờ ra mọi mã còn hàng ở điểm, kèm số tại điểm.
+   */
+  const tonTaiDiem = loc.locationId
+    ? new Map(
+        (await tonTheoDiaDiem(loc.locationId))
+          .filter((t) => t.ton > 0)
+          .map((t) => [t.assetId, t.ton] as const),
+      )
+    : null;
   const dieuKien: Prisma.AssetWhereInput = {
     // Phạm vi vai trò kiểm ở SERVER — gọi thẳng API cũng không ra ngoài được.
     ...dieuKienTaiSan(nguoiDung),
     ...(loc.chiHoatDong === 'true' ? { isActive: true } : {}),
     ...(loc.categoryId ? { categoryId: loc.categoryId } : {}),
     ...(loc.productLineId ? { productLineId: loc.productLineId } : {}),
-    ...(loc.locationId ? { currentLocationId: loc.locationId } : {}),
+    ...(loc.locationId && tonTaiDiem
+      ? {
+          AND: [
+            { OR: [{ currentLocationId: loc.locationId }, { id: { in: [...tonTaiDiem.keys()] } }] },
+          ],
+        }
+      : {}),
     ...(loc.condition ? { condition: loc.condition } : {}),
     ...(loc.allocationStatus ? { allocationStatus: loc.allocationStatus } : {}),
     ...(loc.purposeId ? { purposeId: loc.purposeId } : {}),
@@ -108,7 +132,15 @@ export async function danhSach(
     prisma.asset.count({ where: dieuKien }),
   ]);
 
-  return { muc: muc.map(donDong), tong, trang: loc.trang, moiTrang: loc.moiTrang };
+  return {
+    muc: muc.map((m) => ({
+      ...donDong(m),
+      ...(tonTaiDiem ? { tonTaiDiem: tonTaiDiem.get(m.id) ?? 0 } : {}),
+    })),
+    tong,
+    trang: loc.trang,
+    moiTrang: loc.moiTrang,
+  };
 }
 
 /** Chi tiết: kèm tồn kho SUY RA từ movements và lịch sử di chuyển gần nhất. */
@@ -238,9 +270,19 @@ export async function hangLe(
   nguoiDung: NguoiDungDaXacThuc,
   loc: { tuKhoa?: string | undefined; locationId?: string | undefined; moiTrang: number },
 ) {
+  /*
+   * KHÔNG lọc theo phạm vi tài sản của người hỏi.
+   *
+   * Ô này để LẬP PHIẾU: người lập phải thấy hàng đang có ở kho thì mới xin được.
+   * Trước đây lọc theo phạm vi vai trò: nhân sự chỉ thấy hàng mình đang giữ,
+   * trường chỉ thấy hàng có cột vị trí là trường mình — mở form là "chưa có hàng
+   * lẻ nào" dù kho đầy, và người dùng quay sang tạo mã mới cho thứ đã có.
+   * Tài khoản trường chỉ được thấy SỐ LƯỢNG ở chính trường mình (lọc bên dưới).
+   */
+  const pv = phamViCua(nguoiDung);
   const muc = await prisma.asset.findMany({
     where: {
-      ...dieuKienTaiSan(nguoiDung),
+      deletedAt: null,
       trackingType: 'SO_LUONG',
       isActive: true,
       ...(loc.tuKhoa
@@ -266,19 +308,32 @@ export async function hangLe(
 
   const ids = muc.map((m) => m.id);
   const [theoDiem, dangDi] = await Promise.all([tonNhomTheoDiem(ids), hangDangTrenDuong(ids)]);
-  const tenDiem = await tenCacDiem(theoDiem);
+  const thongTinDiem = await tenCacDiem(theoDiem);
+  const tenDiem = new Map([...thongTinDiem].map(([id, d]) => [id, d.name]));
+  const laKho = (id: string): boolean => {
+    const loai = thongTinDiem.get(id)?.type;
+    return loai === 'KHO_VAN_PHONG' || loai === 'KHO_SU_KIEN';
+  };
+  const xemDuoc = (id: string): boolean => !pv.diaDiem || pv.diaDiem.includes(id);
 
   const dayDu = muc.map((m) => {
-    const cac = (theoDiem.get(m.id) ?? []).filter((d) => d.ton > 0);
+    const cac = (theoDiem.get(m.id) ?? []).filter((d) => d.ton > 0 && xemDuoc(d.locationId));
     const di = dangDi.get(m.id) ?? [];
     const diTai = (id: string): number =>
       di.filter((x) => x.locationId === id).reduce((t, x) => t + x.soLuong, 0);
-    const tongDangDi = di.reduce((t, x) => t + x.soLuong, 0);
     const tongTon = cac.reduce((t, d) => t + d.ton, 0);
+    /*
+     * Không hỏi một điểm cụ thể thì "lấy được" chỉ tính ở các KHO. Trước đây
+     * cộng cả hàng đang nằm ở trường / đối tác: kho 70 + trường 30 thì báo
+     * "Lấy được 100", rồi lúc xuất máy chủ chặn vì kho chỉ có 70.
+     */
+    const cacKho = cac.filter((d) => laKho(d.locationId));
     const tonTaiDiem = loc.locationId
       ? (cac.find((d) => d.locationId === loc.locationId)?.ton ?? 0)
-      : tongTon;
-    const diTaiDiem = loc.locationId ? diTai(loc.locationId) : tongDangDi;
+      : cacKho.reduce((t, d) => t + d.ton, 0);
+    const diTaiDiem = loc.locationId
+      ? diTai(loc.locationId)
+      : cacKho.reduce((t, d) => t + diTai(d.locationId), 0);
     return {
       ...m,
       /** Tổng còn trong toàn hệ thống (theo sổ movements). */
@@ -309,14 +364,14 @@ export async function hangLe(
 /** Tên của mọi điểm xuất hiện trong bản tách tồn — một truy vấn cho cả danh sách. */
 async function tenCacDiem(
   theoDiem: Map<string, Array<{ locationId: string; ton: number }>>,
-): Promise<Map<string, string>> {
+): Promise<Map<string, { name: string; type: string }>> {
   const ids = [...new Set([...theoDiem.values()].flat().map((d) => d.locationId))];
   if (ids.length === 0) return new Map();
   const diem = await prisma.location.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true },
+    select: { id: true, name: true, type: true },
   });
-  return new Map(diem.map((d) => [d.id, d.name]));
+  return new Map(diem.map((d) => [d.id, { name: d.name, type: d.type }]));
 }
 
 export async function tao(
@@ -370,43 +425,45 @@ export async function tao(
 
   const ngayNhap = duLieu.receivedDate ? doiNgay(duLieu.receivedDate) : new Date();
 
+  // Tiền tố của tổ hợp nguồn gốc – loại – dòng: cần cho cả cấp mã tự sinh lẫn
+  // đẩy bộ đếm khi mã gõ tay nằm trong dãy tự sinh.
+  const tienTo = await tienToTheoId(
+    duLieu.originId,
+    duLieu.categoryId,
+    duLieu.productLineId || null,
+  );
+
   /**
-   * Sinh mã rồi ghi, thử lại nếu vướng khoá duy nhất.
+   * CẤP MÃ TRONG CÙNG TRANSACTION GHI.
    *
-   * Hai người cùng bấm Lưu trong một giây thì cả hai đọc ra cùng một số kế
-   * tiếp, người sau đâm vào lỗi trùng mã. Không khoá bảng vì khoá bảng làm
-   * nghẽn cả việc nhập hàng loạt; cứ thử lại — lần thứ hai đọc được mã người
-   * kia vừa ghi nên ra số mới.
+   * Trước đây mã được đọc NGOÀI transaction rồi mới ghi, nên hai người lưu cùng
+   * lúc đọc ra cùng một số; lại thêm cách lấy số lớn nhất theo thứ tự chữ làm dãy
+   * kẹt ở 0001. Giờ bộ đếm khoá dòng cấp số ngay trong transaction ghi thiết bị —
+   * xem `capMaThietBi`. Vẫn thử lại khi va khoá (P2002 hiếm gặp, P2034 deadlock)
+   * vì khoá duy nhất trên `assets.code` là chốt cuối cùng.
    */
-  const soLanThu = duLieu.code ? 1 : 5;
-  for (let lan = 0; lan < soLanThu; lan += 1) {
-    let ma = duLieu.code;
-    if (!ma) {
-      const sinh = await maKeTiepTheoId(
-        duLieu.originId,
-        duLieu.categoryId,
-        duLieu.productLineId || null,
-      );
-      if (!sinh) throw loi400('Không sinh được mã thiết bị.', 'KHONG_SINH_DUOC_MA');
-      ma = sinh.ma;
-    }
+  for (let lan = 0; lan < 3; lan += 1) {
     try {
-      return await ghiThietBi(ma);
+      return await ghiThietBi();
     } catch (e) {
-      const trungMa =
+      const thuLai =
         e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2002' &&
-        !duLieu.code &&
-        lan < soLanThu - 1;
-      if (!trungMa) throw e;
+        (e.code === 'P2034' || (e.code === 'P2002' && !duLieu.code)) &&
+        lan < 2;
+      if (!thuLai) throw e;
     }
   }
-  throw loi409('Không sinh được mã thiết bị chưa trùng. Hãy thử lại.', {
-    maLoi: 'MA_TRUNG_LIEN_TUC',
-  });
+  throw loi409('Không cấp được mã thiết bị. Hãy thử lại.', { maLoi: 'MA_TRUNG_LIEN_TUC' });
 
-  async function ghiThietBi(ma: string): Promise<ReturnType<typeof donDong>> {
+  async function ghiThietBi(): Promise<ReturnType<typeof donDong>> {
   return prisma.$transaction(async (tx) => {
+    let ma = duLieu.code;
+    if (!ma) {
+      if (!tienTo) throw loi400('Không sinh được mã thiết bị.', 'KHONG_SINH_DUOC_MA');
+      ma = await capMaThietBi(tx, tienTo);
+    } else if (tienTo) {
+      await dayBoDemQuaMa(tx, tienTo, ma);
+    }
     const thietBi = await tx.asset.create({
       data: {
         code: ma,
@@ -431,8 +488,10 @@ export async function tao(
       select: CHON_DONG,
     });
 
-    // Gốc của tồn kho: từ ngoài hệ thống → điểm nhận hàng.
-    await tx.movement.create({
+    // Gốc của tồn kho: từ ngoài hệ thống → điểm nhận hàng. Số lượng 0 (chỉ có ở
+    // tạo nhanh hàng lẻ cho phiếu nhập kho) thì chưa có gì vào kho: phiếu nhập
+    // sẽ ghi lượt nhập thật, ghi thêm một dòng 0 ở đây chỉ làm rối lịch sử.
+    if (duLieu.soLuongNhap > 0) await tx.movement.create({
       data: {
         assetId: thietBi.id,
         type: 'NHAP_BAN_DAU',
@@ -847,7 +906,6 @@ export async function taoNhanh(
     throw loi422('Có ảnh đã gắn vào thiết bị khác.', 'ANH_DA_DUNG');
   }
 
-  // Tra một lần trước vòng lặp sinh mã, đừng gọi lại ở mỗi lần thử.
   const idKhac = await idNguonGocHoacDauTien('KHAC');
   const idMucDich = duLieu.purposeId ?? (await idMucDichHoacDauTien('XHH'));
 
@@ -856,48 +914,78 @@ export async function taoNhanh(
     (duLieu.vendorCode ? ` Mã hãng: ${duLieu.vendorCode}.` : '') +
     (duLieu.note ? `\n${duLieu.note}` : '');
 
-  for (let lan = 0; lan < 5; lan += 1) {
-    const cuoi = await prisma.asset.findFirst({
-      where: { code: { startsWith: 'LTL-TN-' } },
-      orderBy: { code: 'desc' },
-      select: { code: true },
+  const kieu = duLieu.trackingType ?? (duLieu.soLuongNhap > 1 ? 'SO_LUONG' : 'DON_VI');
+
+  // HÀNG LẺ TRÙNG TÊN thì không tạo mã mới: cùng một thứ sách / cờ mà hai mã là
+  // tồn kho bị chia đôi, không ai biết thật sự còn bao nhiêu. Chỉ chặn hàng lẻ —
+  // robot cùng tên vẫn là từng con riêng, mỗi con một mã.
+  if (kieu === 'SO_LUONG') {
+    const trung = await prisma.asset.findFirst({
+      where: { deletedAt: null, trackingType: 'SO_LUONG', name: duLieu.name.trim() },
+      select: { id: true, code: true, name: true },
     });
-    const soTiepTheo = cuoi ? Number(cuoi.code.slice('LTL-TN-'.length)) + 1 : 1;
-    const ma = `LTL-TN-${String(Number.isFinite(soTiepTheo) ? soTiepTheo : 1).padStart(4, '0')}`;
-
-    try {
-      const thietBi = await tao(
-        {
-          code: ma,
-          name: duLieu.name,
-          categoryId: duLieu.categoryId,
-          originId: idKhac,
-          purposeId: idMucDich,
-          // Nhiều hơn một cái thì phải quản theo số lượng — `tao()` chặn
-          // DON_VI mà soLuongNhap > 1, nên suy ở đây cho khỏi vướng.
-          trackingType: duLieu.soLuongNhap > 1 ? 'SO_LUONG' : 'DON_VI',
-          condition: 'TOT',
-          nhapVeLocationId: duLieu.nhapVeLocationId,
-          soLuongNhap: duLieu.soLuongNhap,
-          ...(duLieu.vendorCode ? { serialNumber: duLieu.vendorCode } : {}),
-          note: ghiChu,
-        },
-        actor,
-        ctx,
+    if (trung) {
+      throw loi409(
+        `Đã có hàng lẻ "${trung.name}" (mã ${trung.code}). Chọn nó trong danh sách hàng lẻ, hoặc lập phiếu nhập kho để cộng thêm số lượng.`,
+        { maLoi: 'HANG_LE_DA_CO', thietBiId: trung.id, code: trung.code },
       );
-
-      await prisma.photo.updateMany({
-        where: { id: { in: duLieu.anhIds } },
-        data: { assetId: thietBi.id },
-      });
-      return thietBi;
-    } catch (e) {
-      // Mã vừa bị người khác lấy → tính lại số và thử tiếp.
-      const trungMa =
-        e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
-      const trungMaTheoService = e instanceof Error && /đã tồn tại|Mã .* đã/.test(e.message);
-      if (!trungMa && !trungMaTheoService) throw e;
     }
   }
-  throw loi409('Không sinh được mã thiết bị mới sau 5 lần thử. Hãy thử lại.');
+
+  // Mã do `tao()` cấp trong cùng transaction ghi, theo đúng quy ước
+  // {nguồn gốc}-{loại}-{số} (vd KHAC-AP-0001) như mọi thiết bị khác — trước đây
+  // tạo nhanh dùng một dãy riêng LTL-TN-xxxx, tính số ngoài transaction.
+  const thietBi = await tao(
+    {
+      name: duLieu.name,
+      categoryId: duLieu.categoryId,
+      originId: idKhac,
+      purposeId: idMucDich,
+      trackingType: kieu,
+      condition: 'TOT',
+      nhapVeLocationId: duLieu.nhapVeLocationId,
+      soLuongNhap: duLieu.soLuongNhap,
+      ...(duLieu.vendorCode ? { serialNumber: duLieu.vendorCode } : {}),
+      note: ghiChu,
+    } as DuLieuTaoThietBi,
+    actor,
+    ctx,
+  );
+
+  await prisma.photo.updateMany({
+    where: { id: { in: duLieu.anhIds } },
+    data: { assetId: thietBi.id },
+  });
+
+  // Thêm thiết bị mới là CỘNG tồn kho từ ngoài vào — không qua duyệt thì quản
+  // trị phải được báo, như mọi lần xuất / nhập kho trực tiếp khác.
+  if (actor.role !== 'ADMIN') {
+    const noi = await prisma.location.findUnique({
+      where: { id: duLieu.nhapVeLocationId },
+      select: { name: true },
+    });
+    await prisma.alert.create({
+      data: {
+        type: 'XUAT_NHAP_TRUC_TIEP',
+        severity: 'THAP',
+        title: `${actor.email} vừa thêm thiết bị mới ${thietBi.code}`.slice(0, 191),
+        message:
+          duLieu.soLuongNhap > 0
+            ? `${actor.email} thêm nhanh "${thietBi.name}" (${thietBi.code}) × ${duLieu.soLuongNhap} ` +
+              `vào ${noi?.name ?? 'kho'} khi lập yêu cầu. Không qua bước duyệt.`
+            : `${actor.email} thêm "${thietBi.name}" (${thietBi.code}) vào danh mục hàng lẻ khi lập ` +
+              `phiếu nhập kho. Số lượng vào kho do phiếu nhập ghi.`,
+        assetId: thietBi.id,
+        entityType: 'asset',
+        entityId: thietBi.id,
+      },
+    });
+    phatChoNguoiDuyet(SU_KIEN.CANH_BAO_MOI, {
+      id: thietBi.id,
+      code: thietBi.code,
+      thongDiep: `${actor.email} vừa thêm thiết bị mới ${thietBi.code}.`,
+    });
+  }
+  phatChoTatCa(SU_KIEN.KHO_DOI, { id: thietBi.id, code: thietBi.code, thongDiep: 'Tồn kho vừa thay đổi.' });
+  return thietBi;
 }

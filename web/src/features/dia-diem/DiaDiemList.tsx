@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Download, MapPin, Pencil, Plus, RefreshCw, Trash2, Undo2, X } from 'lucide-react';
+import {
+  ClipboardList,
+  Download,
+  MapPin,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-react';
 import { DS_LOAI_DIEM_LUU_TRU, NHAN_LOAI_DIEM_LUU_TRU, type LoaiDiemLuuTru } from '@ltl/taisan-shared';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { taiTep } from '@/lib/tep';
@@ -42,10 +56,23 @@ const BIEU_RONG: Bieu = {
   note: '',
 };
 
-export function DiaDiemList() {
+/**
+ * DANH SÁCH ĐIỂM NHẬN / TRẢ (điểm lưu trữ).
+ *
+ * Dùng ở hai chỗ: trang Điểm lưu trữ riêng, và NHÚNG trong Danh mục (`nhung`) để
+ * thêm / sửa / ngừng dùng ngay cạnh các danh mục khác. Điểm thêm nhanh từ form
+ * yêu cầu cũng hiện ở đây để bổ sung địa chỉ, người liên hệ sau.
+ */
+export function DiaDiemList({ nhung = false }: { nhung?: boolean } = {}) {
+  const hoi = useXacNhan();
   const { nguoiDung } = useAuth();
   const duocSua = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
   const laAdmin = nguoiDung?.role === 'ADMIN';
+  // Thêm điểm: trùng quyền máy chủ (chiThemDiem) — kho văn phòng thì chỉ quản lý.
+  const duocThem = duocSua || nguoiDung?.role === 'KHO' || nguoiDung?.role === 'NHAN_SU';
+  const loaiThemDuoc = DS_LOAI_DIEM_LUU_TRU.filter((l) => duocSua || l.ma !== 'KHO_VAN_PHONG');
+  const [locLoai, datLocLoai] = useState<LoaiDiemLuuTru | ''>('');
+  const [tuKhoa, datTuKhoa] = useState('');
 
   const [muc, datMuc] = useState<DiaDiem[]>([]);
   const [dangTai, datDangTai] = useState(true);
@@ -74,7 +101,10 @@ export function DiaDiemList() {
   }, [tai]);
 
   function moTao(): void {
-    datBieu(BIEU_RONG);
+    // Đang xem tab loại nào thì thêm đúng loại đó — đỡ một lần chọn.
+    const loaiMacDinh =
+      locLoai && loaiThemDuoc.some((l) => l.ma === locLoai) ? locLoai : BIEU_RONG.type;
+    datBieu({ ...BIEU_RONG, type: loaiMacDinh });
     datDangSuaId(null);
     datHienForm(true);
     datLoi(null);
@@ -112,8 +142,12 @@ export function DiaDiemList() {
         await goiApi(`/api/dia-diem/${dangSuaId}`, { method: 'PATCH', than });
         datThongBao('Đã lưu thay đổi.');
       } else {
-        await goiApi('/api/dia-diem', { method: 'POST', than: { code: bieu.code, ...than } });
-        datThongBao('Đã thêm điểm lưu trữ.');
+        // Mã để trống thì máy chủ tự sinh từ loại + tên (vd TRUONG-KIM-LIEN).
+        const kq = await goiApi<{ ok: true; diaDiem: DiaDiem }>('/api/dia-diem', {
+          method: 'POST',
+          than: { ...(bieu.code.trim() ? { code: bieu.code.trim() } : {}), ...than },
+        });
+        datThongBao(`Đã thêm điểm ${kq.diaDiem.name} (mã ${kq.diaDiem.code}).`);
       }
       datHienForm(false);
       await tai();
@@ -124,16 +158,34 @@ export function DiaDiemList() {
     }
   }
 
+  /** Ngừng dùng / dùng lại: điểm ngừng dùng biến khỏi ô chọn nơi đến nhưng giữ lịch sử. */
+  async function doiHoatDong(d: DiaDiem): Promise<void> {
+    datLoi(null);
+    try {
+      await goiApi(`/api/dia-diem/${d.id}`, { method: 'PATCH', than: { isActive: !d.isActive } });
+      datThongBao(
+        d.isActive
+          ? `Đã ngừng dùng ${d.name} — không còn hiện ở ô chọn nơi đến.`
+          : `Đã dùng lại ${d.name}.`,
+      );
+      await tai();
+    } catch (e) {
+      datLoi(e instanceof LoiApi ? e.message : 'Không đổi được trạng thái.');
+    }
+  }
+
   async function xoa(d: DiaDiem): Promise<void> {
     // Lời xác nhận phải nói đúng việc sắp xảy ra: đây là chuyển vào thùng rác,
     // KHÔNG phải xoá hẳn. Ghi "Xoá hẳn" như trước là nói sai.
     if (
-      !window.confirm(
-        `Chuyển điểm ${d.name} vào thùng rác?\n\n` +
+      !(await hoi({
+        tieuDe: `Chuyển điểm ${d.name} vào thùng rác?`,
+        noiDung:
           'Điểm sẽ biến khỏi mọi danh sách và mọi ô chọn nơi đến. Thiết bị đang ở ' +
           'đây cùng toàn bộ lịch sử xuất–nhập kho vẫn nguyên, và khôi phục lại ' +
           'được ở Điểm lưu trữ → Thùng rác.',
-      )
+        nutCo: 'Có, chuyển vào thùng rác',
+      }))
     ) {
       return;
     }
@@ -151,13 +203,24 @@ export function DiaDiemList() {
     }
   }
 
+  const tu = tuKhoa.trim().toLowerCase();
+  const hien = muc.filter(
+    (d) =>
+      (!locLoai || d.type === locLoai) &&
+      (!tu || d.name.toLowerCase().includes(tu) || d.code.toLowerCase().includes(tu)),
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold sm:text-2xl">Điểm lưu trữ</h1>
+          {nhung ? (
+            <h2 className="text-lg font-semibold">Điểm nhận / trả</h2>
+          ) : (
+            <h1 className="text-xl font-semibold sm:text-2xl">Điểm lưu trữ</h1>
+          )}
           <p className="text-sm text-muted-foreground">
-            Kho, điểm trường, đối tác mượn và kho sự kiện.
+            Kho, điểm trường, đối tác mượn và kho sự kiện — mọi nơi nhận hoặc trả thiết bị.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -180,7 +243,7 @@ export function DiaDiemList() {
               </Link>
             </Button>
           ) : null}
-          {duocSua ? (
+          {duocThem ? (
             <Button onClick={moTao}>
               <Plus aria-hidden />
               Thêm điểm
@@ -208,15 +271,14 @@ export function DiaDiemList() {
           <CardContent>
             <form onSubmit={(su) => void gui(su)} className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="d-ma">Mã điểm *</Label>
+                <Label htmlFor="d-ma">Mã điểm {dangSuaId ? '' : '(để trống để tự sinh)'}</Label>
                 <Input
                   id="d-ma"
-                  required
                   disabled={dangSuaId !== null}
                   className="font-mono"
                   value={bieu.code}
                   onChange={(su) => datBieu((b) => ({ ...b, code: su.target.value }))}
-                  placeholder="TRUONG-MINHKHAI"
+                  placeholder="Tự sinh, vd TRUONG-MINH-KHAI"
                 />
               </div>
               <div className="space-y-1.5">
@@ -239,7 +301,7 @@ export function DiaDiemList() {
                     datBieu((b) => ({ ...b, type: su.target.value as LoaiDiemLuuTru }))
                   }
                 >
-                  {DS_LOAI_DIEM_LUU_TRU.map((l) => (
+                  {(dangSuaId ? DS_LOAI_DIEM_LUU_TRU : loaiThemDuoc).map((l) => (
                     <option key={l.ma} value={l.ma}>
                       {l.nhan}
                     </option>
@@ -298,13 +360,47 @@ export function DiaDiemList() {
       <Card>
         <CardHeader className="flex-row items-start justify-between">
           <div>
-            <CardTitle>Danh sách ({muc.length})</CardTitle>
+            <CardTitle>Danh sách ({hien.length})</CardTitle>
             <CardDescription>Gồm cả điểm đã ngừng dùng.</CardDescription>
           </div>
           <Button variant="outline" size="icon" onClick={() => void tai()} aria-label="Tải lại">
             <RefreshCw className={dangTai ? 'animate-spin' : ''} aria-hidden />
           </Button>
         </CardHeader>
+        <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
+          {/* Tab theo loại điểm — mỗi loại một danh sách gọn để thêm / sửa. */}
+          <div className="flex flex-wrap gap-1" role="tablist" aria-label="Lọc theo loại điểm">
+            {[{ ma: '' as const, nhan: 'Tất cả' }, ...DS_LOAI_DIEM_LUU_TRU].map((l) => {
+              const so = l.ma ? muc.filter((d) => d.type === l.ma).length : muc.length;
+              return (
+                <Button
+                  key={l.ma || 'tat-ca'}
+                  type="button"
+                  size="sm"
+                  role="tab"
+                  aria-selected={locLoai === l.ma}
+                  variant={locLoai === l.ma ? 'default' : 'outline'}
+                  onClick={() => datLocLoai(l.ma)}
+                >
+                  {l.nhan} ({so})
+                </Button>
+              );
+            })}
+          </div>
+          <div className="relative min-w-48 flex-1">
+            <Search
+              className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              className="pl-8"
+              placeholder="Tìm theo tên hoặc mã điểm"
+              value={tuKhoa}
+              onChange={(su) => datTuKhoa(su.target.value)}
+              aria-label="Tìm điểm"
+            />
+          </div>
+        </div>
         <CardContent className="px-0 sm:px-5">
           <Table>
             <TableHeader>
@@ -318,7 +414,7 @@ export function DiaDiemList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {muc.map((d) => (
+              {hien.map((d) => (
                 <TableRow key={d.id}>
                   <TableCell>
                     <p className="font-mono text-sm">{d.code}</p>
@@ -351,6 +447,29 @@ export function DiaDiemList() {
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
+                      {d.type === 'DIEM_TRUONG' ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          asChild
+                          title="Cập nhật onsite"
+                        >
+                          <Link to={`/onsite/${d.id}`} aria-label={`Cập nhật onsite ${d.name}`}>
+                            <ClipboardList aria-hidden />
+                          </Link>
+                        </Button>
+                      ) : null}
+                      {duocSua ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => void doiHoatDong(d)}
+                          aria-label={`${d.isActive ? 'Ngừng dùng' : 'Dùng lại'} ${d.name}`}
+                          title={d.isActive ? 'Ngừng dùng' : 'Dùng lại'}
+                        >
+                          {d.isActive ? <Pause aria-hidden /> : <Play aria-hidden />}
+                        </Button>
+                      ) : null}
                       {duocSua ? (
                         <Button
                           variant="ghost"

@@ -207,7 +207,12 @@ export function BienBanChiTiet() {
   }
   if (!bb) return <p className="text-sm text-muted-foreground">Đang tải…</p>;
 
-  const laBenGiao = nguoiDung ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) : false;
+  // Bên giao: kho / quản lý, hoặc chính người lập phiếu (biên bản tự lập cho mọi
+  // vai trò — nhân sự tự xuất kho thì tự sửa, gửi biên bản của phiếu mình).
+  const laBenGiao = nguoiDung
+    ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) ||
+      (bb.request?.createdById !== undefined && bb.request.createdById === nguoiDung.id)
+    : false;
   const laQuanLy = nguoiDung ? VAI_TRO_QUAN_LY.includes(nguoiDung.role) : false;
   // Bên nhận là tài khoản thuộc đúng điểm nhận; quản lý cũng xác nhận hộ được.
   const laBenNhan =
@@ -219,8 +224,10 @@ export function BienBanChiTiet() {
    * Trùng với `duocXoaPhieu` ở máy chủ — nơi thật sự chặn.
    */
   const duocXoaPhieu = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
-  const duocSua = bb.status === 'BAN_NHAP' && laBenGiao;
-  const duocGui = bb.status === 'BAN_NHAP' && laBenGiao;
+  // Chưa gửi bên nhận: bản nháp, bản tự lập, bản tự lập đã có người chỉnh.
+  const chuaGui = bb.status === 'BAN_NHAP' || bb.status === 'TU_LAP' || bb.status === 'DA_CHINH_SUA';
+  const duocSua = chuaGui && laBenGiao;
+  const duocGui = chuaGui && laBenGiao;
   const duocXacNhan = bb.status === 'CHO_XAC_NHAN' && laBenNhan;
 
   return (

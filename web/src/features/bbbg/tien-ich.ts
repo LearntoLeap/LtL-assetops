@@ -8,6 +8,10 @@ export const MAU_TRANG_THAI_BBBG: Record<TrangThaiBBBG, MauBadge> = {
   CHO_XAC_NHAN: 'warning',
   DA_XAC_NHAN: 'success',
   TU_CHOI: 'destructive',
+  // Tự lập (máy điền, chưa ai sửa) và Đã chỉnh sửa phải khác màu nhau — nhìn
+  // danh sách là biết tờ nào còn nguyên nội dung máy điền.
+  TU_LAP: 'accent',
+  DA_CHINH_SUA: 'default',
 };
 
 export const MAU_TRANG_THAI_KIEM_KE: Record<TrangThaiKiemKe, MauBadge> = {

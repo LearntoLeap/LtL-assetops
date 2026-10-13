@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/table';
 import { AnhBaoMat } from '@/components/AnhBaoMat';
 import { VanBanMarkdown } from '@/components/VanBanMarkdown';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ngayGio } from '@/lib/dinh-dang';
@@ -150,6 +151,7 @@ function HangTaiLieu({
  * phải đập vào mắt trước, không nằm cuối trang.
  */
 export function BaiWiki() {
+  const hoi = useXacNhan();
   const { slug } = useParams<{ slug: string }>();
   const dieuHuong = useNavigate();
   const { nguoiDung } = useAuth();
@@ -173,7 +175,10 @@ export function BaiWiki() {
 
   async function xoaBai(): Promise<void> {
     if (!dl) return;
-    if (!window.confirm(`Xoá hẳn bài "${dl.bai.tieuDe}" và mọi tài liệu đính kèm?`)) return;
+    if (!(await hoi({
+      tieuDe: `Xoá hẳn bài "${dl.bai.tieuDe}" và mọi tài liệu đính kèm?`,
+      nutCo: 'Có, xoá hẳn',
+    }))) return;
     try {
       await goiApi(`/api/wiki/bai/${dl.bai.id}`, { method: 'DELETE' });
       dieuHuong('/wiki', { replace: true });
@@ -183,7 +188,10 @@ export function BaiWiki() {
   }
 
   async function xoaTaiLieu(id: string): Promise<void> {
-    if (!window.confirm('Xoá tài liệu này?')) return;
+    if (!(await hoi({
+      tieuDe: 'Xoá tài liệu này?',
+      nutCo: 'Có, xoá hẳn',
+    }))) return;
     try {
       await goiApi(`/api/wiki/tai-lieu/${id}`, { method: 'DELETE' });
       await tai();

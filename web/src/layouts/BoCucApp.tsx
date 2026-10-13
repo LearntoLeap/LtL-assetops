@@ -13,6 +13,7 @@ import {
   Menu,
   MoreHorizontal,
   Package,
+  School,
   ScrollText,
   ShieldCheck,
   Tablet,
@@ -21,6 +22,7 @@ import {
   Monitor,
   Upload,
   Users,
+  Warehouse,
   Wrench,
   X,
   Settings2,
@@ -30,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DauHieuAssetOps } from '@/components/DauHieuAssetOps';
 import { NutDoiGiaoDien } from '@/components/NutDoiGiaoDien';
+import { ChuongCanhBao } from '@/components/ChuongCanhBao';
 import { cn } from '@/lib/utils';
 import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
 
@@ -66,11 +69,14 @@ const MENU_THEM: readonly MucMenu[] = [
   // kiện" bên dưới — thanh đã đủ bảy mục. Đường vào chính là nút "Xem tổng thể"
   // ngay đầu trang Tổng quan, chỗ ai cũng đi qua sau khi đăng nhập.
   { duongDan: '/tong-the', nhan: 'Tổng thể', icon: Gauge },
+  { duongDan: '/ton-kho', nhan: 'Tồn theo điểm', icon: Warehouse },
   // Đặt đầu nhóm vì dùng nhiều nhất trong đây. KHÔNG đưa lên thanh chính: thêm
   // mục thứ 8 vào thanh làm mục cuối bị cắt còn trơ biểu tượng không nhãn —
   // đã thấy trong ảnh chụp ở 1280px. Đường vào chính của việc này là ô lớn
   // "Lấy linh kiện" trên màn hình kho và liên kết từ phiếu báo hỏng.
   { duongDan: '/linh-kien', nhan: 'Lấy linh kiện', icon: Wrench, vaiTro: ['ADMIN', 'VAN_HANH', 'KHO'] },
+  // Mọi vai trò: trường chỉ thấy trường mình (máy chủ lọc), còn lại thấy mọi trường.
+  { duongDan: '/onsite', nhan: 'Cập nhật onsite', icon: School },
   { duongDan: '/lich-su-sua-chua', nhan: 'Lịch sử sửa chữa', icon: History },
   { duongDan: '/dia-diem', nhan: 'Điểm lưu trữ', icon: MapPin },
   { duongDan: '/danh-muc', nhan: 'Danh mục', icon: LayoutGrid, vaiTro: VAI_TRO_QUAN_LY },
@@ -253,6 +259,8 @@ export function BoCucApp() {
                 </Link>
               </Button>
             ) : null}
+            {/* Quản trị / vận hành nắm mọi lần xuất / nhập kho không qua duyệt. */}
+            {nguoiDung && VAI_TRO_QUAN_LY.includes(nguoiDung.role) ? <ChuongCanhBao /> : null}
             <NutDoiGiaoDien />
             <Button
               variant="outline"

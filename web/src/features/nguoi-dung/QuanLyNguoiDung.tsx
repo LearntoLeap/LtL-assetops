@@ -24,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ngayGio } from '@/lib/dinh-dang';
@@ -41,6 +42,7 @@ const MAU_VAI_TRO: Record<VaiTro, MauBadge> = {
 };
 
 export function QuanLyNguoiDung() {
+  const hoi = useXacNhan();
   const { nguoiDung: toi } = useAuth();
   const laAdmin = toi?.role === 'ADMIN';
 
@@ -122,8 +124,11 @@ export function QuanLyNguoiDung() {
     });
   };
 
-  const xoa = (u: HoSoQuanTri) => {
-    if (!window.confirm(`Xoá hẳn tài khoản ${u.fullName} (${u.email})?`)) return;
+  const xoa = async (u: HoSoQuanTri) => {
+    if (!(await hoi({
+      tieuDe: `Xoá hẳn tài khoản ${u.fullName} (${u.email})?`,
+      nutCo: 'Có, xoá hẳn',
+    }))) return;
     return hanhDong(async () => {
       await goiApi(`/api/nguoi-dung/${u.id}`, { method: 'DELETE' });
       return `Đã xoá tài khoản ${u.fullName}.`;

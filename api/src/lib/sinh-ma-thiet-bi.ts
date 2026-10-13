@@ -11,8 +11,12 @@
  *
  * Thiết bị KHÔNG thuộc dòng giải pháp nào thì BỎ HẲN đoạn dòng, không chèn ký
  * tự thay thế: mã ngắn hơn và không có đoạn thừa vô nghĩa.
+ *
+ * Số thứ tự cấp từ BỘ ĐẾM khoá dòng (`capMaThietBi`): không trùng, không lùi,
+ * không cấp lại mã đã xoá.
  */
 import { prisma, type PrismaTx } from '../prisma.js';
+import { tangBoDem } from './so-chung-tu.js';
 
 /** Bốn chữ số, đủ 9999 thiết bị cho mỗi tổ hợp. */
 const SO_CHU_SO = 4;
@@ -80,40 +84,112 @@ export function tienToMa(
 }
 
 /**
- * Mã kế tiếp cho một tổ hợp.
+ * Số lớn nhất ĐÃ DÙNG trong dãy của một tiền tố — so theo GIÁ TRỊ SỐ, chỉ nhận
+ * mã có dạng đúng `{tiền tố}{toàn chữ số}`.
  *
- * Quét theo TIỀN TỐ chứ không giữ một bảng bộ đếm riêng: bảng đếm sẽ lệch khỏi
- * thực tế ngay lần đầu có ai xoá vĩnh viễn một thiết bị hay nhập mã bằng tay.
- * Quét mã lớn nhất thì luôn khớp với những gì đang thực sự nằm trong CSDL.
+ * Trước đây lấy mã lớn nhất theo THỨ TỰ CHỮ (`ORDER BY code DESC`), sai ở ba chỗ:
+ *   - Tiền tố "IPP-RB-" cũng khớp mã CÓ dòng giải pháp "IPP-RB-UKIT-0001", mà
+ *     chữ xếp sau số, nên mã đó luôn đứng đầu; đuôi "UKIT-0001" không phải số
+ *     nên dãy quay về 0001 — đã có IPP-RB-0001 thì lưu là báo trùng, mãi mãi.
+ *   - "…-5" gõ tay xếp trên "…-0043" → tính ra 0006 → trùng.
+ *   - Qua 9999, "…-10000" xếp dưới "…-9999" → kẹt ở 10000.
  *
- * CỐ Ý KHÔNG lọc `deletedAt: null`: thiết bị trong thùng rác vẫn giữ mã trong
- * khoá duy nhất, cấp lại đúng mã đó là đâm thẳng vào lỗi trùng khoá.
+ * KHÔNG lọc `deletedAt`: thiết bị trong thùng rác vẫn giữ mã trong khoá duy nhất.
  */
-export async function maKeTiep(tienTo: string, db: PrismaTx = prisma): Promise<string> {
-  const cuoi = await db.asset.findFirst({
+async function soLonNhatDaDung(tienTo: string, db: PrismaTx): Promise<number> {
+  const ma = await db.asset.findMany({
     where: { code: { startsWith: tienTo } },
-    orderBy: { code: 'desc' },
     select: { code: true },
   });
-
-  let so = 1;
-  if (cuoi) {
-    const duoi = cuoi.code.slice(tienTo.length);
-    // Chỉ nhận đuôi TOÀN SỐ. Có người gõ tay "MUA-RB-0001-cu" thì bỏ qua, đừng
-    // để một mã lạ làm hỏng cả dãy đếm.
-    const n = /^\d+$/.test(duoi) ? Number(duoi) : Number.NaN;
-    so = Number.isFinite(n) ? n + 1 : 1;
+  let lon = 0;
+  for (const { code } of ma) {
+    const duoi = code.slice(tienTo.length);
+    if (/^\d+$/.test(duoi)) lon = Math.max(lon, Number(duoi));
   }
+  return lon;
+}
+
+/** Bộ đếm mã thiết bị dùng chung bảng `document_sequences`, năm = 0 (không theo năm). */
+const NAM_MA_THIET_BI = 0;
+
+function dinhDangMa(tienTo: string, so: number): string {
   return `${tienTo}${String(so).padStart(SO_CHU_SO, '0')}`;
 }
 
-/** Mã kế tiếp, tra viết tắt từ id của ba danh mục. */
-export async function maKeTiepTheoId(
+/**
+ * MÃ DỰ KIẾN để hiện trước trên form — KHÔNG giữ chỗ.
+ *
+ * Bằng đúng mã sẽ được cấp nếu không ai lưu chen vào trước; mã chính thức do
+ * `capMaThietBi` cấp lúc lưu.
+ */
+export async function maKeTiep(tienTo: string, db: PrismaTx = prisma): Promise<string> {
+  const [boDem, daDung] = await Promise.all([
+    db.documentSequence.findUnique({
+      where: { prefix_year: { prefix: tienTo, year: NAM_MA_THIET_BI } },
+      select: { lastNumber: true },
+    }),
+    soLonNhatDaDung(tienTo, db),
+  ]);
+  let so = Math.max(boDem?.lastNumber ?? 0, daDung) + 1;
+  // Bỏ qua mã đã có người gõ tay chen vào trước.
+  for (let i = 0; i < 1000; i++) {
+    const daCo = await db.asset.findUnique({
+      where: { code: dinhDangMa(tienTo, so) },
+      select: { id: true },
+    });
+    if (!daCo) break;
+    so++;
+  }
+  return dinhDangMa(tienTo, so);
+}
+
+/**
+ * CẤP MÃ CHÍNH THỨC — gọi TRONG transaction tạo thiết bị.
+ *
+ * Bộ đếm theo tiền tố, khoá dòng lúc tăng (UPDATE … +1 giữ khoá tới khi commit)
+ * nên hai người lưu cùng lúc xếp hàng, không bao giờ cùng nhận một số. Bộ đếm
+ * KHÔNG BAO GIỜ giảm: xoá hẳn một thiết bị không làm mã của nó bị cấp lại cho
+ * thiết bị khác — tem nhãn, nhật ký, file Excel cũ ghi mã đó vẫn chỉ đúng một
+ * thiết bị. Số chỉ tăng.
+ *
+ * Lần đầu gặp một tiền tố, bộ đếm được khởi tạo bằng số lớn nhất đang dùng,
+ * nên dãy nối tiếp đúng những gì đã có trong CSDL.
+ */
+export async function capMaThietBi(tx: PrismaTx, tienTo: string): Promise<string> {
+  for (let i = 0; i < 1000; i++) {
+    const so = await tangBoDem(tx, tienTo, NAM_MA_THIET_BI, () => soLonNhatDaDung(tienTo, tx));
+    const ma = dinhDangMa(tienTo, so);
+    // Bước qua mã đã có (gõ tay, nhập Excel) — khoá duy nhất vẫn là chốt cuối.
+    if (!(await tx.asset.findUnique({ where: { code: ma }, select: { id: true } }))) return ma;
+  }
+  throw new Error(`Không cấp được mã mới cho tiền tố ${tienTo}.`);
+}
+
+/**
+ * Mã gõ tay nằm trong dãy tự sinh (vd IPP-RB-0100) thì đẩy bộ đếm lên tới đó, để
+ * dãy tự sinh không bao giờ đuổi kịp rồi đâm vào nó.
+ */
+export async function dayBoDemQuaMa(tx: PrismaTx, tienTo: string, ma: string): Promise<void> {
+  const duoi = ma.slice(tienTo.length);
+  if (!ma.startsWith(tienTo) || !/^\d+$/.test(duoi)) return;
+  const n = Number(duoi);
+  await tx.documentSequence.createMany({
+    data: [{ prefix: tienTo, year: NAM_MA_THIET_BI, lastNumber: n }],
+    skipDuplicates: true,
+  });
+  await tx.documentSequence.updateMany({
+    where: { prefix: tienTo, year: NAM_MA_THIET_BI, lastNumber: { lt: n } },
+    data: { lastNumber: n },
+  });
+}
+
+/** Tiền tố mã của một tổ hợp, tra viết tắt từ id của ba danh mục. */
+export async function tienToTheoId(
   originId: string,
   categoryId: string,
   productLineId: string | null,
   db: PrismaTx = prisma,
-): Promise<{ ma: string; tienTo: string } | null> {
+): Promise<string | null> {
   const [ng, loai, dong] = await Promise.all([
     db.assetOrigin.findUnique({ where: { id: originId }, select: { vietTat: true } }),
     db.assetCategory.findUnique({ where: { id: categoryId }, select: { vietTat: true } }),
@@ -123,7 +199,17 @@ export async function maKeTiepTheoId(
   ]);
   if (!ng || !loai) return null;
   if (productLineId && !dong) return null;
+  return tienToMa(ng.vietTat, loai.vietTat, dong?.vietTat ?? null);
+}
 
-  const tienTo = tienToMa(ng.vietTat, loai.vietTat, dong?.vietTat ?? null);
+/** Mã DỰ KIẾN kế tiếp, tra viết tắt từ id của ba danh mục. */
+export async function maKeTiepTheoId(
+  originId: string,
+  categoryId: string,
+  productLineId: string | null,
+  db: PrismaTx = prisma,
+): Promise<{ ma: string; tienTo: string } | null> {
+  const tienTo = await tienToTheoId(originId, categoryId, productLineId, db);
+  if (!tienTo) return null;
   return { ma: await maKeTiep(tienTo, db), tienTo };
 }

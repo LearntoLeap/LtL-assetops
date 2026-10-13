@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, Loader2, ScanLine } from 'lucide-react';
 import {
   DS_TINH_TRANG,
@@ -18,7 +18,14 @@ import { ChupAnh } from '@/components/ChupAnh';
 import { NutQuetQR } from '@/components/QuetQR';
 import { goiApi, LoiApi } from '@/lib/api';
 import type { AnhDaTai } from '@/lib/anh';
-import type { DiaDiem, DongYeuCau, TrangDuLieu, YeuCau } from '@/lib/kieu';
+import type { DongYeuCau, NoiDen, TrangDuLieu, YeuCau } from '@/lib/kieu';
+
+/** Trạng thái thực hiện được — không còn bước duyệt (trùng máy chủ). */
+const CHO_THUC_HIEN = new Set(['BAN_NHAP', 'CHO_DUYET', 'DA_DUYET']);
+const LA_KHO = (loai: string): boolean => loai === 'KHO_VAN_PHONG' || loai === 'KHO_SU_KIEN';
+/** Giá trị ô "Nhận từ" ngoài danh mục điểm — máy chủ hiểu hai giá trị này. */
+const NGOAI = 'NGOAI';
+const NHAN_SU = 'NHAN_SU';
 
 /**
  * Màn hình XUẤT / NHẬP KHO — nơi hai chốt chặn gặp nhau.
@@ -48,12 +55,13 @@ interface TrangThaiDong {
 
 export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
   const { id } = useParams<{ id: string }>();
+  const [thamSo] = useSearchParams();
   const dieuHuong = useNavigate();
   const laXuat = che_do === 'xuat';
 
   const [yeuCau, datYeuCau] = useState<YeuCau | null>(null);
   const [dong, datDong] = useState<Record<string, TrangThaiDong>>({});
-  const [diaDiem, datDiaDiem] = useState<DiaDiem[]>([]);
+  const [diaDiem, datDiaDiem] = useState<NoiDen[]>([]);
   const [veLocationId, datVeLocationId] = useState('');
   const [tuLocationId, datTuLocationId] = useState('');
   const [ghiChuChung, datGhiChuChung] = useState('');
@@ -83,17 +91,32 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
             ]),
           ),
         );
-        if (!laXuat) {
-          const ds = await goiApi<TrangDuLieu<DiaDiem>>('/api/dia-diem?chiHoatDong=true');
-          datDiaDiem(ds.muc);
-          datVeLocationId(ds.muc.find((d) => d.type === 'KHO_VAN_PHONG')?.id ?? '');
+        // Danh sách NƠI (mã/tên/loại) chứ không phải danh sách theo phạm vi:
+        // nhân sự và tài khoản trường cũng phải chọn được kho nhận / kho lấy.
+        const ds = await goiApi<TrangDuLieu<NoiDen>>('/api/dia-diem/noi-den?chiHoatDong=true');
+        datDiaDiem(ds.muc);
+        const yc = kq.yeuCau;
+        if (laXuat) {
+          // Lấy từ đâu: theo phiếu nếu người lập đã chọn, không thì để máy tự chọn.
+          datTuLocationId(yc.fromLocation?.id ?? '');
+        } else {
+          datVeLocationId(
+            (yc.toLocation && LA_KHO(yc.toLocation.type) ? yc.toLocation.id : undefined) ??
+              ds.muc.find((d) => d.type === 'KHO_VAN_PHONG')?.id ??
+              '',
+          );
+          // Form lập phiếu truyền sang lựa chọn "Hàng mới" / "Nhân sự trả lại".
+          const nguon = thamSo.get('nguon');
+          datTuLocationId(
+            yc.fromLocation?.id ?? (nguon === NGOAI || nguon === NHAN_SU ? nguon : ''),
+          );
         }
       } catch (e) {
         datLoi(e instanceof LoiApi ? e.message : 'Không tải được yêu cầu.');
       }
     }
     void tai();
-  }, [id, laXuat]);
+  }, [id, laXuat, thamSo]);
 
   const dat = useCallback((assetId: string, thay: Partial<TrangThaiDong>) => {
     datDong((cu) => {
@@ -151,9 +174,9 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
         than: {
           muc,
           ...(laXuat ? {} : { veLocationId }),
-          // Chỉ gửi khi người ở kho tự chọn: để trống thì máy chủ tự suy ra
-          // nơi trả về, chỉ đòi chọn khi cùng một mã đang nằm ở nhiều nơi.
-          ...(laXuat || !tuLocationId ? {} : { tuLocationId }),
+          // Chỉ gửi khi có chọn: để trống thì máy chủ tự xác định theo tồn
+          // thật, chỉ đòi chọn khi cùng một mã đang nằm ở nhiều nơi.
+          ...(tuLocationId ? { tuLocationId } : {}),
           ...(ghiChuChung ? { ghiChu: ghiChuChung } : {}),
         },
       });
@@ -180,7 +203,7 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
   }
   if (!yeuCau) return <p className="text-sm text-muted-foreground">Đang tải…</p>;
 
-  if (yeuCau.status !== 'DA_DUYET') {
+  if (!CHO_THUC_HIEN.has(yeuCau.status)) {
     return (
       <div className="space-y-4">
         <Button variant="ghost" asChild>
@@ -189,13 +212,19 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
             Về chi tiết yêu cầu
           </Link>
         </Button>
-        <Alert variant="warning" tieuDe="Yêu cầu chưa ở trạng thái Đã duyệt">
-          Không thứ gì rời kho khi yêu cầu chưa được duyệt. Yêu cầu này đang ở trạng thái khác nên
-          màn hình kho không mở được.
+        <Alert variant="warning" tieuDe="Phiếu này đã thực hiện hoặc đã bị huỷ">
+          Mỗi phiếu chỉ xuất / nhập kho một lần. Xem trạng thái và biên bản ở trang chi tiết phiếu.
         </Alert>
       </div>
     );
   }
+
+  // Ô "Lấy từ" khi xuất: các kho, cộng thêm nơi đi ghi trên phiếu (vd trường
+  // gửi của phiếu luân chuyển) nếu nó không phải kho.
+  const noiLay = diaDiem.filter(
+    (d) => LA_KHO(d.type) || d.id === yeuCau.fromLocation?.id,
+  );
+  const laLuanChuyen = yeuCau.type === 'LUAN_CHUYEN_TRUONG';
 
   return (
     <div className="space-y-4">
@@ -210,9 +239,48 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
           {laXuat ? 'Xuất kho' : 'Nhập kho'} — <span className="font-mono">{yeuCau.code}</span>
         </h1>
         <p className="text-muted-foreground">
-          {NHAN_LOAI_YEU_CAU[yeuCau.type]} · {yeuCau.toLocation?.name ?? yeuCau.destinationNote ?? 'Không có nơi đến'}
+          {NHAN_LOAI_YEU_CAU[yeuCau.type]}
+          {yeuCau.fromLocation ? ` · từ ${yeuCau.fromLocation.name}` : ''}
+          {' → '}
+          {yeuCau.toLocation?.name ??
+            yeuCau.destinationNote ??
+            (yeuCau.type === 'CHO_MUON' ? `nhân sự ${yeuCau.createdBy.fullName}` : 'kho')}
         </p>
       </div>
+
+      {yeuCau.note ? (
+        <Alert variant="info" tieuDe="Ghi chú của phiếu">
+          <span className="whitespace-pre-wrap">{yeuCau.note}</span>
+        </Alert>
+      ) : null}
+
+      {laXuat ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{laLuanChuyen ? 'Trường gửi' : 'Lấy hàng từ'}</CardTitle>
+            <CardDescription>
+              Tồn ở nơi này bị trừ ngay khi hoàn tất. Để trống thì hệ thống tự lấy ở kho còn đủ
+              hàng; chỉ phải chọn khi nhiều kho cùng có.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="max-w-md">
+            <Select
+              id="k-lay-tu"
+              aria-label="Lấy hàng từ"
+              value={tuLocationId}
+              onChange={(su) => datTuLocationId(su.target.value)}
+              disabled={laLuanChuyen && Boolean(yeuCau.fromLocation)}
+            >
+              <option value="">— Để hệ thống tự chọn kho —</option>
+              {noiLay.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Alert variant="info" tieuDe="Mỗi thiết bị cần đủ hai bước">
         <span className="inline-flex items-center gap-1">
@@ -257,13 +325,15 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
                 cùng một mã hàng lẻ đang nằm ở nhiều nơi: lúc đó không có cách
                 nào biết lô này về từ trường nào, đoán là trừ nhầm kho người khác. */}
             <div className="space-y-1.5">
-              <Label htmlFor="k-tu-dau">Trả về từ</Label>
+              <Label htmlFor="k-tu-dau">Nhận từ</Label>
               <Select
                 id="k-tu-dau"
                 value={tuLocationId}
                 onChange={(su) => datTuLocationId(su.target.value)}
               >
-                <option value="">— Để hệ thống tự xác định —</option>
+                <option value="">— Theo phiếu / hệ thống tự xác định —</option>
+                <option value={NGOAI}>Hàng mới / từ bên ngoài (mua, tặng…)</option>
+                <option value={NHAN_SU}>Nhân sự trả lại hàng đã mượn</option>
                 {diaDiem
                   .filter((d) => d.id !== veLocationId)
                   .map((d) => (
@@ -273,7 +343,8 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
                   ))}
               </Select>
               <p className="text-xs text-muted-foreground">
-                Chỉ cần chọn khi hệ thống báo không rõ hàng trả về từ đâu.
+                Hàng về từ trường / đối tác / kho khác thì nơi đó bị trừ đúng số nhận về. Nhân sự
+                trả lại thì giảm số &ldquo;đang mượn&rdquo;. Hàng mới thì chỉ cộng vào kho nhận.
               </p>
             </div>
           </CardContent>
@@ -375,8 +446,8 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
                       </div>
                       {soLuongVuot ? (
                         <p className="text-sm text-destructive-dam">
-                          Yêu cầu chỉ được duyệt <strong>{m.quantity}</strong>. Muốn lấy thêm thì
-                          lập yêu cầu mới — máy chủ cũng chặn y như vậy.
+                          Phiếu chỉ ghi <strong>{m.quantity}</strong>. Muốn lấy thêm thì lập phiếu
+                          mới — máy chủ cũng chặn y như vậy.
                         </p>
                       ) : null}
                       {tenQuaNgan ? (
@@ -392,6 +463,7 @@ export function ManHinhKho({ che_do }: { che_do: 'xuat' | 'nhap' }) {
                     <ChupAnh
                       kind={laXuat ? 'ANH_XUAT' : 'ANH_NHAN'}
                       assetId={m.asset.id}
+                      requestId={yeuCau.id}
                       anh={t?.anh ?? []}
                       onDoiAnh={(anh) => dat(m.asset.id, { anh })}
                       moTa={

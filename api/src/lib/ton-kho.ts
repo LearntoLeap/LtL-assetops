@@ -276,16 +276,17 @@ export async function hangDangTrenDuong(
   const ids = Prisma.join(assetIds.map((x) => Prisma.sql`${x}`));
   const dong = await db.$queryRaw<Array<{ asset_id: string; location_id: string; so: unknown }>>(Prisma.sql`
     SELECT dong.asset_id AS asset_id,
-           ts.current_location_id AS location_id,
+           COALESCE(yc.from_location_id, ts.current_location_id) AS location_id,
            SUM(COALESCE(dong.issued_quantity, dong.quantity)) AS so
       FROM request_items dong
       JOIN requests yc ON yc.id = dong.request_id
       JOIN assets ts ON ts.id = dong.asset_id AND ts.deleted_at IS NULL
      WHERE dong.asset_id IN (${ids})
        AND yc.status = 'DA_XUAT'
+       AND yc.deleted_at IS NULL
        AND yc.type IN ('PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG')
-       AND ts.current_location_id IS NOT NULL
-     GROUP BY dong.asset_id, ts.current_location_id
+       AND COALESCE(yc.from_location_id, ts.current_location_id) IS NOT NULL
+     GROUP BY dong.asset_id, COALESCE(yc.from_location_id, ts.current_location_id)
   `);
   const ra = new Map<string, Array<{ locationId: string; soLuong: number }>>();
   for (const d of dong) {
@@ -314,7 +315,7 @@ export async function hangDangTrenDuong(
 export async function hangDangDiTatCa(db: PrismaTx = prisma): Promise<TonTheoDiaDiem[]> {
   const dong = await db.$queryRaw<DongTho[]>(Prisma.sql`
     SELECT dong.asset_id AS asset_id,
-           ts.current_location_id AS location_id,
+           COALESCE(yc.from_location_id, ts.current_location_id) AS location_id,
            SUM(COALESCE(dong.issued_quantity, dong.quantity)) AS ton
       FROM request_items dong
       JOIN requests yc ON yc.id = dong.request_id
@@ -322,8 +323,8 @@ export async function hangDangDiTatCa(db: PrismaTx = prisma): Promise<TonTheoDia
      WHERE yc.status = 'DA_XUAT'
        AND yc.deleted_at IS NULL
        AND yc.type IN ('PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG')
-       AND ts.current_location_id IS NOT NULL
-     GROUP BY dong.asset_id, ts.current_location_id
+       AND COALESCE(yc.from_location_id, ts.current_location_id) IS NOT NULL
+     GROUP BY dong.asset_id, COALESCE(yc.from_location_id, ts.current_location_id)
     HAVING SUM(COALESCE(dong.issued_quantity, dong.quantity)) <> 0
   `);
   return dong.map(doiDong);

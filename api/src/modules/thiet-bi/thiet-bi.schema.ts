@@ -44,7 +44,18 @@ export const luocDoTaoNhanhThietBi = z.object({
   nhapVeLocationId: z.string().trim().min(1, 'Chưa chọn nơi nhập về.').max(30),
   /** Mã/serial của hãng cung cấp, nếu vỏ hộp có in. */
   vendorCode: z.string().trim().max(191).optional(),
-  soLuongNhap: z.coerce.number().int().min(1).max(1_000_000).default(1),
+  /**
+   * 0 = CHỈ THÊM VÀO DANH MỤC, chưa cộng tồn — dùng khi lập phiếu NHẬP KHO cho
+   * hàng lẻ chưa có mã: số lượng vào kho do chính phiếu nhập ghi, cộng ở đây nữa
+   * là tính hai lần. Chỉ hàng lẻ mới được 0 (kiểm ở refine bên dưới).
+   */
+  soLuongNhap: z.coerce.number().int().min(0).max(1_000_000).default(1),
+  /**
+   * Kiểu quản lý. Bỏ trống thì suy theo số lượng (1 → từng bộ, >1 → hàng lẻ).
+   * Thêm HÀNG LẺ ngay trong phiếu thì gửi SO_LUONG dù chỉ có 1 cái — sách, cờ
+   * vẫn là hàng lẻ dù hôm nay chỉ nhập một quyển.
+   */
+  trackingType: z.enum(['DON_VI', 'SO_LUONG']).optional(),
   /**
    * Bỏ trống thì service tự lấy mục đích mã XHH. Tạo nhanh là lúc đang gấp,
    * không bắt chọn thêm một ô nữa.
@@ -56,6 +67,9 @@ export const luocDoTaoNhanhThietBi = z.object({
     .min(1, 'Bắt buộc chụp ít nhất một ảnh thiết bị khi tạo nhanh.')
     .max(5),
   note: z.string().trim().max(5000).optional(),
+}).refine((v) => v.soLuongNhap > 0 || v.trackingType === 'SO_LUONG', {
+  message: 'Chỉ hàng lẻ mới được thêm vào danh mục với số lượng 0.',
+  path: ['soLuongNhap'],
 });
 export type DuLieuTaoNhanhThietBi = z.infer<typeof luocDoTaoNhanhThietBi>;
 

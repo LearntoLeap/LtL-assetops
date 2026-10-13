@@ -8,7 +8,7 @@
  * Toàn bộ đều lọc theo PHẠM VI VAI TRÒ: điểm trường chỉ thấy số của trường mình,
  * nhân sự chỉ thấy thiết bị mình đang giữ. Gọi thẳng API cũng không ra ngoài được.
  */
-import type { LocationType, Prisma } from '@prisma/client';
+import { Prisma, type LocationType } from '@prisma/client';
 import {
   NHAN_TINH_TRANG,
   NHAN_TRANG_THAI_PHAN_BO,
@@ -22,7 +22,6 @@ import {
   dieuKienTaiSan,
   dieuKienYeuCau,
   phamViCua,
-  YEU_CAU_CON_SONG,
   BIEN_BAN_CON_SONG,
 } from '../../lib/pham-vi.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
@@ -44,6 +43,87 @@ const LOAI_KHO = new Set<LocationType>(['KHO_VAN_PHONG']);
 const LOAI_SU_KIEN = new Set<LocationType>(['KHO_SU_KIEN']);
 const LOAI_DOI_TAC = new Set<LocationType>(['DOI_TAC_MUON']);
 
+/** Phiếu đưa hàng ra / đưa hàng về — để đếm việc đang chờ xuất / nhập kho. */
+const LOAI_PHIEU_XUAT = ['XUAT_KHO', 'CHO_MUON', 'PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG'] as const;
+const LOAI_PHIEU_NHAP = ['NHAP_KHO', 'TRA_VE_KHO'] as const;
+/** Không còn bước duyệt: phiếu ở các trạng thái này là "chờ thực hiện". */
+const TRANG_THAI_CHO_THUC_HIEN = ['BAN_NHAP', 'CHO_DUYET', 'DA_DUYET'] as const;
+
+/*
+ * PHẠM VI CỦA SỐ LIỆU TỔNG (chỉ con số, không mở thêm quyền sửa gì).
+ *
+ * Tài khoản trường: chỉ trường mình — như cũ. Nhân sự: TOÀN HỆ THỐNG. Trước đây
+ * nhân sự chỉ "thấy" thiết bị mình đang giữ, mà mượn nội bộ thì thiết bị không
+ * nằm ở điểm nào, nên mọi ô trên trang chủ của nhân sự luôn là 0 — xuất / nhập
+ * bao nhiêu cũng không đổi. Giờ nhân sự tự lập phiếu và tự xuất kho, cần thấy
+ * kho còn bao nhiêu như mọi người.
+ */
+function taiSanSoLieu(nguoiDung: NguoiDungDaXacThuc): Prisma.AssetWhereInput {
+  return nguoiDung.role === 'NHAN_SU' ? { deletedAt: null } : dieuKienTaiSan(nguoiDung);
+}
+
+function diemSoLieu(nguoiDung: NguoiDungDaXacThuc): Prisma.LocationWhereInput {
+  return nguoiDung.role === 'NHAN_SU' ? { deletedAt: null } : dieuKienDiaDiem(nguoiDung);
+}
+
+/** Biên bản chờ xác nhận — theo phạm vi, khớp với danh sách mở ra khi bấm vào. */
+function bienBanSoLieu(nguoiDung: NguoiDungDaXacThuc): Prisma.HandoverNoteWhereInput {
+  const pv = phamViCua(nguoiDung);
+  if (pv.toanBoKho) return BIEN_BAN_CON_SONG;
+  if (pv.diaDiem) {
+    const ds = [...pv.diaDiem];
+    return {
+      deletedAt: null,
+      OR: [
+        { receiverLocationId: { in: ds } },
+        { request: { fromLocationId: { in: ds } } },
+        { request: { createdById: nguoiDung.id } },
+      ],
+    };
+  }
+  return {
+    deletedAt: null,
+    OR: [{ createdById: nguoiDung.id }, { request: { createdById: nguoiDung.id } }],
+  };
+}
+
+/** Ngày theo GIỜ VIỆT NAM dạng NĂM-THÁNG-NGÀY. */
+const DINH_DANG_NGAY_VN = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Ho_Chi_Minh',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/**
+ * Đầu ngày (0 giờ Việt Nam) của ngày cách hôm nay `soNgay - 1` ngày. Trước đây
+ * lấy 0 giờ UTC, tức 7 giờ sáng ở Việt Nam: việc xuất kho lúc 6 giờ sáng bị tính
+ * sang hôm trước, và cửa sổ "7 ngày" hụt mất 7 tiếng đầu.
+ */
+function dauKyVN(soNgay: number, bayGio: Date = new Date()): Date {
+  const ngay = DINH_DANG_NGAY_VN.format(new Date(bayGio.getTime() - (soNgay - 1) * 86_400_000));
+  return new Date(`${ngay}T00:00:00+07:00`);
+}
+
+/** Tồn một điểm, tách bộ / lẻ, đã trừ hàng đang trên đường đi khỏi điểm đó. */
+export interface DongTonDiem {
+  id: string;
+  ten: string;
+  loai: LocationType;
+  bo: number;
+  le: number;
+  dangDiBo: number;
+  dangDiLe: number;
+}
+
+/** Tăng / giảm trong kỳ của một ô, tách bộ / lẻ. */
+export interface TangGiam {
+  bo: { tang: number; giam: number };
+  le: { tang: number; giam: number };
+}
+
+export type GioBienDong = 'taiKho' | 'oTruong' | 'oSuKien' | 'oDoiTac' | 'dangChuyen' | 'nhanSu';
+
 export interface DongDem {
   ma: string;
   nhan: string;
@@ -55,6 +135,11 @@ export interface DongRaVao {
   ngay: string;
   vao: number;
   ra: number;
+  /** Tách bộ / hàng lẻ — cộng sách với robot thành một cột là vô nghĩa. */
+  vaoBo: number;
+  raBo: number;
+  vaoLe: number;
+  raLe: number;
 }
 
 /**
@@ -101,6 +186,16 @@ export interface SoLieuNhanh {
   yeuCauChoDuyet: number;
   yeuCauChoXuat: number;
   bienBanChoXacNhan: number;
+  /** Phiếu đang chờ XUẤT kho / chờ NHẬP kho — không còn bước duyệt. Theo phạm vi. */
+  choXuatKho: number;
+  choNhapKho: number;
+  /** Hàng nhân sự đang mượn (đã ra khỏi kho, chưa trả): bộ đếm số bộ, lẻ cộng số lượng. */
+  nhanSuGiu: DemTachLoai;
+  /** Số MÃ theo kiểu quản lý. */
+  soMaBo: number;
+  soMaLe: number;
+  /** Tồn TỪNG ĐIỂM (mỗi kho, mỗi trường…), tách bộ / lẻ. */
+  theoDiem: DongTonDiem[];
 }
 
 /**
@@ -115,7 +210,8 @@ export interface SoLieuNhanh {
 function dieuKienBuocDiChuyen(nguoiDung: NguoiDungDaXacThuc): Prisma.MovementWhereInput {
   const pv = phamViCua(nguoiDung);
   const conSong: Prisma.MovementWhereInput = { asset: { deletedAt: null } };
-  if (pv.toanBoKho) return conSong;
+  // Nhân sự xem số liệu toàn hệ thống (xem `taiSanSoLieu`).
+  if (pv.toanBoKho || nguoiDung.role === 'NHAN_SU') return conSong;
   if (pv.diaDiem) {
     const diaDiem = [...pv.diaDiem];
     return {
@@ -128,9 +224,7 @@ function dieuKienBuocDiChuyen(nguoiDung: NguoiDungDaXacThuc): Prisma.MovementWhe
 }
 
 function ngayISO(d: Date): string {
-  const thang = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const ngay = String(d.getUTCDate()).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${thang}-${ngay}`;
+  return DINH_DANG_NGAY_VN.format(d);
 }
 
 /**
@@ -142,6 +236,8 @@ function ngayISO(d: Date): string {
  * vi, nhưng sai địa điểm.
  */
 async function tonTrongPhamVi(nguoiDung: NguoiDungDaXacThuc): Promise<{
+  /** Các điểm thuộc phạm vi. */
+  coDiem: Set<string>;
   theoDiem: Map<string, number>;
   tongTheoTaiSan: Map<string, number>;
   /** Cùng dữ liệu nhưng tách bộ / lẻ theo từng điểm. */
@@ -154,11 +250,17 @@ async function tonTrongPhamVi(nguoiDung: NguoiDungDaXacThuc): Promise<{
   const [ton, dangDi, taiSanTrongPhamVi, diemTrongPhamVi] = await Promise.all([
     tonTatCa(),
     hangDangDiTatCa(),
+    /*
+     * MỌI thiết bị còn sống — phạm vi do ĐIỂM quyết định, không do thiết bị.
+     * Trước đây lọc thiết bị theo cột vị trí hiện tại, mà hàng lẻ chia một phần
+     * về trường thì cột vị trí vẫn là kho: trường nhận 30 quyển sách mà trang
+     * chủ của trường không hiện quyển nào.
+     */
     prisma.asset.findMany({
-      where: dieuKienTaiSan(nguoiDung),
+      where: { deletedAt: null },
       select: { id: true, trackingType: true },
     }),
-    prisma.location.findMany({ where: dieuKienDiaDiem(nguoiDung), select: { id: true } }),
+    prisma.location.findMany({ where: diemSoLieu(nguoiDung), select: { id: true } }),
   ]);
   const kieu = new Map(taiSanTrongPhamVi.map((t) => [t.id, t.trackingType]));
   const coDiem = new Set(diemTrongPhamVi.map((d) => d.id));
@@ -193,12 +295,29 @@ async function tonTrongPhamVi(nguoiDung: NguoiDungDaXacThuc): Promise<{
     else tach.le += d.ton;
     tachDangDiTheoDiem.set(d.locationId, tach);
   }
-  return { theoDiem, tongTheoTaiSan, tachTheoDiem, tachDangDiTheoDiem, dangDiTheoDiem };
+  return { coDiem, theoDiem, tongTheoTaiSan, tachTheoDiem, tachDangDiTheoDiem, dangDiTheoDiem };
+}
+
+/**
+ * HÀNG NHÂN SỰ ĐANG MƯỢN theo từng mã: Σ cho mượn (ra khỏi hệ thống) − Σ trả về
+ * (từ người mượn). Không cần cột riêng: mỗi lần mượn / trả đều là một bút toán.
+ */
+async function hangNhanSuGiu(): Promise<Map<string, number>> {
+  const dong = await prisma.$queryRaw<Array<{ asset_id: string; so: unknown }>>(Prisma.sql`
+    SELECT m.asset_id AS asset_id,
+           SUM(CASE WHEN m.type = 'CHO_MUON' THEN m.quantity ELSE -m.quantity END) AS so
+      FROM movements m
+     WHERE (m.type = 'CHO_MUON' AND m.to_location_id IS NULL)
+        OR (m.type = 'TRA_VE_KHO' AND m.from_location_id IS NULL)
+     GROUP BY m.asset_id
+  `);
+  return new Map(dong.map((d) => [d.asset_id, Math.max(0, Number(d.so))]));
 }
 
 export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieuNhanh> {
-  const dieuKien = dieuKienTaiSan(nguoiDung);
+  const dieuKien = taiSanSoLieu(nguoiDung);
   const bayGio = new Date();
+  const pvYeuCau = dieuKienYeuCau(nguoiDung);
 
   const [
     soMa,
@@ -212,6 +331,12 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
     choDuyet,
     choXuat,
     choXacNhan,
+    choXuatKho,
+    choNhapKho,
+    soMaBo,
+    boNhanSuGiu,
+    leNhanSu,
+    leHangLe,
   ] =
     await Promise.all([
       prisma.asset.count({ where: { ...dieuKien, isActive: true } }),
@@ -226,18 +351,50 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
       }),
       prisma.asset.count({ where: { ...dieuKien, condition: { in: ['HONG', 'MAT'] } } }),
       prisma.asset.count({ where: { ...dieuKien, condition: 'CAN_BAO_TRI' } }),
-      prisma.location.findMany({ select: { id: true, type: true } }),
+      prisma.location.findMany({ select: { id: true, type: true, name: true } }),
       tonTrongPhamVi(nguoiDung),
       // Phiếu và biên bản ĐÃ XOÁ không được cộng vào việc-đang-chờ: bấm vào
       // con số mà danh sách trống thì người dùng không biết tin cái nào.
       prisma.request.count({
-        where: { ...YEU_CAU_CON_SONG, status: 'CHO_DUYET', type: { not: 'BAO_HONG' } },
+        where: { AND: [pvYeuCau, { status: 'CHO_DUYET', type: { not: 'BAO_HONG' } }] },
       }),
       prisma.request.count({
-        where: { ...YEU_CAU_CON_SONG, status: 'DA_DUYET', type: { not: 'BAO_HONG' } },
+        where: { AND: [pvYeuCau, { status: 'DA_DUYET', type: { not: 'BAO_HONG' } }] },
       }),
-      prisma.handoverNote.count({ where: { ...BIEN_BAN_CON_SONG, status: 'CHO_XAC_NHAN' } }),
+      prisma.handoverNote.count({
+        where: { AND: [bienBanSoLieu(nguoiDung), { status: 'CHO_XAC_NHAN' }] },
+      }),
+      prisma.request.count({
+        where: {
+          AND: [
+            pvYeuCau,
+            { status: { in: [...TRANG_THAI_CHO_THUC_HIEN] }, type: { in: [...LOAI_PHIEU_XUAT] } },
+          ],
+        },
+      }),
+      prisma.request.count({
+        where: {
+          AND: [
+            pvYeuCau,
+            { status: { in: [...TRANG_THAI_CHO_THUC_HIEN] }, type: { in: [...LOAI_PHIEU_NHAP] } },
+          ],
+        },
+      }),
+      prisma.asset.count({ where: { ...dieuKien, isActive: true, trackingType: 'DON_VI' } }),
+      prisma.asset.count({
+        where: { ...dieuKien, trackingType: 'DON_VI', allocationStatus: 'CHO_MUON' },
+      }),
+      // Trường không có hàng nhân sự mượn — hàng đó đã ra khỏi mọi điểm.
+      nguoiDung.role === 'TRUONG' ? Promise.resolve(new Map<string, number>()) : hangNhanSuGiu(),
+      prisma.asset.findMany({
+        where: { deletedAt: null, trackingType: 'SO_LUONG' },
+        select: { id: true },
+      }),
     ]);
+
+  const laHangLe = new Set(leHangLe.map((a) => a.id));
+  const nhanSuGiu: DemTachLoai = { bo: boNhanSuGiu, le: 0 };
+  for (const [id, sl] of leNhanSu) if (laHangLe.has(id)) nhanSuGiu.le += sl;
 
   const laKho = new Set(diem.filter((d) => LOAI_KHO.has(d.type)).map((d) => d.id));
   const laTruong = new Set(diem.filter((d) => d.type === 'DIEM_TRUONG').map((d) => d.id));
@@ -265,7 +422,25 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
    * ở trường. Cộng ba giỏ lại vẫn đúng bằng tổng tồn.
    */
   const moiDiem = new Set([...ton.theoDiem.keys(), ...ton.dangDiTheoDiem.keys()]);
+  const thongTinDiem = new Map(diem.map((d) => [d.id, d]));
+  const theoDiem: DongTonDiem[] = [];
   for (const idDiem of moiDiem) {
+    {
+      const t = ton.tachTheoDiem.get(idDiem) ?? { bo: 0, le: 0 };
+      const td = ton.tachDangDiTheoDiem.get(idDiem) ?? { bo: 0, le: 0 };
+      const d = thongTinDiem.get(idDiem);
+      if (d && (t.bo !== 0 || t.le !== 0 || td.bo !== 0 || td.le !== 0)) {
+        theoDiem.push({
+          id: idDiem,
+          ten: d.name,
+          loai: d.type,
+          bo: t.bo - td.bo,
+          le: t.le - td.le,
+          dangDiBo: td.bo,
+          dangDiLe: td.le,
+        });
+      }
+    }
     const so = ton.theoDiem.get(idDiem) ?? 0;
     const tach = ton.tachTheoDiem.get(idDiem) ?? { bo: 0, le: 0 };
     const di = ton.dangDiTheoDiem.get(idDiem) ?? 0;
@@ -306,8 +481,27 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
     yeuCauChoDuyet: choDuyet,
     yeuCauChoXuat: choXuat,
     bienBanChoXacNhan: choXacNhan,
+    choXuatKho,
+    choNhapKho,
+    nhanSuGiu,
+    soMaBo,
+    soMaLe: soMa - soMaBo,
+    // Kho trước, rồi trường, rồi các điểm khác; trong mỗi nhóm điểm nhiều hàng lên trên.
+    theoDiem: theoDiem.sort(
+      (a, b) =>
+        THU_TU_LOAI_DIEM[a.loai] - THU_TU_LOAI_DIEM[b.loai] ||
+        b.bo + b.le - (a.bo + a.le) ||
+        a.ten.localeCompare(b.ten, 'vi'),
+    ),
   };
 }
+
+const THU_TU_LOAI_DIEM: Record<LocationType, number> = {
+  KHO_VAN_PHONG: 0,
+  KHO_SU_KIEN: 1,
+  DIEM_TRUONG: 2,
+  DOI_TAC_MUON: 3,
+};
 
 export interface DuLieuDashboard {
   soLieu: SoLieuNhanh;
@@ -329,6 +523,12 @@ export interface DuLieuDashboard {
   /** Bộ (quản lý theo đơn vị) và hàng lẻ (quản lý theo số lượng) — tách hẳn. */
   theoKieuQuanLy: DongDem[];
   raVao: DongRaVao[];
+  /**
+   * TĂNG / GIẢM TRONG KỲ của từng ô (tại kho, ở trường, đang chuyển…), tách bộ
+   * / lẻ. Số tuyệt đối không nói được hôm nay kho vừa ra bao nhiêu; ô này nói.
+   */
+  bienDong: Record<GioBienDong, TangGiam>;
+  soNgay: number;
   quaHan: Array<{
     id: string;
     code: string;
@@ -361,12 +561,11 @@ export async function dashboard(
   nguoiDung: NguoiDungDaXacThuc,
   soNgay: number,
 ): Promise<DuLieuDashboard> {
-  const dieuKien = dieuKienTaiSan(nguoiDung);
+  const dieuKien = taiSanSoLieu(nguoiDung);
   const bayGio = new Date();
-  const tuNgay = new Date(bayGio.getTime() - (soNgay - 1) * 86_400_000);
-  tuNgay.setUTCHours(0, 0, 0, 0);
+  const tuNgay = dauKyVN(soNgay, bayGio);
 
-  const [soLieu, ton, taiSan, diem, buoc, quaHanTho, hongTho, kiemKe] = await Promise.all([
+  const [soLieu, ton, taiSan, diem, buoc, quaHanTho, hongTho, kiemKe, phatHanh] = await Promise.all([
     soLieuNhanh(nguoiDung),
     tonTrongPhamVi(nguoiDung),
     prisma.asset.findMany({
@@ -383,7 +582,14 @@ export async function dashboard(
     prisma.location.findMany({ select: { id: true, name: true, type: true } }),
     prisma.movement.findMany({
       where: { ...dieuKienBuocDiChuyen(nguoiDung), performedAt: { gte: tuNgay } },
-      select: { performedAt: true, quantity: true, fromLocationId: true, toLocationId: true },
+      select: {
+        performedAt: true,
+        quantity: true,
+        type: true,
+        fromLocationId: true,
+        toLocationId: true,
+        asset: { select: { trackingType: true } },
+      },
     }),
     prisma.asset.findMany({
       where: {
@@ -426,6 +632,26 @@ export async function dashboard(
         items: { select: { systemQuantity: true, countedQuantity: true } },
       },
     }),
+    // Hàng phân bổ / luân chuyển XUẤT trong kỳ: rời nơi gửi, sang "đang chuyển"
+    // (bút toán chỉ ghi lúc bên nhận xác nhận). Phiếu bị huỷ không tính — coi
+    // như chưa từng đi.
+    prisma.requestItem.findMany({
+      where: {
+        asset: { deletedAt: null },
+        request: {
+          deletedAt: null,
+          type: { in: ['PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG'] },
+          status: { in: ['DA_XUAT', 'DA_HOAN_TAT'] },
+          issuedAt: { gte: tuNgay },
+        },
+      },
+      select: {
+        quantity: true,
+        issuedQuantity: true,
+        asset: { select: { trackingType: true, currentLocationId: true } },
+        request: { select: { fromLocationId: true } },
+      },
+    }),
   ]);
 
   // Đếm theo loại và theo dòng giải pháp — theo SỐ MÃ, không cộng đơn vị, vì
@@ -465,17 +691,75 @@ export async function dashboard(
 
   // Ra/vào theo ngày: "vào" là bút toán có điểm đến, "ra" là bút toán có điểm đi.
   // Một lần luân chuyển nội bộ tính cả hai đầu — đúng nghĩa lưu lượng của kho.
-  const theoNgay = new Map<string, { vao: number; ra: number }>();
+  // Chỉ tính đầu NẰM TRONG PHẠM VI: trước đây trường nhận hàng từ kho thì biểu
+  // đồ của trường hiện cả "vào" lẫn "ra" cho cùng một lần.
+  const theoNgay = new Map<string, Omit<DongRaVao, 'ngay'>>();
   for (let i = 0; i < soNgay; i++) {
-    const d = new Date(tuNgay.getTime() + i * 86_400_000);
-    theoNgay.set(ngayISO(d), { vao: 0, ra: 0 });
+    const d = new Date(tuNgay.getTime() + i * 86_400_000 + 12 * 3_600_000);
+    theoNgay.set(ngayISO(d), { vao: 0, ra: 0, vaoBo: 0, raBo: 0, vaoLe: 0, raLe: 0 });
   }
   for (const b of buoc) {
-    const khoa = ngayISO(b.performedAt);
-    const o = theoNgay.get(khoa);
+    const o = theoNgay.get(ngayISO(b.performedAt));
     if (!o) continue;
-    if (b.toLocationId) o.vao += b.quantity;
-    if (b.fromLocationId) o.ra += b.quantity;
+    const laBo = b.asset.trackingType === 'DON_VI';
+    if (b.toLocationId && ton.coDiem.has(b.toLocationId)) {
+      o.vao += b.quantity;
+      if (laBo) o.vaoBo += b.quantity;
+      else o.vaoLe += b.quantity;
+    }
+    if (b.fromLocationId && ton.coDiem.has(b.fromLocationId)) {
+      o.ra += b.quantity;
+      if (laBo) o.raBo += b.quantity;
+      else o.raLe += b.quantity;
+    }
+  }
+
+  // --- TĂNG / GIẢM TRONG KỲ theo từng ô -------------------------------------
+  const loaiDiem = new Map(diem.map((d) => [d.id, d.type]));
+  const gioCuaDiem = (id: string | null): GioBienDong | null => {
+    if (!id || !ton.coDiem.has(id)) return null;
+    const l = loaiDiem.get(id);
+    if (l === 'KHO_VAN_PHONG') return 'taiKho';
+    if (l === 'DIEM_TRUONG') return 'oTruong';
+    if (l === 'KHO_SU_KIEN') return 'oSuKien';
+    if (l === 'DOI_TAC_MUON') return 'oDoiTac';
+    return null;
+  };
+  const taoTangGiam = (): TangGiam => ({ bo: { tang: 0, giam: 0 }, le: { tang: 0, giam: 0 } });
+  const bienDong: Record<GioBienDong, TangGiam> = {
+    taiKho: taoTangGiam(),
+    oTruong: taoTangGiam(),
+    oSuKien: taoTangGiam(),
+    oDoiTac: taoTangGiam(),
+    dangChuyen: taoTangGiam(),
+    nhanSu: taoTangGiam(),
+  };
+  const cong = (gio: GioBienDong | null, laBo: boolean, chieu: 'tang' | 'giam', sl: number) => {
+    if (!gio || sl <= 0) return;
+    bienDong[gio][laBo ? 'bo' : 'le'][chieu] += sl;
+  };
+  const xemNhanSu = nguoiDung.role !== 'TRUONG';
+  for (const b of buoc) {
+    const laBo = b.asset.trackingType === 'DON_VI';
+    const luongC = b.type === 'PHAN_BO' || b.type === 'LUAN_CHUYEN';
+    if (b.fromLocationId) {
+      // Phân bổ / luân chuyển: hàng đã rời nơi gửi từ lúc xuất (tính ở dưới), bút
+      // toán lúc xác nhận chỉ đưa nó ra khỏi ô "đang chuyển".
+      const gio = gioCuaDiem(b.fromLocationId);
+      cong(luongC ? (gio ? 'dangChuyen' : null) : gio, laBo, 'giam', b.quantity);
+    } else if (b.type === 'TRA_VE_KHO' && xemNhanSu) {
+      cong('nhanSu', laBo, 'giam', b.quantity);
+    }
+    if (b.toLocationId) cong(gioCuaDiem(b.toLocationId), laBo, 'tang', b.quantity);
+    else if (b.type === 'CHO_MUON' && xemNhanSu) cong('nhanSu', laBo, 'tang', b.quantity);
+  }
+  for (const m of phatHanh) {
+    const laBo = m.asset.trackingType === 'DON_VI';
+    const sl = m.issuedQuantity ?? m.quantity;
+    const gio = gioCuaDiem(m.request.fromLocationId ?? m.asset.currentLocationId);
+    if (!gio) continue;
+    cong(gio, laBo, 'giam', sl);
+    cong('dangChuyen', laBo, 'tang', sl);
   }
 
   const mucLech = (kiemKe?.items ?? [])
@@ -509,7 +793,9 @@ export async function dashboard(
       { ma: 'DON_VI', nhan: 'Theo bộ', so: soMaBo },
       { ma: 'SO_LUONG', nhan: 'Hàng lẻ', so: soMaLe },
     ].filter((d) => d.so > 0),
-    raVao: [...theoNgay.entries()].map(([ngay, v]) => ({ ngay, vao: v.vao, ra: v.ra })),
+    raVao: [...theoNgay.entries()].map(([ngay, v]) => ({ ngay, ...v })),
+    bienDong,
+    soNgay,
     quaHan: quaHanTho.map((t) => ({
       id: t.id,
       code: t.code,
@@ -828,6 +1114,9 @@ export interface DuLieuTongThe {
   dangCho: {
     yeuCauChoDuyet: number;
     yeuCauChoXuat: number;
+    /** Phiếu chờ xuất / nhập kho — không còn bước duyệt. */
+    choXuatKho: number;
+    choNhapKho: number;
     bienBanChoXacNhan: number;
     kiemKeDangMo: number;
     baoHongDangMo: number;
@@ -851,8 +1140,7 @@ export async function tongThe(
 ): Promise<DuLieuTongThe> {
   const pvYeuCau = dieuKienYeuCau(nguoiDung);
   const bayGio = new Date();
-  const tuNgay = new Date(bayGio.getTime() - (soNgay - 1) * 86_400_000);
-  tuNgay.setUTCHours(0, 0, 0, 0);
+  const tuNgay = dauKyVN(soNgay, bayGio);
 
   /** Yêu cầu thường (không tính báo hỏng) trong phạm vi. */
   // pvYeuCau đã mang sẵn `deletedAt: null`, không cần lặp lại ở đây.
@@ -925,7 +1213,10 @@ export async function tongThe(
   // --- báo hỏng theo ngày: khởi tạo đủ mọi ngày để biểu đồ không bị hở cột.
   const theoNgay = new Map<string, { moMoi: number; daDong: number }>();
   for (let i = 0; i < soNgay; i++) {
-    theoNgay.set(ngayISO(new Date(tuNgay.getTime() + i * 86_400_000)), { moMoi: 0, daDong: 0 });
+    theoNgay.set(ngayISO(new Date(tuNgay.getTime() + i * 86_400_000 + 12 * 3_600_000)), {
+      moMoi: 0,
+      daDong: 0,
+    });
   }
   for (const b of baoHongTrongKy) {
     const o = theoNgay.get(ngayISO(b.createdAt));
@@ -1000,10 +1291,176 @@ export async function tongThe(
     dangCho: {
       yeuCauChoDuyet: soLieu.yeuCauChoDuyet,
       yeuCauChoXuat: soLieu.yeuCauChoXuat,
+      choXuatKho: soLieu.choXuatKho,
+      choNhapKho: soLieu.choNhapKho,
       bienBanChoXacNhan: soLieu.bienBanChoXacNhan,
       kiemKeDangMo: kiemKeDangMo,
       baoHongDangMo: baoHongDangMo,
       thietBiQuaHan: soLieu.maQuaHan,
     },
+  };
+}
+
+// ===========================================================================
+// TỒN THEO ĐIỂM VÀ THEO SẢN PHẨM — có bộ lọc
+// ===========================================================================
+
+export interface LocTonTheoDiem {
+  diaDiemId?: string | undefined;
+  loaiDiem?: LocationType | undefined;
+  categoryId?: string | undefined;
+  productLineId?: string | undefined;
+  trackingType?: 'DON_VI' | 'SO_LUONG' | undefined;
+  tuKhoa?: string | undefined;
+  /** Chỉ dòng còn hàng (hoặc đang trên đường). */
+  chiConHang: boolean;
+  gioiHan: number;
+}
+
+/**
+ * BẢNG TỒN CÓ LỌC: xem chính xác từng điểm còn bao nhiêu bộ / hàng lẻ, và từng
+ * sản phẩm đang nằm ở những đâu. Cùng cách tính với các ô trên trang chủ (tồn
+ * theo nhật ký di chuyển, trừ hàng đang trên đường), nên cộng lại khớp nhau.
+ *
+ * Phạm vi theo ĐIỂM: tài khoản trường chỉ thấy trường mình; các vai trò khác
+ * thấy mọi điểm (chỉ con số).
+ */
+export async function tonTheoDiem(nguoiDung: NguoiDungDaXacThuc, loc: LocTonTheoDiem) {
+  const [ton, dangDi, diem, taiSan] = await Promise.all([
+    tonTatCa(),
+    hangDangDiTatCa(),
+    prisma.location.findMany({
+      where: {
+        AND: [
+          diemSoLieu(nguoiDung),
+          loc.loaiDiem ? { type: loc.loaiDiem } : {},
+          loc.diaDiemId ? { id: loc.diaDiemId } : {},
+        ],
+      },
+      select: { id: true, code: true, name: true, type: true, isActive: true },
+    }),
+    prisma.asset.findMany({
+      where: {
+        AND: [
+          { deletedAt: null },
+          loc.categoryId ? { categoryId: loc.categoryId } : {},
+          loc.productLineId ? { productLineId: loc.productLineId } : {},
+          loc.trackingType ? { trackingType: loc.trackingType } : {},
+          loc.tuKhoa
+            ? { OR: [{ code: { contains: loc.tuKhoa } }, { name: { contains: loc.tuKhoa } }] }
+            : {},
+        ],
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        trackingType: true,
+        category: { select: { id: true, name: true } },
+        productLine: { select: { id: true, name: true } },
+      },
+    }),
+  ]);
+
+  const thongTinDiem = new Map(diem.map((d) => [d.id, d]));
+  const thongTinTaiSan = new Map(taiSan.map((t) => [t.id, t]));
+  const khoa = (a: string, l: string) => `${a}|${l}`;
+  const diTheoCap = new Map<string, number>();
+  for (const d of dangDi) {
+    if (!thongTinDiem.has(d.locationId) || !thongTinTaiSan.has(d.assetId)) continue;
+    diTheoCap.set(khoa(d.assetId, d.locationId), (diTheoCap.get(khoa(d.assetId, d.locationId)) ?? 0) + d.ton);
+  }
+
+  type O = { locationId: string; ten: string; ton: number; dangDi: number; khaDung: number };
+  const theoTaiSan = new Map<string, O[]>();
+  const tongDiem = new Map<
+    string,
+    { bo: number; le: number; dangDiBo: number; dangDiLe: number; soMa: Set<string> }
+  >();
+  const capDaCo = new Set<string>();
+  const ghi = (assetId: string, locationId: string, tonSo: number) => {
+    const t = thongTinTaiSan.get(assetId);
+    const d = thongTinDiem.get(locationId);
+    if (!t || !d) return;
+    const di = diTheoCap.get(khoa(assetId, locationId)) ?? 0;
+    const khaDung = tonSo - di;
+    if (tonSo === 0 && di === 0) return;
+    const ds = theoTaiSan.get(assetId) ?? [];
+    ds.push({ locationId, ten: d.name, ton: tonSo, dangDi: di, khaDung });
+    theoTaiSan.set(assetId, ds);
+    const g = tongDiem.get(locationId) ?? { bo: 0, le: 0, dangDiBo: 0, dangDiLe: 0, soMa: new Set() };
+    if (t.trackingType === 'DON_VI') {
+      g.bo += khaDung;
+      g.dangDiBo += di;
+    } else {
+      g.le += khaDung;
+      g.dangDiLe += di;
+    }
+    if (khaDung > 0 || di > 0) g.soMa.add(assetId);
+    tongDiem.set(locationId, g);
+  };
+  for (const d of ton) {
+    capDaCo.add(khoa(d.assetId, d.locationId));
+    ghi(d.assetId, d.locationId, d.ton);
+  }
+  // Cặp chỉ có hàng đang đi mà sổ đã về 0 (hiếm) — vẫn phải hiện.
+  for (const k of diTheoCap.keys()) {
+    if (capDaCo.has(k)) continue;
+    const [a, l] = k.split('|') as [string, string];
+    ghi(a, l, 0);
+  }
+
+  const dong = taiSan
+    .map((t) => {
+      const cac = (theoTaiSan.get(t.id) ?? []).sort((a, b) => b.khaDung - a.khaDung);
+      return {
+        assetId: t.id,
+        code: t.code,
+        name: t.name,
+        trackingType: t.trackingType,
+        category: t.category,
+        productLine: t.productLine,
+        tong: cac.reduce((s, x) => s + x.khaDung, 0),
+        dangDi: cac.reduce((s, x) => s + x.dangDi, 0),
+        theoDiem: cac,
+      };
+    })
+    .filter((d) => !loc.chiConHang || d.tong > 0 || d.dangDi > 0)
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  const dsDiem = diem
+    .map((d) => {
+      const g = tongDiem.get(d.id);
+      return {
+        id: d.id,
+        code: d.code,
+        name: d.name,
+        type: d.type,
+        isActive: d.isActive,
+        bo: g?.bo ?? 0,
+        le: g?.le ?? 0,
+        dangDiBo: g?.dangDiBo ?? 0,
+        dangDiLe: g?.dangDiLe ?? 0,
+        soMa: g?.soMa.size ?? 0,
+      };
+    })
+    .filter((d) => !loc.chiConHang || d.soMa > 0)
+    .sort(
+      (a, b) =>
+        THU_TU_LOAI_DIEM[a.type] - THU_TU_LOAI_DIEM[b.type] ||
+        b.bo + b.le - (a.bo + a.le) ||
+        a.name.localeCompare(b.name, 'vi'),
+    );
+
+  return {
+    diem: dsDiem,
+    tongCong: {
+      bo: dsDiem.reduce((s, d) => s + d.bo, 0),
+      le: dsDiem.reduce((s, d) => s + d.le, 0),
+      dangDiBo: dsDiem.reduce((s, d) => s + d.dangDiBo, 0),
+      dangDiLe: dsDiem.reduce((s, d) => s + d.dangDiLe, 0),
+    },
+    dong: dong.slice(0, loc.gioiHan),
+    tongDong: dong.length,
   };
 }

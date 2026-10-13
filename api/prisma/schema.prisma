@@ -113,6 +113,8 @@ enum PhotoKind {
   LINH_KIEN
   /// Ảnh minh hoạ trong thư viện wiki (ảnh bìa bài viết).
   WIKI
+  /// Ảnh chụp tại trường trong một lần cập nhật onsite.
+  ONSITE
 }
 
 enum HandoverStatus {
@@ -120,6 +122,10 @@ enum HandoverStatus {
   CHO_XAC_NHAN
   DA_XAC_NHAN
   TU_CHOI
+  /// Hệ thống tự lập (sau xuất / nhập kho, hoặc bấm "Xuất biên bản"), chưa ai sửa.
+  TU_LAP
+  /// Biên bản tự lập đã được người dùng chỉnh sửa.
+  DA_CHINH_SUA
 }
 
 enum InventoryCountStatus {
@@ -136,6 +142,7 @@ enum AlertType {
   CHENH_LECH_KIEM_KE
   BAO_HONG
   DANG_NHAP_NGOAI_VUNG
+  XUAT_NHAP_TRUC_TIEP
 }
 
 enum AlertSeverity {
@@ -202,6 +209,7 @@ model User {
   caiDatDaSua           AppSetting[]            @relation("SettingUpdatedBy")
   deletedRequests       Request[]               @relation("RequestDeletedBy")
   deletedHandovers      HandoverNote[]          @relation("HandoverDeletedBy")
+  onsiteVisits          OnsiteVisit[]           @relation("OnsiteCreatedBy")
 
   @@index([role])
   @@index([locationId])
@@ -417,6 +425,7 @@ model Location {
   handoverNotes    HandoverNote[]
   inventoryCounts  InventoryCount[]
   gpsOverrideCodes GpsOverrideCode[]
+  onsiteVisits     OnsiteVisit[]
   partIssuesFrom   PartIssue[]       @relation("PartIssueFrom")
 
   @@index([type])
@@ -492,6 +501,7 @@ model Asset {
   partIssues    PartIssue[]
   wikiLinks     WikiLink[]
   wikiItems     WikiItem[]
+  onsiteItems   OnsiteVisitItem[]
 
   @@index([categoryId])
   @@index([productLineId])
@@ -525,6 +535,9 @@ model Request {
   toLocationId     String?       @map("to_location_id") @db.VarChar(30)
   /// Nơi đến ghi tự do khi chưa có trong danh mục địa điểm (vd sự kiện lẻ).
   destinationNote  String?       @map("destination_note") @db.VarChar(255)
+  /// Ghi chú chung của phiếu — vd "mượn thêm 20 quyển từ Kho Ngoại Giao Đoàn".
+  /// Chỉ là THÔNG TIN; in lên biên bản ở mục "Ghi chú khác".
+  note             String?       @db.Text
   /// Thời gian dự kiến trả.
   expectedReturnAt DateTime?     @map("expected_return_at")
   submittedAt      DateTime?     @map("submitted_at")
@@ -738,21 +751,23 @@ model Photo {
   /// SHA-256 của file, để nhận diện ảnh trùng.
   checksum  String?   @db.VarChar(64)
 
-  assetId     String? @map("asset_id") @db.VarChar(30)
-  requestId   String? @map("request_id") @db.VarChar(30)
-  movementId  String? @map("movement_id") @db.VarChar(30)
-  countItemId String? @map("count_item_id") @db.VarChar(30)
-  partIssueId String? @map("part_issue_id") @db.VarChar(30)
+  assetId       String? @map("asset_id") @db.VarChar(30)
+  requestId     String? @map("request_id") @db.VarChar(30)
+  movementId    String? @map("movement_id") @db.VarChar(30)
+  countItemId   String? @map("count_item_id") @db.VarChar(30)
+  partIssueId   String? @map("part_issue_id") @db.VarChar(30)
+  onsiteVisitId String? @map("onsite_visit_id") @db.VarChar(30)
 
   uploadedById String   @map("uploaded_by_id") @db.VarChar(30)
   createdAt    DateTime @default(now()) @map("created_at")
 
-  asset      Asset?              @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  request    Request?            @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  movement   Movement?           @relation(fields: [movementId], references: [id], onDelete: Cascade)
-  countItem  InventoryCountItem? @relation(fields: [countItemId], references: [id], onDelete: Cascade)
-  partIssue  PartIssue?          @relation(fields: [partIssueId], references: [id], onDelete: Cascade)
-  uploadedBy User                @relation(fields: [uploadedById], references: [id])
+  asset       Asset?              @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  request     Request?            @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  movement    Movement?           @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  countItem   InventoryCountItem? @relation(fields: [countItemId], references: [id], onDelete: Cascade)
+  partIssue   PartIssue?          @relation(fields: [partIssueId], references: [id], onDelete: Cascade)
+  onsiteVisit OnsiteVisit?        @relation(fields: [onsiteVisitId], references: [id], onDelete: Cascade)
+  uploadedBy  User                @relation(fields: [uploadedById], references: [id])
 
   kioskSettings KioskSetting[]
   wikiAnhBia    WikiArticle[]
@@ -762,6 +777,7 @@ model Photo {
   @@index([movementId, kind])
   @@index([countItemId])
   @@index([partIssueId])
+  @@index([onsiteVisitId])
   @@index([kind])
   @@map("photos")
 }
@@ -992,7 +1008,7 @@ model AppSetting {
 
 model DocumentSequence {
   id         String @id @default(cuid()) @db.VarChar(30)
-  prefix     String @db.VarChar(16)
+  prefix     String @db.VarChar(64)
   year       Int
   lastNumber Int    @default(0) @map("last_number")
 
@@ -1228,4 +1244,52 @@ model WikiRevision {
   @@unique([articleId, phienBan])
   @@index([articleId, createdAt])
   @@map("wiki_revisions")
+}
+
+/// LẦN CẬP NHẬT ONSITE tại một điểm trường: người xuống trường ghi lại tình
+/// trạng từng thiết bị thấy tận mắt, kèm ảnh.
+///
+/// CHỈ GHI NHẬN. Không ghi movement, không đổi tình trạng trong sổ: tồn kho chỉ
+/// đổi qua xuất / nhập / kiểm kê (nguyên tắc #5). Thấy hỏng, thiếu thì hệ thống
+/// báo quản trị; sửa số qua Kiểm kê, xử lý hỏng qua Báo hỏng.
+model OnsiteVisit {
+  id          String    @id @default(cuid()) @db.VarChar(30)
+  /// Số phiếu tự sinh, vd OS-2026-0001.
+  code        String    @unique @db.VarChar(64)
+  locationId  String    @map("location_id") @db.VarChar(30)
+  visitedAt   DateTime  @map("visited_at")
+  summary     String?   @db.Text
+  createdById String    @map("created_by_id") @db.VarChar(30)
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  location  Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("OnsiteCreatedBy", fields: [createdById], references: [id])
+
+  items  OnsiteVisitItem[]
+  photos Photo[]
+
+  @@index([locationId, visitedAt])
+  @@index([deletedAt])
+  @@map("onsite_visits")
+}
+
+/// Một thiết bị trong lần cập nhật onsite. `systemQuantity` là số sổ sách tại
+/// trường lúc ghi (chốt lại làm chứng cứ); `seenQuantity` là số thấy tận mắt.
+model OnsiteVisitItem {
+  id             String         @id @default(cuid()) @db.VarChar(30)
+  visitId        String         @map("visit_id") @db.VarChar(30)
+  assetId        String         @map("asset_id") @db.VarChar(30)
+  systemQuantity Int            @map("system_quantity")
+  seenQuantity   Int?           @map("seen_quantity")
+  condition      AssetCondition
+  note           String?        @db.VarChar(500)
+
+  visit OnsiteVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  asset Asset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([visitId, assetId])
+  @@index([assetId])
+  @@map("onsite_visit_items")
 }

@@ -136,6 +136,56 @@ nhatKyRouter.get(
   }),
 );
 
+/**
+ * SỐ CẢNH BÁO ĐANG MỞ — cho chuông trên thanh đầu trang của quản trị / vận
+ * hành. Không qua duyệt nữa thì đây là chỗ họ "nắm được" mọi lần xuất / nhập kho
+ * người khác tự làm; chỉ trả con số, không trả nội dung.
+ */
+nhatKyRouter.get(
+  '/canh-bao/dem',
+  batAsync(async (_req, res) => {
+    const [chuaXuLy, xuatNhap] = await Promise.all([
+      prisma.alert.count({ where: { resolvedAt: null } }),
+      prisma.alert.count({ where: { resolvedAt: null, type: 'XUAT_NHAP_TRUC_TIEP' } }),
+    ]);
+    res.json({ ok: true, chuaXuLy, xuatNhapTrucTiep: xuatNhap });
+  }),
+);
+
+/**
+ * ĐÃ XEM HẾT các thông báo xuất / nhập kho không qua duyệt — một cú bấm.
+ *
+ * Đây là thông báo để biết, không phải sự cố cần xử lý: bắt gõ "đã xử lý thế
+ * nào" cho từng lần xuất kho thường ngày thì không ai làm, chuông đỏ mãi và mất
+ * tác dụng. Chỉ áp cho đúng loại này; cảnh báo thật vẫn phải ghi cách xử lý.
+ */
+nhatKyRouter.post(
+  '/canh-bao/da-xem',
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const { ids } = z
+      .object({ ids: z.array(z.string().trim().min(1).max(30)).max(500).optional() })
+      .parse(req.body ?? {});
+    const kq = await prisma.alert.updateMany({
+      where: {
+        resolvedAt: null,
+        type: 'XUAT_NHAP_TRUC_TIEP',
+        ...(ids ? { id: { in: ids } } : {}),
+      },
+      data: { resolvedAt: new Date(), resolvedById: actor.id, resolutionNote: 'Đã xem' },
+    });
+    await ghiAudit({
+      actor,
+      action: 'alert.seen',
+      entityType: 'alert',
+      afterValue: { soLuong: kq.count, ids: ids ?? 'tat-ca' },
+      note: 'Đánh dấu đã xem thông báo xuất / nhập kho không qua duyệt.',
+      ...boiCanh(req),
+    });
+    res.json({ ok: true, soLuong: kq.count });
+  }),
+);
+
 const luocDoXuLy = z.object({
   resolutionNote: z.string().trim().min(3, 'Ghi rõ đã xử lý thế nào.').max(2000),
 });

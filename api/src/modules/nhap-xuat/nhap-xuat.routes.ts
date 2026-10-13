@@ -6,6 +6,7 @@
  *   - /xuat/...       xuất toàn bộ dữ liệu ra Excel
  */
 import { Router } from 'express';
+import { phatChoTatCa, SU_KIEN } from '../../realtime.js';
 import multer from 'multer';
 import {
   DS_KIEU_QUAN_LY,
@@ -302,6 +303,9 @@ nhapXuatRouter.post(
     const tep = layTep(req);
     const doc = await docFileBang(tep.buffer, tep.ten);
     const kq = await ghiThietBi(doc.dong, doc.dongDauTien, actor, boiCanh(req));
+    if (kq.soDaGhi > 0) {
+      phatChoTatCa(SU_KIEN.KHO_DOI, { thongDiep: 'Tồn kho vừa thay đổi.' });
+    }
     res.json({ ok: true, ...kq, thongDiep: `Đã nhập ${kq.soDaGhi} thiết bị.` });
   }),
 );

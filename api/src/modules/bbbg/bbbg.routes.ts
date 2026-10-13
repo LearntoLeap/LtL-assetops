@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { Router } from 'express';
 import { batAsync } from '../../lib/bat-async.js';
-import { loi404 } from '../../lib/loi-http.js';
+import { loi403, loi404 } from '../../lib/loi-http.js';
 import { boiCanh } from '../../lib/audit.js';
 import {
   chanKhiChuaDoiMatKhau,
@@ -26,6 +26,33 @@ bbbgRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
 /** Lập/sửa biên bản: bên giao — ADMIN, VAN_HANH, KHO. */
 const benGiao = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
+const VAI_TRO_BEN_GIAO = new Set(['ADMIN', 'VAN_HANH', 'KHO']);
+
+/**
+ * BÊN GIAO HOẶC NGƯỜI LẬP PHIẾU. Biên bản tự lập cho MỌI vai trò: nhân sự / tài
+ * khoản trường tự xuất kho phiếu của mình thì cũng phải tự sửa, in và gửi được
+ * biên bản của chính phiếu đó — không phải chờ kho làm hộ. Chỉ phiếu của mình;
+ * biên bản của người khác vẫn chỉ kho và quản lý đụng tới.
+ */
+function benGiaoHoacNguoiLap(lay: 'bbbg' | 'yeuCau') {
+  return batAsync(async (req, _res, next) => {
+    const nd = nguoiDungHienTai(req);
+    if (VAI_TRO_BEN_GIAO.has(nd.role)) {
+      next();
+      return;
+    }
+    const laNguoiLap =
+      lay === 'bbbg'
+        ? await dv.laNguoiLapPhieuCuaBBBG(String(req.params['id']), nd.id)
+        : await dv.laNguoiLapYeuCau(String(req.params['requestId']), nd.id);
+    if (!laNguoiLap) {
+      throw loi403(
+        'Chỉ kho, quản trị / vận hành hoặc chính người lập phiếu mới sửa / gửi được biên bản này.',
+      );
+    }
+    next();
+  });
+}
 /**
  * XOÁ BIÊN BẢN: quản trị hệ thống và vận hành thiết bị — cùng nhóm theo dõi
  * chứng từ hằng ngày. Chặn ở máy chủ; ẩn nút chỉ là cho gọn mắt.
@@ -144,7 +171,7 @@ bbbgRouter.get(
 /** Xuất lại file Word sau khi sửa nội dung biên bản. */
 bbbgRouter.post(
   '/:id/xuat-file',
-  benGiao,
+  benGiaoHoacNguoiLap('bbbg'),
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     res.json({ ok: true, bbbg: await dv.sinhFile(String(req.params['id']), actor, boiCanh(req)) });
@@ -169,7 +196,7 @@ bbbgRouter.post(
  */
 bbbgRouter.post(
   '/tu-yeu-cau/:requestId',
-  benGiao,
+  benGiaoHoacNguoiLap('yeuCau'),
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const ctx = boiCanh(req);
@@ -181,7 +208,7 @@ bbbgRouter.post(
 
 bbbgRouter.patch(
   '/:id',
-  benGiao,
+  benGiaoHoacNguoiLap('bbbg'),
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoSuaBBBG.parse(req.body);
@@ -191,7 +218,7 @@ bbbgRouter.patch(
 
 bbbgRouter.post(
   '/:id/gui-xac-nhan',
-  benGiao,
+  benGiaoHoacNguoiLap('bbbg'),
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     res.json({ ok: true, bbbg: await dv.guiXacNhan(String(req.params['id']), actor, boiCanh(req)) });

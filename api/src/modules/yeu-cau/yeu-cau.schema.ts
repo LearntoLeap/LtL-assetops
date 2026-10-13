@@ -32,6 +32,8 @@ export const luocDoTaoYeuCau = z.object({
   fromLocationId: chuoiTuyChon(30),
   toLocationId: chuoiTuyChon(30),
   destinationNote: chuoiTuyChon(255),
+  /** Ghi chú chung — vd "mượn thêm 20 quyển từ Kho Ngoại Giao Đoàn". Chỉ là thông tin. */
+  note: chuoiTuyChon(2000),
   expectedReturnAt: ngayGioISO.optional(),
   /** Danh sách MÃ thiết bị — tham chiếu theo mã, không nhập tên tự do. */
   muc: z
@@ -53,6 +55,7 @@ export const luocDoSuaYeuCau = z
     fromLocationId: chuoiSua(30),
     toLocationId: chuoiSua(30),
     destinationNote: chuoiSua(255),
+    note: chuoiSua(2000),
     expectedReturnAt: ngayGioISO.nullable().optional(),
     muc: luocDoTaoYeuCau.shape.muc.optional(),
   })
@@ -99,6 +102,11 @@ export const luocDoXuatKho = z.object({
       }),
     )
     .min(1, 'Chưa có dòng thiết bị nào để xuất.'),
+  /**
+   * LẤY TỪ KHO NÀO. Tuỳ chọn: hệ thống tự xác định theo tồn thật, chỉ cần chọn
+   * khi cùng một mã hàng lẻ có đủ hàng ở nhiều kho.
+   */
+  tuLocationId: chuoiTuyChon(30),
   ghiChu: chuoiTuyChon(2000),
 });
 export type DuLieuXuatKho = z.infer<typeof luocDoXuatKho>;
@@ -114,9 +122,8 @@ export type DuLieuXuatKho = z.infer<typeof luocDoXuatKho>;
 export const luocDoNhapKho = z.object({
   veLocationId: z.string().trim().min(1, 'Chưa chọn kho nhận hàng về.').max(30),
   /**
-   * NƠI HÀNG TRẢ VỀ TỪ ĐÂU. Tuỳ chọn: hệ thống tự suy ra được thì không phải
-   * khai. Chỉ cần khi cùng một mã hàng lẻ đang nằm ở NHIỀU nơi — lúc đó máy
-   * không có cách nào biết 30 quyển này về từ trường nào.
+   * NHẬN TỪ ĐÂU. Một id điểm lưu trữ, hoặc `NGOAI` = hàng từ ngoài vào (mua
+   * mới, người mượn trả). Để trống thì lấy theo phiếu / tự xác định.
    */
   tuLocationId: chuoiTuyChon(30),
   muc: z

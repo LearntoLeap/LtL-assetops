@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { HoSoThietBi } from '@/features/wiki/HoSoThietBi';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
@@ -37,6 +38,7 @@ function Muc({ nhan, children }: { nhan: string; children: React.ReactNode }) {
 }
 
 export function ThietBiChiTiet() {
+  const hoi = useXacNhan();
   const { id } = useParams<{ id: string }>();
   const { nguoiDung } = useAuth();
   const dieuHuong = useNavigate();
@@ -82,10 +84,11 @@ export function ThietBiChiTiet() {
     if (!duLieu) return;
     // Đây là chuyển vào thùng rác, không phải xoá hẳn — nói đúng việc sắp xảy ra.
     if (
-      !window.confirm(
-        `Chuyển thiết bị ${duLieu.thietBi.code} vào thùng rác?\n\n` +
-          'Khôi phục lại được ở Thiết bị → Thùng rác.',
-      )
+      !(await hoi({
+        tieuDe: `Chuyển thiết bị ${duLieu.thietBi.code} vào thùng rác?`,
+        noiDung: 'Khôi phục lại được ở Thiết bị → Thùng rác.',
+        nutCo: 'Có, chuyển vào thùng rác',
+      }))
     ) {
       return;
     }

@@ -21,6 +21,14 @@ import {
 import * as dv from './thiet-bi.service.js';
 import { maKeTiepTheoId } from '../../lib/sinh-ma-thiet-bi.js';
 import { loi400 } from '../../lib/loi-http.js';
+import { phatChoTatCa, SU_KIEN } from '../../realtime.js';
+
+/**
+ * Thêm / xoá / khôi phục thiết bị làm ĐỔI TỒN (bút toán nhập ban đầu, hoặc thiết
+ * bị biến khỏi mọi con số) — báo để trang chủ và màn hình kho nạp lại số.
+ */
+const baoKhoDoi = (): void =>
+  phatChoTatCa(SU_KIEN.KHO_DOI, { thongDiep: 'Tồn kho vừa thay đổi.' });
 
 export const thietBiRouter = Router();
 thietBiRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
@@ -80,15 +88,6 @@ thietBiRouter.get(
 );
 
 /**
- * XEM TRƯỚC mã sẽ được cấp, để form hiện mã ngay lúc chọn xong ba ô.
- *
- * Cũng phải khai TRƯỚC `GET /:id` vì lý do y hệt tuyến thùng rác.
- *
- * Đây chỉ là XEM TRƯỚC, KHÔNG giữ chỗ: hai người mở form cùng lúc sẽ thấy cùng
- * một mã, và người bấm Lưu sau sẽ nhận mã kế tiếp — `tao()` sinh lại mã ngay
- * trong lúc ghi chứ không tin con số form gửi lên.
- */
-/**
  * Ô chọn HÀNG LẺ theo tên. Khai TRƯỚC `GET /:id` như mọi tuyến tên cố định khác.
  */
 thietBiRouter.get(
@@ -99,6 +98,13 @@ thietBiRouter.get(
   }),
 );
 
+/**
+ * MÃ DỰ KIẾN, để form hiện ngay lúc chọn xong ba ô. Cũng khai TRƯỚC `GET /:id`.
+ *
+ * Chỉ XEM TRƯỚC, KHÔNG giữ chỗ. Form ở chế độ tự sinh KHÔNG gửi mã này lên:
+ * `tao()` cấp mã chính thức bằng bộ đếm khoá dòng ngay trong lúc ghi, nên hai
+ * người lưu cùng lúc vẫn ra hai mã khác nhau và không ai bị báo trùng.
+ */
 thietBiRouter.get(
   '/ma-tiep-theo',
   batAsync(async (req, res) => {
@@ -129,18 +135,23 @@ thietBiRouter.post(
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoTaoThietBi.parse(req.body);
     const thietBi = await dv.tao(duLieu, actor, boiCanh(req));
+    baoKhoDoi();
     res.status(201).json({ ok: true, thietBi });
   }),
 );
 
 /**
- * Tạo nhanh khi lập yêu cầu mà mã chưa có. Mã do SERVER sinh, ẢNH bắt buộc.
- * Cùng quyền với tạo thường (chỉ người nhập liệu) — tạo nhanh không phải là
- * cửa sau để vai trò khác thêm thiết bị.
+ * Tạo nhanh khi lập yêu cầu mà mã chưa có (kể cả HÀNG LẺ thêm ngay trong phiếu).
+ * Mã do SERVER cấp, ẢNH bắt buộc, hàng lẻ trùng tên bị chặn.
+ *
+ * Cho cả NHÂN SỰ: không còn bước duyệt, nhân sự tự lập phiếu và tự xuất kho,
+ * nên khi thiếu một món hàng lẻ trong danh mục họ phải thêm được ngay tại chỗ.
+ * Tài khoản trường thì không — trường không nhập hàng vào kho LtL.
  */
+const chiNguoiTaoNhanh = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO', 'NHAN_SU');
 thietBiRouter.post(
   '/nhanh',
-  chiNguoiNhapLieu,
+  chiNguoiTaoNhanh,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoTaoNhanhThietBi.parse(req.body);
@@ -164,6 +175,7 @@ thietBiRouter.post(
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuId.parse(req.body);
     const kq = await dv.xoaNhieu(ids, actor, boiCanh(req));
+    baoKhoDoi();
     res.json({
       ok: true,
       ...kq,
@@ -179,6 +191,7 @@ thietBiRouter.post(
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuId.parse(req.body);
     const kq = await dv.khoiPhucNhieu(ids, actor, boiCanh(req));
+    baoKhoDoi();
     res.json({ ok: true, ...kq, thongDiep: `Đã khôi phục ${kq.soThanhCong} thiết bị.` });
   }),
 );
@@ -190,6 +203,7 @@ thietBiRouter.post(
     const actor = nguoiDungHienTai(req);
     const { ids } = luocDoNhieuId.parse(req.body);
     const kq = await dv.xoaVinhVienNhieu(ids, actor, boiCanh(req));
+    baoKhoDoi();
     res.json({
       ok: true,
       ...kq,
@@ -219,6 +233,7 @@ thietBiRouter.delete(
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoa(String(req.params['id']), actor, boiCanh(req));
+    baoKhoDoi();
     res.json({
       ok: true,
       thongDiep: 'Đã chuyển thiết bị vào thùng rác. Khôi phục được ở Thiết bị → Thùng rác.',
@@ -233,6 +248,7 @@ thietBiRouter.post(
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const thietBi = await dv.khoiPhuc(String(req.params['id']), actor, boiCanh(req));
+    baoKhoDoi();
     res.json({ ok: true, thietBi, thongDiep: 'Đã khôi phục thiết bị.' });
   }),
 );
@@ -247,6 +263,7 @@ thietBiRouter.delete(
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoaVinhVien(String(req.params['id']), actor, boiCanh(req));
+    baoKhoDoi();
     res.json({ ok: true, thongDiep: 'Đã xoá vĩnh viễn. Không khôi phục lại được.' });
   }),
 );

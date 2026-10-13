@@ -130,6 +130,8 @@ export interface ThietBi {
   productLine: { id: string; code: string; name: string } | null;
   currentLocation: { id: string; code: string; name: string; type: LoaiDiemLuuTru } | null;
   holder: { id: string; fullName: string; email: string } | null;
+  /** Số đang ở điểm đang lọc — chỉ có khi danh sách lọc theo điểm (API mới). */
+  tonTaiDiem?: number;
 }
 
 export interface DongLichSu {
@@ -180,6 +182,8 @@ export interface YeuCau {
   status: TrangThaiYeuCau;
   reason: string;
   destinationNote: string | null;
+  /** Ghi chú chung, vd mượn thêm từ kho khác. Tuỳ chọn: API cũ chưa trả về. */
+  note?: string | null;
   expectedReturnAt: string | null;
   submittedAt: string | null;
   approvedAt: string | null;
@@ -298,6 +302,8 @@ export interface BienBan {
     id: string;
     code: string;
     type: LoaiYeuCau;
+    /** Người lập phiếu — tuỳ chọn vì API cũ chưa trả về. */
+    createdById?: string;
     status: TrangThaiYeuCau;
     reason: string;
     expectedReturnAt: string | null;
@@ -512,6 +518,66 @@ export interface SoLieuNhanh {
   yeuCauChoDuyet: number;
   yeuCauChoXuat: number;
   bienBanChoXacNhan: number;
+  /*
+   * Các trường dưới đây có từ khi bỏ bước duyệt — API cũ chưa trả về, nên đều
+   * tuỳ chọn và đọc qua giá trị thay thế.
+   */
+  /** Phiếu đang chờ XUẤT / NHẬP kho (không còn bước duyệt), theo phạm vi. */
+  choXuatKho?: number;
+  choNhapKho?: number;
+  /** Hàng nhân sự đang mượn: bộ đếm số bộ, lẻ cộng số lượng. */
+  nhanSuGiu?: DemTachLoai;
+  soMaBo?: number;
+  soMaLe?: number;
+  /** Tồn TỪNG ĐIỂM, tách bộ / lẻ, đã trừ hàng đang trên đường đi khỏi điểm. */
+  theoDiem?: DongTonDiem[];
+}
+
+export interface DongTonDiem {
+  id: string;
+  ten: string;
+  loai: LoaiDiemLuuTru;
+  bo: number;
+  le: number;
+  dangDiBo: number;
+  dangDiLe: number;
+}
+
+export interface TangGiam {
+  bo: { tang: number; giam: number };
+  le: { tang: number; giam: number };
+}
+
+export type GioBienDong = 'taiKho' | 'oTruong' | 'oSuKien' | 'oDoiTac' | 'dangChuyen' | 'nhanSu';
+
+/** Bảng tồn có lọc — GET /api/bao-cao/ton-theo-diem. */
+export interface DuLieuTonTheoDiem {
+  ok: true;
+  diem: Array<{
+    id: string;
+    code: string;
+    name: string;
+    type: LoaiDiemLuuTru;
+    isActive: boolean;
+    bo: number;
+    le: number;
+    dangDiBo: number;
+    dangDiLe: number;
+    soMa: number;
+  }>;
+  tongCong: { bo: number; le: number; dangDiBo: number; dangDiLe: number };
+  dong: Array<{
+    assetId: string;
+    code: string;
+    name: string;
+    trackingType: KieuQuanLy;
+    category: { id: string; name: string };
+    productLine: { id: string; name: string } | null;
+    tong: number;
+    dangDi: number;
+    theoDiem: Array<{ locationId: string; ten: string; ton: number; dangDi: number; khaDung: number }>;
+  }>;
+  tongDong: number;
 }
 
 export interface DongDem {
@@ -524,6 +590,11 @@ export interface DongRaVao {
   ngay: string;
   vao: number;
   ra: number;
+  /** Tách bộ / lẻ — API cũ chưa có. */
+  vaoBo?: number;
+  raBo?: number;
+  vaoLe?: number;
+  raLe?: number;
 }
 
 export interface DuLieuDashboard {
@@ -538,6 +609,9 @@ export interface DuLieuDashboard {
   theoPhanBo?: DongDem[];
   theoKieuQuanLy: DongDem[];
   raVao: DongRaVao[];
+  /** Tăng / giảm trong kỳ của từng ô — API cũ chưa có. */
+  bienDong?: Record<GioBienDong, TangGiam>;
+  soNgay?: number;
   quaHan: Array<{
     id: string;
     code: string;
@@ -603,6 +677,9 @@ export interface DuLieuTongThe {
   dangCho: {
     yeuCauChoDuyet: number;
     yeuCauChoXuat: number;
+    /** Phiếu chờ xuất / nhập kho — API cũ chưa có. */
+    choXuatKho?: number;
+    choNhapKho?: number;
     bienBanChoXacNhan: number;
     kiemKeDangMo: number;
     baoHongDangMo: number;
@@ -756,5 +833,75 @@ export interface TabletTaiKho {
     note: string | null;
     performedBy: { fullName: string } | null;
     request: { id: string; code: string; createdBy: { fullName: string } } | null;
+  }>;
+}
+
+// --- Cập nhật onsite theo điểm trường ---------------------------------------
+
+export interface DiemOnsite {
+  id: string;
+  code: string;
+  name: string;
+  address: string | null;
+  isActive: boolean;
+  /** Số bộ (quản lý từng cái) đang ở trường theo sổ. */
+  bo: number;
+  /** Tổng số hàng lẻ đang ở trường theo sổ. */
+  le: number;
+  soMaLe: number;
+  soLanCapNhat: number;
+  lanCuoi: {
+    id: string;
+    code: string;
+    visitedAt: string;
+    nguoiGhi: string;
+    soVanDe: number;
+  } | null;
+}
+
+export interface ThietBiTaiTruong {
+  id: string;
+  code: string;
+  name: string;
+  trackingType: KieuQuanLy;
+  condition: TinhTrang;
+  category: { name: string };
+  tonTaiTruong: number;
+  ghiNhanGanNhat: {
+    condition: TinhTrang;
+    seenQuantity: number | null;
+    note: string | null;
+    visitedAt: string;
+    code: string;
+  } | null;
+}
+
+export interface LanOnsiteTomTat {
+  id: string;
+  code: string;
+  visitedAt: string;
+  summary: string | null;
+  nguoiGhi: { id: string; fullName: string };
+  soAnh: number;
+  soThietBi: number;
+  soVanDe: number;
+}
+
+export interface LanOnsite {
+  id: string;
+  code: string;
+  visitedAt: string;
+  summary: string | null;
+  createdAt: string;
+  location: { id: string; code: string; name: string };
+  createdBy: { id: string; fullName: string };
+  anhIds: string[];
+  items: Array<{
+    id: string;
+    systemQuantity: number;
+    seenQuantity: number | null;
+    condition: TinhTrang;
+    note: string | null;
+    asset: { id: string; code: string; name: string; trackingType: KieuQuanLy };
   }>;
 }

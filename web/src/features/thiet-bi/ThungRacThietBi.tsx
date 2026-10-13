@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { ngayGio } from '@/lib/dinh-dang';
 import type { ThietBi } from '@/lib/kieu';
@@ -30,28 +31,6 @@ interface KetQuaLo {
   thongDiep: string;
 }
 
-/** Câu người dùng phải gõ lại để xoá vĩnh viễn cả lô. */
-const CAU_XAC_NHAN = 'XOÁ VĨNH VIỄN';
-
-/**
- * So câu xác nhận mà bỏ qua dấu và hoa/thường.
- *
- * Hiện ra thì phải có dấu, nhưng bắt gõ đúng cả dấu trong hộp thoại của trình
- * duyệt là làm khó vô ích — nhiều người gõ không dấu theo phản xạ. Việc cần là
- * buộc họ ĐỌC, chứ không phải thi chính tả.
- */
-function khopCauXacNhan(nhapVao: string): boolean {
-  const gon = (v: string): string =>
-    v
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/gi, 'd')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toUpperCase();
-  return gon(nhapVao) === gon(CAU_XAC_NHAN);
-}
-
 /**
  * THÙNG RÁC THIẾT BỊ — chỉ ADMIN.
  *
@@ -61,15 +40,15 @@ function khopCauXacNhan(nhapVao: string): boolean {
  *
  * Hai thao tác, cố ý khác nhau về độ nặng:
  *   - Khôi phục: một lần xác nhận;
- *   - Xoá vĩnh viễn: phải GÕ LẠI (đúng mã thiết bị khi xoá một cái, hoặc câu
- *     "XOÁ VĨNH VIỄN" khi xoá cả lô). Bấm "OK" cho một hộp thoại là phản xạ, gõ
- *     lại thì phải đọc xem mình đang xoá cái gì. Đây là đường duy nhất trong hệ
- *     thống làm mất hẳn dữ liệu.
+ *   - Xoá vĩnh viễn: hộp Có / Không nói rõ sẽ mất những gì; nút "Không" được
+ *     focus sẵn nên Enter theo phản xạ là Không. Trước đây bắt gõ lại mã hoặc
+ *     câu "XOÁ VĨNH VIỄN" — chủ doanh nghiệp yêu cầu bỏ vì quá lâu.
  *
  * Cả hai đều làm được hàng loạt. Dọn thùng rác 40 thiết bị mà phải bấm 40 lần
  * thì người ta sẽ bỏ, rồi thùng rác phình ra và mã cũ bị giữ mãi.
  */
 export function ThungRacThietBi() {
+  const hoi = useXacNhan();
   const [muc, datMuc] = useState<DongRac[]>([]);
   const [dangTai, datDangTai] = useState(true);
   const [loi, datLoi] = useState<string | null>(null);
@@ -148,29 +127,43 @@ export function ThungRacThietBi() {
   async function khoiPhucLo(): Promise<void> {
     const ids = [...daChon];
     if (ids.length === 0) return;
-    if (!window.confirm(`Khôi phục ${ids.length} thiết bị đã chọn về danh sách thiết bị?`)) return;
+    if (
+      !(await hoi({
+        tieuDe: `Khôi phục ${ids.length} thiết bị đã chọn?`,
+        noiDung: 'Các thiết bị sẽ quay lại danh sách thiết bị, đúng nguyên trạng trước khi xoá.',
+        nutCo: 'Có, khôi phục',
+        nguyHiem: false,
+      }))
+    )
+      return;
     await chayLo('khoi-phuc-nhieu', ids);
   }
 
   async function xoaVinhVienLo(): Promise<void> {
     const ids = [...daChon];
     if (ids.length === 0) return;
-    const goi = window.prompt(
-      `XOÁ VĨNH VIỄN ${ids.length} thiết bị đã chọn?\n\n` +
-        'Sẽ mất hẳn: bản ghi thiết bị, toàn bộ nhật ký di chuyển, ảnh, dòng trong ' +
-        'yêu cầu / biên bản / kiểm kê. KHÔNG khôi phục lại được.\n\n' +
-        `Gõ "${CAU_XAC_NHAN}" để xác nhận:`,
-    );
-    if (goi === null) return;
-    if (!khopCauXacNhan(goi)) {
-      datLoi(`Câu gõ vào không khớp "${CAU_XAC_NHAN}" — không xoá gì cả.`);
+    if (
+      !(await hoi({
+        tieuDe: `Xoá hẳn ${ids.length} thiết bị đã chọn?`,
+        noiDung:
+          'Sẽ mất hẳn: bản ghi thiết bị, toàn bộ nhật ký di chuyển, ảnh, dòng trong ' +
+          'yêu cầu / biên bản / kiểm kê. KHÔNG khôi phục lại được.',
+      }))
+    )
       return;
-    }
     await chayLo('xoa-vinh-vien-nhieu', ids);
   }
 
   async function khoiPhuc(t: DongRac): Promise<void> {
-    if (!window.confirm(`Khôi phục ${t.code} — ${t.name} về danh sách thiết bị?`)) return;
+    if (
+      !(await hoi({
+        tieuDe: `Khôi phục ${t.code} — ${t.name}?`,
+        noiDung: 'Thiết bị quay lại danh sách thiết bị, đúng nguyên trạng trước khi xoá.',
+        nutCo: 'Có, khôi phục',
+        nguyHiem: false,
+      }))
+    )
+      return;
     datLoi(null);
     try {
       await goiApi(`/api/thiet-bi/${t.id}/khoi-phuc`, { method: 'POST', than: {} });
@@ -182,26 +175,27 @@ export function ThungRacThietBi() {
   }
 
   async function xoaVinhVien(t: DongRac): Promise<void> {
-    // Bắt gõ lại mã: đây là đường duy nhất làm mất hẳn dữ liệu, bấm OK theo phản
-    // xạ thì không đọc, gõ lại mã thì buộc phải nhìn xem mình đang xoá cái gì.
-    const goi = window.prompt(
-      `XOÁ VĨNH VIỄN ${t.code} — ${t.name}?\n\n` +
-        'Sẽ mất hẳn: bản ghi thiết bị, toàn bộ nhật ký di chuyển, ảnh, dòng trong ' +
-        'yêu cầu / biên bản / kiểm kê. KHÔNG khôi phục lại được.\n\n' +
-        `Gõ đúng mã "${t.code}" để xác nhận:`,
-    );
-    if (goi === null) return;
-    if (goi.trim().toUpperCase() !== t.code.toUpperCase()) {
-      datLoi(`Mã gõ vào không khớp "${t.code}" — không xoá gì cả.`);
+    if (
+      !(await hoi({
+        tieuDe: `Xoá hẳn ${t.code} — ${t.name}?`,
+        noiDung:
+          'Sẽ mất hẳn: bản ghi thiết bị, toàn bộ nhật ký di chuyển, ảnh, dòng trong ' +
+          'yêu cầu / biên bản / kiểm kê. KHÔNG khôi phục lại được.',
+      }))
+    )
       return;
-    }
     datLoi(null);
+    // Chặn bấm lại trong lúc đang xoá: trước đây bước gõ mã vô tình làm việc
+    // này; bấm đúp nút "Có" sẽ gửi lệnh xoá lần hai và báo lỗi "không tìm thấy".
+    datDangChay(true);
     try {
       await goiApi(`/api/thiet-bi/${t.id}/vinh-vien`, { method: 'DELETE' });
       datThongBao(`Đã xoá vĩnh viễn ${t.code}.`);
       await tai();
     } catch (e) {
       datLoi(e instanceof LoiApi ? e.message : 'Xoá vĩnh viễn thất bại.');
+    } finally {
+      datDangChay(false);
     }
   }
 
@@ -328,7 +322,12 @@ export function ThungRacThietBi() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap justify-end gap-1">
-                          <Button variant="outline" size="sm" onClick={() => void khoiPhuc(t)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={dangChay}
+                            onClick={() => void khoiPhuc(t)}
+                          >
                             <Undo2 aria-hidden />
                             Khôi phục
                           </Button>
@@ -336,6 +335,7 @@ export function ThungRacThietBi() {
                             variant="ghost"
                             size="sm"
                             className="text-destructive-dam hover:bg-destructive/10"
+                            disabled={dangChay}
                             onClick={() => void xoaVinhVien(t)}
                           >
                             <Trash2 aria-hidden />

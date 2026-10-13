@@ -23,6 +23,8 @@ export interface ChupAnhProps {
   onDoiAnh: (anh: AnhDaTai[]) => void;
   /** Gắn ảnh vào thiết bị ngay lúc tải, để phạm vi quyền đúng từ đầu. */
   assetId?: string;
+  /** Phiếu mà ảnh làm bằng chứng — người lập phiếu chụp được thiết bị ngoài phạm vi. */
+  requestId?: string;
   moTa?: string;
   toiDa?: number;
   /**
@@ -38,6 +40,7 @@ export function ChupAnh({
   anh,
   onDoiAnh,
   assetId,
+  requestId,
   moTa,
   toiDa = 5,
   batBuoc = true,
@@ -103,7 +106,7 @@ export function ChupAnh({
       datLoi(null);
       datDangTai(true);
       try {
-        const moi = await taiAnhLen(tep, kind, assetId);
+        const moi = await taiAnhLen(tep, kind, assetId, undefined, requestId);
         onDoiAnh([...anh, moi]);
       } catch (e) {
         datLoi(e instanceof LoiApi ? e.message : 'Tải ảnh lên thất bại.');
@@ -111,7 +114,7 @@ export function ChupAnh({
         datDangTai(false);
       }
     },
-    [anh, assetId, kind, onDoiAnh],
+    [anh, assetId, requestId, kind, onDoiAnh],
   );
 
   async function bamChup(): Promise<void> {

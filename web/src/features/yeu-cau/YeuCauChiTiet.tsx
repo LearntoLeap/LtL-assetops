@@ -2,13 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
-  Check,
   FileDown,
   FileSignature,
   Loader2,
   PackageCheck,
   PackageOpen,
-  Send,
   Trash2,
   X,
 } from 'lucide-react';
@@ -30,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
@@ -40,6 +39,12 @@ import { MAU_TRANG_THAI } from './tien-ich';
 /** Loại yêu cầu đưa hàng ra khỏi kho / đưa hàng về kho. */
 const LOAI_XUAT = new Set(['XUAT_KHO', 'PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG', 'CHO_MUON']);
 const LOAI_NHAP = new Set(['NHAP_KHO', 'TRA_VE_KHO']);
+/**
+ * Trạng thái còn chờ thực hiện. Không còn bước duyệt: phiếu tạo xong là xuất /
+ * nhập kho được ngay. Phiếu cũ đang "Chờ duyệt" / "Đã duyệt" cũng thực hiện
+ * tiếp được, không bị kẹt. Trùng với `TRANG_THAI_CHO_THUC_HIEN` ở máy chủ.
+ */
+const CHO_THUC_HIEN = new Set(['BAN_NHAP', 'CHO_DUYET', 'DA_DUYET']);
 
 function Muc({ nhan, children }: { nhan: string; children: React.ReactNode }) {
   return (
@@ -51,6 +56,7 @@ function Muc({ nhan, children }: { nhan: string; children: React.ReactNode }) {
 }
 
 export function YeuCauChiTiet() {
+  const hoi = useXacNhan();
   const { id } = useParams<{ id: string }>();
   const { nguoiDung } = useAuth();
   const dieuHuong = useNavigate();
@@ -98,7 +104,11 @@ export function YeuCauChiTiet() {
   }
 
   async function xoaNhap(): Promise<void> {
-    if (!window.confirm('Xoá bản nháp yêu cầu này?')) return;
+    if (!(await hoi({
+      tieuDe: 'Huỷ phiếu này?',
+      noiDung: 'Phiếu chưa xuất / nhập gì nên huỷ không ảnh hưởng tồn kho.',
+      nutCo: 'Có, huỷ phiếu',
+    }))) return;
     try {
       await goiApi(`/api/yeu-cau/${id}`, { method: 'DELETE' });
       dieuHuong('/yeu-cau', { replace: true });
@@ -142,7 +152,7 @@ export function YeuCauChiTiet() {
   if (!yeuCau) return <p className="text-sm text-muted-foreground">Đang tải…</p>;
 
   const laNguoiTao = nguoiDung?.id === yeuCau.createdBy.id;
-  const laNguoiDuyet = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
+  const laQuanLy = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
   /**
    * Xoá phiếu / biên bản: quản trị hệ thống và vận hành thiết bị.
    * Trùng với `duocXoaPhieu` ở máy chủ — nơi thật sự chặn.
@@ -151,11 +161,15 @@ export function YeuCauChiTiet() {
   const laKho =
     nguoiDung?.role === 'KHO' || nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
 
-  const duocGuiDuyet = yeuCau.status === 'BAN_NHAP' && (laNguoiTao || nguoiDung?.role === 'ADMIN');
-  // Không ai tự duyệt yêu cầu của chính mình — server chặn, đây chỉ là ẩn nút.
-  const duocDuyet = yeuCau.status === 'CHO_DUYET' && laNguoiDuyet && !laNguoiTao;
-  const duocXuat = yeuCau.status === 'DA_DUYET' && laKho && LOAI_XUAT.has(yeuCau.type);
-  const duocNhap = yeuCau.status === 'DA_DUYET' && laKho && LOAI_NHAP.has(yeuCau.type);
+  const choThucHien = CHO_THUC_HIEN.has(yeuCau.status);
+  // Người lập tự xuất / nhập phiếu của mình, kho làm được mọi phiếu. Máy chủ
+  // kiểm lại (tài khoản trường chỉ với hàng của trường mình).
+  const duocThucHien = choThucHien && (laKho || laNguoiTao);
+  const duocHuyNhap = yeuCau.status === 'BAN_NHAP' && (laNguoiTao || nguoiDung?.role === 'ADMIN');
+  // Quản trị / vận hành huỷ được phiếu chưa thực hiện, kèm lý do.
+  const duocTuChoi = choThucHien && laQuanLy;
+  const duocXuat = duocThucHien && LOAI_XUAT.has(yeuCau.type);
+  const duocNhap = duocThucHien && LOAI_NHAP.has(yeuCau.type);
   /*
    * Biên bản bàn giao lập được NGAY KHI YÊU CẦU ĐƯỢC DUYỆT.
    *
@@ -166,10 +180,7 @@ export function YeuCauChiTiet() {
    * (server chặn, xem `guiXacNhan`).
    */
   const duocLapBienBan =
-    laKho &&
-    (yeuCau.status === 'DA_DUYET' ||
-      yeuCau.status === 'DA_XUAT' ||
-      yeuCau.status === 'DA_HOAN_TAT');
+    laKho && (choThucHien || yeuCau.status === 'DA_XUAT' || yeuCau.status === 'DA_HOAN_TAT');
 
   /*
    * BIÊN BẢN ĐÃ XUẤT MÀ TỒN KHO CHƯA ĐỔI — trạng thái nửa vời phải nhìn thấy.
@@ -181,7 +192,7 @@ export function YeuCauChiTiet() {
    */
   const bienBanDaCoFile = Boolean(yeuCau.handoverNotes[0]?.fileName);
   const duocGhiNhanTheoBienBan =
-    laKho && yeuCau.status === 'DA_DUYET' && bienBanDaCoFile && (duocXuat || duocNhap);
+    laKho && choThucHien && bienBanDaCoFile && (duocXuat || duocNhap);
 
   /**
    * XUẤT BIÊN BẢN WORD THẲNG TỪ ĐÂY — không phải sang trang Biên bản chọn lại.
@@ -202,7 +213,7 @@ export function YeuCauChiTiet() {
       // Nói luôn phần việc CÒN LẠI. Xuất biên bản chỉ ra tờ giấy; tồn kho và
       // tình trạng chỉ đổi khi ghi nhận xuất/nhập kho. Thiếu câu này thì người
       // dùng tưởng đã xong và không hiểu vì sao số liệu đứng im.
-      const conPhaiGhiNhan = yc.status === 'DA_DUYET';
+      const conPhaiGhiNhan = CHO_THUC_HIEN.has(yc.status);
       datThongBao(
         (kq.moi
           ? `Đã lập biên bản ${kq.bbbg.code} và tải file Word về máy. Bản mềm được lưu trong mục Biên bản.`
@@ -240,25 +251,16 @@ export function YeuCauChiTiet() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {duocGuiDuyet ? (
-            <>
-              <Button
-                disabled={dangChay}
-                onClick={() => void hanhDong('/gui-duyet', undefined, 'Đã gửi duyệt.')}
-              >
-                <Send aria-hidden />
-                Gửi duyệt
-              </Button>
-              <Button variant="outline" className="text-destructive-dam" onClick={() => void xoaNhap()}>
-                <Trash2 aria-hidden />
-                Xoá nháp
-              </Button>
-            </>
+          {duocHuyNhap ? (
+            <Button variant="outline" className="text-destructive-dam" onClick={() => void xoaNhap()}>
+              <Trash2 aria-hidden />
+              Huỷ phiếu
+            </Button>
           ) : null}
 
           {/* Quản trị và vận hành xoá được phiếu ở mọi trạng thái; server mới là
               chỗ chặn thật, đây chỉ là ẩn nút cho gọn mắt. */}
-          {duocXoaPhieu && yeuCau.status !== 'BAN_NHAP' ? (
+          {duocXoaPhieu && yeuCau.status !== 'BAN_NHAP' && yeuCau.status !== 'DA_XUAT' ? (
             <Button
               variant="outline"
               className="text-destructive-dam"
@@ -270,30 +272,21 @@ export function YeuCauChiTiet() {
             </Button>
           ) : null}
 
-          {duocDuyet ? (
-            <>
-              <Button
-                disabled={dangChay}
-                onClick={() => void hanhDong('/duyet', {}, 'Đã duyệt yêu cầu.')}
-              >
-                <Check aria-hidden />
-                Duyệt
-              </Button>
-              <Button
-                variant="outline"
-                className="text-destructive-dam"
-                disabled={dangChay}
-                onClick={() => {
-                  const lyDo = window.prompt('Lý do từ chối (ít nhất 5 ký tự):');
-                  if (lyDo && lyDo.trim().length >= 5) {
-                    void hanhDong('/tu-choi', { rejectionNote: lyDo.trim() }, 'Đã từ chối yêu cầu.');
-                  }
-                }}
-              >
-                <X aria-hidden />
-                Từ chối
-              </Button>
-            </>
+          {duocTuChoi ? (
+            <Button
+              variant="outline"
+              className="text-destructive-dam"
+              disabled={dangChay}
+              onClick={() => {
+                const lyDo = window.prompt('Lý do huỷ / từ chối phiếu (ít nhất 5 ký tự):');
+                if (lyDo && lyDo.trim().length >= 5) {
+                  void hanhDong('/tu-choi', { rejectionNote: lyDo.trim() }, 'Đã từ chối phiếu.');
+                }
+              }}
+            >
+              <X aria-hidden />
+              Từ chối
+            </Button>
           ) : null}
 
           {duocXuat ? (
@@ -427,10 +420,10 @@ export function YeuCauChiTiet() {
         </Alert>
       ) : null}
 
-      {yeuCau.status === 'CHO_DUYET' && laNguoiTao && laNguoiDuyet ? (
-        <Alert variant="info" tieuDe="Bạn không tự duyệt yêu cầu của mình được">
-          Đây là yêu cầu do chính bạn tạo. Nhờ một người có quyền duyệt khác xử lý — đây là chốt
-          phân định trách nhiệm, máy chủ chặn chứ không phải giao diện ẩn nút.
+      {duocXuat || duocNhap ? (
+        <Alert variant="info" tieuDe={`Phiếu chờ ${duocNhap ? 'nhập' : 'xuất'} kho`}>
+          Không cần chờ duyệt: bấm <strong>{duocNhap ? 'Nhập kho' : 'Xuất kho'}</strong>, chụp ảnh
+          từng thiết bị rồi hoàn tất — tồn kho đổi ngay, quản trị được báo tự động.
         </Alert>
       ) : null}
       {yeuCau.status === 'TU_CHOI' && yeuCau.rejectionNote ? (
@@ -457,23 +450,42 @@ export function YeuCauChiTiet() {
                 {yeuCau.createdBy.department ?? yeuCau.createdBy.email}
               </span>
             </Muc>
-            <Muc nhan="Nơi đến">{yeuCau.toLocation?.name ?? yeuCau.destinationNote ?? '—'}</Muc>
-            <Muc nhan="Dự kiến trả">{ngay(yeuCau.expectedReturnAt)}</Muc>
-            <Muc nhan="Gửi duyệt lúc">{ngayGio(yeuCau.submittedAt)}</Muc>
-            <Muc nhan="Người duyệt">
-              {yeuCau.approvedBy?.fullName ?? '—'}
-              {yeuCau.approvedAt ? (
-                <span className="block text-xs font-normal text-muted-foreground">
-                  {ngayGio(yeuCau.approvedAt)}
-                </span>
-              ) : null}
+            <Muc nhan={LOAI_NHAP.has(yeuCau.type) ? 'Nhận từ' : 'Nơi đi'}>
+              {yeuCau.fromLocation?.name ??
+                (LOAI_NHAP.has(yeuCau.type) ? 'Bên ngoài / nhân sự trả' : 'Kho còn hàng (tự chọn)')}
             </Muc>
+            <Muc nhan={LOAI_NHAP.has(yeuCau.type) ? 'Kho nhận' : 'Nơi đến'}>
+              {yeuCau.toLocation?.name ??
+                yeuCau.destinationNote ??
+                (yeuCau.type === 'CHO_MUON' ? `Nhân sự: ${yeuCau.createdBy.fullName}` : '—')}
+            </Muc>
+            <Muc nhan="Dự kiến trả">{ngay(yeuCau.expectedReturnAt)}</Muc>
+            <Muc nhan="Lập lúc">{ngayGio(yeuCau.createdAt)}</Muc>
+            {/* Phiếu cũ còn người duyệt thì hiện; phiếu mới không qua bước duyệt. */}
+            {yeuCau.approvedBy ? (
+              <Muc nhan="Người duyệt">
+                {yeuCau.approvedBy.fullName}
+                {yeuCau.approvedAt ? (
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {ngayGio(yeuCau.approvedAt)}
+                  </span>
+                ) : null}
+              </Muc>
+            ) : null}
             <Muc nhan="Hoàn tất lúc">{ngayGio(yeuCau.completedAt)}</Muc>
           </dl>
           <div className="rounded-md bg-muted p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Lý do</p>
             <p className="mt-1 whitespace-pre-wrap text-sm">{yeuCau.reason}</p>
           </div>
+          {yeuCau.note ? (
+            <div className="rounded-md border border-dashed p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Ghi chú (mượn thêm từ kho khác…)
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm">{yeuCau.note}</p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

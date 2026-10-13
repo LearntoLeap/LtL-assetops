@@ -10,7 +10,7 @@ import { LOAI_DIEM_LUU_TRU } from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
 import { batAsync } from '../../lib/bat-async.js';
 import { boiCanh, ghiAudit } from '../../lib/audit.js';
-import { loi404, loi409 } from '../../lib/loi-http.js';
+import { loi403, loi404, loi409 } from '../../lib/loi-http.js';
 import { dieuKienDiaDiem } from '../../lib/pham-vi.js';
 import { toaDoHopLe } from '../../lib/khoang-cach.js';
 import { xoaFileAnh } from '../../lib/luu-anh.js';
@@ -222,7 +222,8 @@ const maDiaDiem = z
   .regex(/^[A-Z0-9][A-Z0-9._-]*$/, 'Mã chỉ gồm chữ in hoa, số và các dấu . _ -');
 
 const luocDoTaoDiaDiem = z.object({
-  code: maDiaDiem,
+  /** Bỏ trống thì máy chủ tự sinh từ loại + tên (vd TRUONG-MINH-KHAI). */
+  code: maDiaDiem.optional(),
   name: z.string().trim().min(2, 'Tên điểm phải có ít nhất 2 ký tự.').max(191),
   type: z.enum(LOAI_DIEM_LUU_TRU),
   address: chuoiTuyChon(2000),
@@ -293,30 +294,83 @@ diaDiemRouter.get(
   }),
 );
 
+/**
+ * Tiền tố mã điểm theo loại, để nhìn mã là biết loại điểm.
+ */
+const TIEN_TO_LOAI_DIEM: Record<(typeof LOAI_DIEM_LUU_TRU)[number], string> = {
+  KHO_VAN_PHONG: 'KHO',
+  DIEM_TRUONG: 'TRUONG',
+  DOI_TAC_MUON: 'DOITAC',
+  KHO_SU_KIEN: 'SUKIEN',
+};
+
+/** "Trường Tiểu học Minh Khai" → "TRUONG-TIEU-HOC-MINH-KHAI" (bỏ dấu, in hoa). */
+function maDiemTuTen(loai: (typeof LOAI_DIEM_LUU_TRU)[number], ten: string): string {
+  const than = ten
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
+  const tienTo = TIEN_TO_LOAI_DIEM[loai];
+  // Tên đã mở đầu bằng chính tiền tố (vd "Trường …") thì không lặp lại.
+  if (!than) return `${tienTo}-${Date.now().toString(36).toUpperCase()}`;
+  return than.startsWith(`${tienTo}-`) || than === tienTo ? than : `${tienTo}-${than}`;
+}
+
+/**
+ * THÊM ĐIỂM NHẬN / TRẢ.
+ *
+ * Mọi điểm nhận / trả đều thêm được ngay khi lập phiếu (chủ doanh nghiệp yêu
+ * cầu) — trước đây phải nhờ quản trị vào trang riêng, còn ô "Nơi khác, tự điền"
+ * tạo ra phiếu không bao giờ thực hiện được. Nhân sự và kho thêm được điểm
+ * trường, đối tác, kho sự kiện; riêng KHO VĂN PHÒNG vẫn chỉ Quản trị / Vận hành
+ * vì nó gắn tài khoản kho và khoá GPS. Tài khoản trường không thêm điểm.
+ */
+const chiThemDiem = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO', 'NHAN_SU');
 diaDiemRouter.post(
   '/',
-  chiSuaDuoc,
+  chiThemDiem,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoTaoDiaDiem.parse(req.body);
+    if (duLieu.type === 'KHO_VAN_PHONG' && actor.role !== 'ADMIN' && actor.role !== 'VAN_HANH') {
+      throw loi403('Chỉ Quản trị và Vận hành thiết bị mới thêm được kho văn phòng.');
+    }
+    // Không gõ mã thì sinh từ loại + tên; trùng thì thêm -2, -3…
+    let ma = duLieu.code;
+    if (!ma) {
+      const goc = maDiemTuTen(duLieu.type, duLieu.name);
+      for (let i = 1; i <= 50; i++) {
+        const thu = i === 1 ? goc : `${goc.slice(0, 60)}-${i}`;
+        if (!(await prisma.location.findUnique({ where: { code: thu }, select: { id: true } }))) {
+          ma = thu;
+          break;
+        }
+      }
+      if (!ma) throw loi409('Không sinh được mã điểm chưa trùng. Hãy đặt tên khác.', { truong: 'name' });
+    }
     // CỐ Ý không lọc `deletedAt: null`: mã của điểm trong thùng rác VẪN nằm
     // trong khoá duy nhất, nên phải báo trùng — nhưng nói rõ nó ở đâu, vì người
     // dùng tìm khắp danh sách sẽ không thấy đâu cả.
     const daCo = await prisma.location.findUnique({
-      where: { code: duLieu.code },
+      where: { code: ma },
       select: { id: true, deletedAt: true },
     });
     if (daCo?.deletedAt) {
       throw loi409(
-        `Mã ${duLieu.code} đang thuộc một điểm trong THÙNG RÁC. Vào Điểm lưu trữ → Thùng rác để khôi phục, hoặc xoá vĩnh viễn rồi mới tạo lại mã này.`,
+        `Mã ${ma} đang thuộc một điểm trong THÙNG RÁC. Vào Điểm lưu trữ → Thùng rác để khôi phục, hoặc xoá vĩnh viễn rồi mới tạo lại mã này.`,
         { truong: 'code', maLoi: 'MA_O_THUNG_RAC', diaDiemId: daCo.id },
       );
     }
-    if (daCo) throw loi409(`Mã điểm ${duLieu.code} đã tồn tại.`, { truong: 'code' });
+    if (daCo) throw loi409(`Mã điểm ${ma} đã tồn tại.`, { truong: 'code' });
 
     const diaDiem = await prisma.location.create({
       data: {
-        code: duLieu.code,
+        code: ma,
         name: duLieu.name,
         type: duLieu.type,
         address: duLieu.address || null,
@@ -402,7 +456,7 @@ async function demRangBuoc(id: string): Promise<{
   tong: number;
   keRa: string;
 }> {
-  const [thietBi, diChuyen, taiKhoan, yeuCau, bbbg, kiemKe] = await Promise.all([
+  const [thietBi, diChuyen, taiKhoan, yeuCau, bbbg, kiemKe, onsite] = await Promise.all([
     prisma.asset.count({ where: { currentLocationId: id, deletedAt: null } }),
     prisma.movement.count({ where: { OR: [{ fromLocationId: id }, { toLocationId: id }] } }),
     prisma.user.count({ where: { locationId: id } }),
@@ -411,8 +465,9 @@ async function demRangBuoc(id: string): Promise<{
     }),
     prisma.handoverNote.count({ where: { deletedAt: null, receiverLocationId: id } }),
     prisma.inventoryCount.count({ where: { locationId: id } }),
+    prisma.onsiteVisit.count({ where: { locationId: id } }),
   ]);
-  const rangBuoc = { thietBi, diChuyen, taiKhoan, yeuCau, bienBan: bbbg, kiemKe };
+  const rangBuoc = { thietBi, diChuyen, taiKhoan, yeuCau, bienBan: bbbg, kiemKe, onsite };
   const NHAN: Record<keyof typeof rangBuoc, string> = {
     thietBi: 'thiết bị đang ở đây',
     diChuyen: 'lượt xuất–nhập kho đã ghi',
@@ -420,6 +475,7 @@ async function demRangBuoc(id: string): Promise<{
     yeuCau: 'yêu cầu',
     bienBan: 'biên bản bàn giao',
     kiemKe: 'đợt kiểm kê',
+    onsite: 'lần cập nhật onsite',
   };
   const keRa = (Object.keys(rangBuoc) as Array<keyof typeof rangBuoc>)
     .filter((k) => rangBuoc[k] > 0)
@@ -568,7 +624,13 @@ diaDiemRouter.delete(
       select: { id: true },
     });
     const anhCanDonDia = await prisma.photo.findMany({
-      where: { movementId: { in: buocSeXoa.map((b) => b.id) } },
+      where: {
+        OR: [
+          { movementId: { in: buocSeXoa.map((b) => b.id) } },
+          // Ảnh onsite cascade mất cùng lần cập nhật — lấy đường dẫn trước.
+          { onsiteVisit: { locationId: id } },
+        ],
+      },
       select: { filePath: true },
     });
 
@@ -586,6 +648,7 @@ diaDiemRouter.delete(
         tx,
       );
       await tx.inventoryCount.deleteMany({ where: { locationId: id } });
+      await tx.onsiteVisit.deleteMany({ where: { locationId: id } });
       await tx.movement.deleteMany({
         where: { OR: [{ fromLocationId: id }, { toLocationId: id }] },
       });

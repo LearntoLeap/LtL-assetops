@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { LOAI_DIEM_LUU_TRU } from '@ltl/taisan-shared';
 import { batAsync } from '../../lib/bat-async.js';
 import {
   chanKhiChuaDoiMatKhau,
@@ -42,6 +43,38 @@ baoCaoRouter.get(
     const nguoiDung = nguoiDungHienTai(req);
     const { soNgay } = luocDoLoc.parse(req.query);
     res.json({ ok: true, ...(await dv.tongThe(nguoiDung, soNgay)) });
+  }),
+);
+
+const luocDoTonTheoDiem = z.object({
+  diaDiemId: z.string().trim().max(30).optional(),
+  loaiDiem: z.enum(LOAI_DIEM_LUU_TRU).optional(),
+  categoryId: z.string().trim().max(30).optional(),
+  productLineId: z.string().trim().max(30).optional(),
+  trackingType: z.enum(['DON_VI', 'SO_LUONG']).optional(),
+  tuKhoa: z.string().trim().max(191).optional(),
+  chiConHang: z.enum(['true', 'false']).default('true'),
+  gioiHan: z.coerce.number().int().positive().max(1000).default(300),
+});
+
+/**
+ * TỒN THEO ĐIỂM / THEO SẢN PHẨM với bộ lọc (điểm, loại điểm, loại tài sản, dòng
+ * giải pháp, bộ / hàng lẻ, từ khoá). Không giới hạn vai trò ở middleware —
+ * service lọc theo phạm vi điểm.
+ */
+baoCaoRouter.get(
+  '/ton-theo-diem',
+  batAsync(async (req, res) => {
+    const nguoiDung = nguoiDungHienTai(req);
+    const loc = luocDoTonTheoDiem.parse(req.query);
+    res.json({
+      ok: true,
+      ...(await dv.tonTheoDiem(nguoiDung, {
+        ...loc,
+        tuKhoa: loc.tuKhoa || undefined,
+        chiConHang: loc.chiConHang === 'true',
+      })),
+    });
   }),
 );
 

@@ -14,13 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan, type TuyChonXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { ngayGio } from '@/lib/dinh-dang';
 import type { BienBan, TrangDuLieu } from '@/lib/kieu';
 import { MAU_TRANG_THAI_BBBG } from './tien-ich';
 
 /**
- * THÙNG RÁC BIÊN BẢN BÀN GIAO — chỉ ADMIN.
+ * THÙNG RÁC BIÊN BẢN BÀN GIAO — Quản trị và Vận hành thiết bị.
  *
  * XOÁ BIÊN BẢN KHÔNG HOÀN TÁC VIỆC BÀN GIAO. Với biên bản đã được bên nhận xác
  * nhận, chính cú bấm xác nhận đó đã ghi bút toán di chuyển và đổi vị trí thiết
@@ -30,6 +31,7 @@ import { MAU_TRANG_THAI_BBBG } from './tien-ich';
  * trước đó là bản duy nhất còn lại.
  */
 export function ThungRacBienBan() {
+  const hoi = useXacNhan();
   const [muc, datMuc] = useState<BienBan[]>([]);
   const [dangTai, datDangTai] = useState(true);
   const [loi, datLoi] = useState<string | null>(null);
@@ -55,11 +57,11 @@ export function ThungRacBienBan() {
 
   async function chay(
     duongDan: string,
-    xacNhan: string,
+    cauHoi: TuyChonXacNhan,
     // Khôi phục là POST, xoá hẳn là DELETE — gọi sai phương thức thì ra 404.
     phuongThuc: 'POST' | 'DELETE' = 'POST',
   ): Promise<void> {
-    if (!window.confirm(xacNhan)) return;
+    if (!(await hoi(cauHoi))) return;
     datLoi(null);
     datThongBao(null);
     datDangChay(true);
@@ -169,7 +171,12 @@ export function ThungRacBienBan() {
                             onClick={() =>
                               void chay(
                                 `/api/bbbg/${y.id}/khoi-phuc`,
-                                `Khôi phục biên bản ${y.code} về danh sách?`,
+                                {
+                                  tieuDe: `Khôi phục biên bản ${y.code}?`,
+                                  noiDung: 'Phiếu quay lại danh sách như trước khi xoá.',
+                                  nutCo: 'Có, khôi phục',
+                                  nguyHiem: false,
+                                },
                               )
                             }
                           >
@@ -184,9 +191,12 @@ export function ThungRacBienBan() {
                             onClick={() =>
                               void chay(
                                 `/api/bbbg/${y.id}/vinh-vien`,
-                                `XOÁ HẲN biên bản ${y.code} và file Word của nó?\n\n` +
-                                  'Không khôi phục lại được. Vị trí thiết bị và tồn kho vẫn giữ ' +
-                                  'nguyên — chỉ mất chứng từ.',
+                                {
+                                  tieuDe: `Xoá hẳn biên bản ${y.code} và file Word của nó?`,
+                                  noiDung:
+                                    'Không khôi phục lại được. Vị trí thiết bị và tồn kho vẫn giữ ' +
+                                    'nguyên — chỉ mất chứng từ.',
+                                },
                                 'DELETE',
                               )
                             }
@@ -207,7 +217,7 @@ export function ThungRacBienBan() {
 
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-        Chỉ tài khoản quản trị vào được trang này. Máy chủ kiểm lại quyền ở mọi thao tác, không
+        Chỉ tài khoản Quản trị và Vận hành thiết bị vào được trang này. Máy chủ kiểm lại quyền ở mọi thao tác, không
         phải chỉ ẩn nút.
       </p>
     </div>

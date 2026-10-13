@@ -4,7 +4,6 @@ import { Download, Plus, QrCode, RefreshCw, Search, Trash2, Undo2, Upload } from
 import {
   DS_TINH_TRANG,
   DS_TRANG_THAI_PHAN_BO,
-  NHAN_KIEU_QUAN_LY,
   NHAN_TINH_TRANG,
   NHAN_TRANG_THAI_PHAN_BO,
   type TinhTrang,
@@ -25,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { NutQuetQR } from '@/components/QuetQR';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { taiTep } from '@/lib/tep';
@@ -70,6 +70,7 @@ const MOI_LUOT_CHON = 200;
 const TOI_DA_MOT_LUOT = 500;
 
 export function ThietBiList() {
+  const hoi = useXacNhan();
   const { nguoiDung } = useAuth();
   const dieuHuong = useNavigate();
   const duocSua =
@@ -95,22 +96,26 @@ export function ThietBiList() {
   const [dangTai, datDangTai] = useState(true);
   const [loi, datLoi] = useState<string | null>(null);
 
-  const [tuKhoa, datTuKhoa] = useState('');
-  const [locLoai, datLocLoai] = useState('');
-  const [locDiem, datLocDiem] = useState('');
-  const [locTinhTrang, datLocTinhTrang] = useState('');
+  const [thamSo] = useSearchParams();
+  const [tuKhoa, datTuKhoa] = useState(thamSo.get('tuKhoa') ?? '');
+  const [locLoai, datLocLoai] = useState(thamSo.get('categoryId') ?? '');
+  const [locDiem, datLocDiem] = useState(thamSo.get('locationId') ?? '');
+  const [locTinhTrang, datLocTinhTrang] = useState(thamSo.get('condition') ?? '');
+  /** Bộ (từng cái có mã) hay hàng lẻ — trước đây API có lọc này mà màn hình không có ô. */
+  const [locKieu, datLocKieu] = useState(thamSo.get('trackingType') ?? '');
+  const [locDong, datLocDong] = useState(thamSo.get('productLineId') ?? '');
   /*
    * Mở sẵn bộ lọc theo ĐỊA CHỈ TRANG. Ô "Đang cho mượn" trên trang chủ dẫn tới
    * `/thiet-bi?allocationStatus=CHO_MUON`; không đọc tham số này thì bấm vào ô
    * đó ra danh sách toàn bộ thiết bị — con số nói một đằng, danh sách một nẻo.
    */
-  const [thamSo] = useSearchParams();
   const [locPhanBo, datLocPhanBo] = useState(thamSo.get('allocationStatus') ?? '');
   const [locMucDich, datLocMucDich] = useState('');
 
   const [loaiTaiSan, datLoaiTaiSan] = useState<DanhMuc[]>([]);
   const [diaDiem, datDiaDiem] = useState<DiaDiem[]>([]);
   const [mucDich, datMucDich] = useState<DanhMuc[]>([]);
+  const [dongGiaiPhap, datDongGiaiPhap] = useState<DanhMuc[]>([]);
 
   /**
    * Dựng tham số truy vấn từ bộ lọc đang chọn.
@@ -127,8 +132,10 @@ export function ThietBiList() {
     if (locTinhTrang) q.set('condition', locTinhTrang);
     if (locPhanBo) q.set('allocationStatus', locPhanBo);
     if (locMucDich) q.set('purposeId', locMucDich);
+    if (locKieu) q.set('trackingType', locKieu);
+    if (locDong) q.set('productLineId', locDong);
     return q;
-  }, [tuKhoa, locLoai, locDiem, locTinhTrang, locPhanBo, locMucDich]);
+  }, [tuKhoa, locLoai, locDiem, locTinhTrang, locPhanBo, locMucDich, locKieu, locDong]);
 
   const tai = useCallback(async () => {
     datDangTai(true);
@@ -154,12 +161,14 @@ export function ThietBiList() {
   useEffect(() => {
     async function taiDanhMuc(): Promise<void> {
       try {
-        const [loai, diem, md] = await Promise.all([
+        const [loai, diem, md, dong] = await Promise.all([
           goiApi<TrangDuLieu<DanhMuc>>('/api/danh-muc/loai-tai-san'),
           goiApi<TrangDuLieu<DiaDiem>>('/api/dia-diem?chiHoatDong=true'),
           goiApi<TrangDuLieu<DanhMuc>>('/api/danh-muc/muc-dich'),
+          goiApi<TrangDuLieu<DanhMuc>>('/api/danh-muc/dong-giai-phap').catch(() => ({ muc: [] })),
         ]);
         datLoaiTaiSan(loai.muc);
+        datDongGiaiPhap(dong.muc);
         datDiaDiem(diem.muc);
         // Kể cả mục đã Ngừng dùng: vẫn còn thiết bị cũ mang mục đó, phải lọc ra xem được.
         datMucDich(md.muc);
@@ -259,11 +268,13 @@ export function ThietBiList() {
     const ids = [...daChon.values()];
     if (ids.length === 0) return;
     if (
-      !window.confirm(
-        `Chuyển ${ids.length} thiết bị đã chọn vào thùng rác?\n\n` +
+      !(await hoi({
+        tieuDe: `Chuyển ${ids.length} thiết bị đã chọn vào thùng rác?`,
+        noiDung:
           'Chúng sẽ biến khỏi mọi danh sách và không còn tính vào tồn kho, nhưng ' +
           'khôi phục lại được ở Thiết bị → Thùng rác.',
-      )
+        nutCo: 'Có, chuyển vào thùng rác',
+      }))
     ) {
       return;
     }
@@ -306,11 +317,13 @@ export function ThietBiList() {
     // Lời xác nhận phải nói đúng việc sắp xảy ra: đây là chuyển vào thùng rác,
     // KHÔNG phải xoá hẳn. Ghi "không thể hoàn lại" như trước là nói sai.
     if (
-      !window.confirm(
-        `Chuyển thiết bị ${t.code} — ${t.name} vào thùng rác?\n\n` +
+      !(await hoi({
+        tieuDe: `Chuyển thiết bị ${t.code} — ${t.name} vào thùng rác?`,
+        noiDung:
           'Thiết bị sẽ biến khỏi mọi danh sách và không còn tính vào tồn kho, ' +
           'nhưng khôi phục lại được ở Thiết bị → Thùng rác.',
-      )
+        nutCo: 'Có, chuyển vào thùng rác',
+      }))
     ) {
       return;
     }
@@ -472,6 +485,27 @@ export function ThietBiList() {
                 </option>
               ))}
             </Select>
+            <Select
+              value={locKieu}
+              onChange={(su) => doiLoc(datLocKieu)(su.target.value)}
+              aria-label="Bộ hay hàng lẻ"
+            >
+              <option value="">Bộ và hàng lẻ</option>
+              <option value="DON_VI">Chỉ bộ (từng cái có mã)</option>
+              <option value="SO_LUONG">Chỉ hàng lẻ</option>
+            </Select>
+            <Select
+              value={locDong}
+              onChange={(su) => doiLoc(datLocDong)(su.target.value)}
+              aria-label="Lọc theo dòng giải pháp"
+            >
+              <option value="">Mọi dòng giải pháp</option>
+              {dongGiaiPhap.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
             <div className="flex gap-2">
               <Select
                 value={locMucDich}
@@ -555,6 +589,7 @@ export function ThietBiList() {
                     <TableHead>Mã / Tên</TableHead>
                     <TableHead>Loại</TableHead>
                     <TableHead>Vị trí hiện tại</TableHead>
+                    {locDiem ? <TableHead className="text-right">SL tại điểm</TableHead> : null}
                     <TableHead>Tình trạng</TableHead>
                     <TableHead>Phân bổ</TableHead>
                     <TableHead>Quản lý</TableHead>
@@ -608,6 +643,13 @@ export function ThietBiList() {
                           <span className="block text-xs">Giữ: {t.holder.fullName}</span>
                         ) : null}
                       </TableCell>
+                      {/* Lọc theo điểm thì hiện số đang ở ĐÚNG điểm đó — hàng lẻ có
+                          thể nằm rải nhiều nơi, cột vị trí chỉ là nơi chính. */}
+                      {locDiem ? (
+                        <TableCell className="text-right tabular-nums">
+                          {t.tonTaiDiem ?? '—'}
+                        </TableCell>
+                      ) : null}
                       <TableCell>
                         <Badge variant={MAU_TINH_TRANG[t.condition]}>
                           {NHAN_TINH_TRANG[t.condition]}
@@ -619,7 +661,7 @@ export function ThietBiList() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {NHAN_KIEU_QUAN_LY[t.trackingType]}
+                        {t.trackingType === 'DON_VI' ? 'Bộ (từng cái)' : 'Hàng lẻ'}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{tienVN(t.value)}</TableCell>
                       {laAdmin ? (

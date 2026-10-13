@@ -14,13 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan, type TuyChonXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { ngayGio } from '@/lib/dinh-dang';
 import type { TrangDuLieu, YeuCau } from '@/lib/kieu';
 import { MAU_TRANG_THAI } from './tien-ich';
 
 /**
- * THÙNG RÁC YÊU CẦU — chỉ ADMIN.
+ * THÙNG RÁC YÊU CẦU — Quản trị và Vận hành thiết bị.
  *
  * Phiếu ở đây đã biến khỏi mọi danh sách và mọi con số, nhưng NHỮNG GÌ ĐÃ XẢY
  * RA THÌ VẪN NGUYÊN: bút toán di chuyển, ảnh chụp lúc xuất–nhập, biên bản đã
@@ -31,6 +32,7 @@ import { MAU_TRANG_THAI } from './tien-ich';
  * phiếu không phải là nguồn của tồn kho, nên bỏ nó đi không làm số nào lệch.
  */
 export function ThungRacYeuCau() {
+  const hoi = useXacNhan();
   const [muc, datMuc] = useState<YeuCau[]>([]);
   const [dangTai, datDangTai] = useState(true);
   const [loi, datLoi] = useState<string | null>(null);
@@ -56,11 +58,11 @@ export function ThungRacYeuCau() {
 
   async function chay(
     duongDan: string,
-    xacNhan: string,
+    cauHoi: TuyChonXacNhan,
     // Khôi phục là POST, xoá hẳn là DELETE — gọi sai phương thức thì ra 404.
     phuongThuc: 'POST' | 'DELETE' = 'POST',
   ): Promise<void> {
-    if (!window.confirm(xacNhan)) return;
+    if (!(await hoi(cauHoi))) return;
     datLoi(null);
     datThongBao(null);
     datDangChay(true);
@@ -166,7 +168,12 @@ export function ThungRacYeuCau() {
                             onClick={() =>
                               void chay(
                                 `/api/yeu-cau/${y.id}/khoi-phuc`,
-                                `Khôi phục yêu cầu ${y.code} về danh sách?`,
+                                {
+                                  tieuDe: `Khôi phục yêu cầu ${y.code}?`,
+                                  noiDung: 'Phiếu quay lại danh sách như trước khi xoá.',
+                                  nutCo: 'Có, khôi phục',
+                                  nguyHiem: false,
+                                },
                               )
                             }
                           >
@@ -181,9 +188,12 @@ export function ThungRacYeuCau() {
                             onClick={() =>
                               void chay(
                                 `/api/yeu-cau/${y.id}/vinh-vien`,
-                                `XOÁ HẲN yêu cầu ${y.code} khỏi cơ sở dữ liệu?\n\n` +
-                                  'Không khôi phục lại được. Bút toán di chuyển, ảnh và tồn kho ' +
-                                  'vẫn giữ nguyên — chỉ mất tờ phiếu.',
+                                {
+                                  tieuDe: `Xoá hẳn yêu cầu ${y.code}?`,
+                                  noiDung:
+                                    'Không khôi phục lại được. Bút toán di chuyển, ảnh và tồn kho ' +
+                                    'vẫn giữ nguyên — chỉ mất tờ phiếu.',
+                                },
                                 'DELETE',
                               )
                             }
@@ -204,7 +214,7 @@ export function ThungRacYeuCau() {
 
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-        Chỉ tài khoản quản trị vào được trang này. Máy chủ kiểm lại quyền ở mọi thao tác, không
+        Chỉ tài khoản Quản trị và Vận hành thiết bị vào được trang này. Máy chủ kiểm lại quyền ở mọi thao tác, không
         phải chỉ ẩn nút.
       </p>
     </div>

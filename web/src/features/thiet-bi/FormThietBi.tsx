@@ -212,7 +212,11 @@ export function FormThietBi() {
         const kq = await goiApi<{ ok: true; thietBi: { id: string } }>('/api/thiet-bi', {
           method: 'POST',
           than: {
-            code: bieu.code,
+            // Chế độ tự sinh: KHÔNG gửi mã đang hiện — đó chỉ là mã DỰ KIẾN. Máy
+            // chủ cấp mã chính thức bằng bộ đếm ngay lúc ghi; trước đây gửi lên
+            // như mã gõ tay nên ai lưu chậm hơn đồng nghiệp vài giây là bị báo
+            // "mã đã tồn tại" và kẹt ở đó.
+            ...(maTuSinh ? {} : { code: bieu.code }),
             name: bieu.name,
             categoryId: bieu.categoryId,
             ...(bieu.productLineId ? { productLineId: bieu.productLineId } : {}),
@@ -262,7 +266,7 @@ export function FormThietBi() {
           <CardTitle>Thông tin</CardTitle>
           <CardDescription>
             {dangSua
-              ? 'Vị trí, tình trạng và trạng thái phân bổ KHÔNG sửa ở đây — chúng chỉ đổi qua luồng yêu cầu đã duyệt hoặc điều chỉnh sau kiểm kê.'
+              ? 'Vị trí, tình trạng và trạng thái phân bổ KHÔNG sửa ở đây — chúng chỉ đổi qua phiếu xuất / nhập kho hoặc điều chỉnh sau kiểm kê.'
               : 'Tạo thiết bị sẽ tự ghi một dòng nhập ban đầu vào nhật ký di chuyển, để tồn kho luôn suy ra được.'}
           </CardDescription>
         </CardHeader>
@@ -272,7 +276,8 @@ export function FormThietBi() {
               <Label htmlFor="f-ma">Mã thiết bị *</Label>
               <Input
                 id="f-ma"
-                required
+                // Tự sinh thì để trống vẫn lưu được — máy chủ cấp mã.
+                required={!maTuSinh}
                 disabled={dangSua}
                 value={bieu.code}
                 onChange={(su) => {
@@ -289,8 +294,9 @@ export function FormThietBi() {
                   'Mã không đổi được — mọi giao dịch đã tham chiếu theo mã này.'
                 ) : maTuSinh ? (
                   <>
-                    Tự sinh theo <strong>nguồn gốc – loại – dòng giải pháp</strong> và số thứ tự
-                    riêng của tổ hợp đó. Gõ đè nếu thiết bị đã có mã riêng.
+                    Mã <strong>dự kiến</strong> theo nguồn gốc – loại – dòng giải pháp; mã
+                    chính thức cấp lúc bấm Lưu (không bao giờ trùng, chỉ tăng). Gõ đè nếu
+                    thiết bị đã có mã riêng.
                   </>
                 ) : (
                   <>

@@ -63,12 +63,15 @@ export async function taiAnhLen(
   kind: LoaiAnh,
   assetId?: string,
   viTri?: { latitude: number; longitude: number },
+  /** Phiếu mà ảnh này làm bằng chứng — cho phép chụp thiết bị ngoài phạm vi của mình. */
+  requestId?: string,
 ): Promise<AnhDaTai> {
   const token = kho.docAccess();
   const form = new FormData();
   form.append('anh', tep);
   form.append('kind', kind);
   if (assetId) form.append('assetId', assetId);
+  if (requestId) form.append('requestId', requestId);
   if (viTri) {
     form.append('latitude', String(viTri.latitude));
     form.append('longitude', String(viTri.longitude));

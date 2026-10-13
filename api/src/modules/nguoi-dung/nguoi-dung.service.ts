@@ -322,7 +322,7 @@ export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Pro
   if (id === actor.id) throw loi400('Không thể tự xoá tài khoản của chính mình.', 'TU_XOA');
   if (truoc.role === 'ADMIN') await chanBoAdminCuoiCung(id);
 
-  const [movement, yeuCau, duyet, anh, kiemKe, bbbg, taiSanGiu] = await Promise.all([
+  const [movement, yeuCau, duyet, anh, kiemKe, bbbg, taiSanGiu, onsite] = await Promise.all([
     prisma.movement.count({ where: { performedById: id } }),
     prisma.request.count({ where: { deletedAt: null, createdById: id } }),
     prisma.request.count({ where: { deletedAt: null, approvedById: id } }),
@@ -331,8 +331,9 @@ export async function xoa(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): Pro
     prisma.handoverNote.count({ where: { deletedAt: null, createdById: id } }),
     // Thiết bị đã xoá không được tính là "đang giữ" để chặn xoá tài khoản.
     prisma.asset.count({ where: { holderUserId: id, deletedAt: null } }),
+    prisma.onsiteVisit.count({ where: { createdById: id } }),
   ]);
-  const rangBuoc = { movement, yeuCau, duyet, anh, kiemKe, bbbg, taiSanGiu };
+  const rangBuoc = { movement, yeuCau, duyet, anh, kiemKe, bbbg, taiSanGiu, onsite };
   const tong = Object.values(rangBuoc).reduce((s, n) => s + n, 0);
 
   if (tong > 0) {

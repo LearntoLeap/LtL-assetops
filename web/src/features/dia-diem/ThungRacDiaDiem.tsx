@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
 import { ngayGio } from '@/lib/dinh-dang';
 import type { DiaDiem } from '@/lib/kieu';
@@ -37,6 +38,7 @@ interface DongRac extends DiaDiem {
  * phải nói rõ cả hai vế đó, không được chỉ nói "không khôi phục được".
  */
 export function ThungRacDiaDiem() {
+  const hoi = useXacNhan();
   const [muc, datMuc] = useState<DongRac[]>([]);
   const [dangTai, datDangTai] = useState(true);
   const [loi, datLoi] = useState<string | null>(null);
@@ -62,7 +64,15 @@ export function ThungRacDiaDiem() {
   }, [tai]);
 
   async function khoiPhuc(d: DongRac): Promise<void> {
-    if (!window.confirm(`Khôi phục điểm ${d.name} về danh sách?`)) return;
+    if (
+      !(await hoi({
+        tieuDe: `Khôi phục điểm ${d.name}?`,
+        noiDung: 'Điểm quay lại danh sách điểm lưu trữ.',
+        nutCo: 'Có, khôi phục',
+        nguyHiem: false,
+      }))
+    )
+      return;
     datLoi(null);
     try {
       const kq = await goiApi<{ ok: true; thongDiep: string }>(`/api/dia-diem/${d.id}/khoi-phuc`, {
@@ -77,23 +87,22 @@ export function ThungRacDiaDiem() {
   }
 
   async function xoaVinhVien(d: DongRac): Promise<void> {
-    // Bắt gõ lại mã: đây là đường duy nhất làm mất hẳn một điểm lưu trữ.
+    // Có / Không, không bắt gõ lại mã — nhưng nói đủ hậu quả, và nút "Không"
+    // được focus sẵn. Đây là thao tác xoá nặng nhất: mất nhật ký tại điểm này.
     const soTb = d._count?.assets ?? 0;
-    const goi = window.prompt(
-      `XOÁ VĨNH VIỄN điểm ${d.code} — ${d.name}?\n\n` +
-        (soTb > 0
-          ? `${soTb} thiết bị đang ở đây VẪN CÒN NGUYÊN, chỉ trống ô vị trí để bạn nhập lại kho.\n\n`
-          : '') +
-        'Sẽ mất hẳn: bản ghi điểm, toàn bộ nhật ký xuất–nhập kho và các đợt kiểm ' +
-        'kê TẠI ĐIỂM NÀY. Tồn kho của thiết bị chỉ từng nằm ở đây sẽ về 0 — nhập ' +
-        'lại kho là có tồn trở lại. KHÔNG khôi phục lại được.\n\n' +
-        `Gõ đúng mã "${d.code}" để xác nhận:`,
-    );
-    if (goi === null) return;
-    if (goi.trim().toUpperCase() !== d.code.toUpperCase()) {
-      datLoi(`Mã gõ vào không khớp "${d.code}" — không xoá gì cả.`);
+    if (
+      !(await hoi({
+        tieuDe: `Xoá hẳn điểm ${d.code} — ${d.name}?`,
+        noiDung:
+          (soTb > 0
+            ? `${soTb} thiết bị đang ở đây VẪN CÒN NGUYÊN, chỉ trống ô vị trí để bạn nhập lại kho.\n\n`
+            : '') +
+          'Sẽ mất hẳn: bản ghi điểm, toàn bộ nhật ký xuất–nhập kho và các đợt kiểm ' +
+          'kê TẠI ĐIỂM NÀY. Tồn kho của thiết bị chỉ từng nằm ở đây sẽ về 0 — nhập ' +
+          'lại kho là có tồn trở lại. KHÔNG khôi phục lại được.',
+      }))
+    )
       return;
-    }
     datLoi(null);
     try {
       const kq = await goiApi<{ ok: true; thongDiep: string }>(`/api/dia-diem/${d.id}/vinh-vien`, {

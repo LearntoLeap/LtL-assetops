@@ -18,7 +18,7 @@ import { batAsync } from '../../lib/bat-async.js';
 import { boiCanh, ghiAudit } from '../../lib/audit.js';
 import { loi400, loi403, loi404 } from '../../lib/loi-http.js';
 import { duongDanTuyetDoi, luuAnh, xoaFileAnh } from '../../lib/luu-anh.js';
-import { dieuKienTaiSan, phamViCua } from '../../lib/pham-vi.js';
+import { dieuKienTaiSan, dieuKienYeuCau, phamViCua } from '../../lib/pham-vi.js';
 import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
@@ -80,12 +80,32 @@ anhRouter.post(
     const gan = luocDoGanAnh.parse(req.body);
 
     // Ảnh gắn vào thiết bị nào thì thiết bị đó phải nằm trong phạm vi của người tải.
+    //
+    // NGOẠI LỆ: ảnh chụp cho chính PHIẾU của mình. Không còn bước duyệt, nhân sự
+    // tự chụp ảnh xuất kho chiếc robot mình mượn — robot đó còn ở kho, chưa thuộc
+    // phạm vi của họ, nên trước đây ảnh đầu tiên đã bị chặn 404. Cho qua khi phiếu
+    // nằm trong phạm vi người tải VÀ phiếu có đúng thiết bị đó.
     if (gan.assetId) {
       const trongPhamVi = await prisma.asset.findFirst({
         where: { id: gan.assetId, ...dieuKienTaiSan(actor) },
         select: { id: true },
       });
-      if (!trongPhamVi) throw loi404('Thiết bị không tồn tại hoặc ngoài phạm vi của bạn.');
+      const quaPhieu =
+        !trongPhamVi && gan.requestId
+          ? await prisma.request.findFirst({
+              where: {
+                AND: [
+                  { id: gan.requestId },
+                  dieuKienYeuCau(actor),
+                  { items: { some: { assetId: gan.assetId } } },
+                ],
+              },
+              select: { id: true },
+            })
+          : null;
+      if (!trongPhamVi && !quaPhieu) {
+        throw loi404('Thiết bị không tồn tại hoặc ngoài phạm vi của bạn.');
+      }
     }
 
     const daLuu = await luuAnh(tep);
@@ -146,13 +166,21 @@ anhRouter.get(
         byteSize: true,
         assetId: true,
         uploadedById: true,
+        onsiteVisit: { select: { locationId: true, deletedAt: true } },
       },
     });
     if (!anh) throw loi404('Không tìm thấy ảnh.');
 
     const pv = phamViCua(actor);
-    if (!pv.toanBoKho) {
-      if (anh.assetId) {
+    // Người tải ảnh luôn xem lại được ảnh của chính mình.
+    if (!pv.toanBoKho && anh.uploadedById !== actor.id) {
+      if (anh.onsiteVisit && !anh.onsiteVisit.deletedAt) {
+        // Ảnh cập nhật onsite: theo phạm vi điểm trường — trường xem ảnh của
+        // trường mình, nhân sự xem mọi trường (cùng quy tắc với /api/onsite).
+        if (pv.diaDiem && !pv.diaDiem.includes(anh.onsiteVisit.locationId)) {
+          throw loi403('Ảnh này không thuộc phạm vi dữ liệu của bạn.');
+        }
+      } else if (anh.assetId) {
         const trongPhamVi = await prisma.asset.findFirst({
           where: { id: anh.assetId, ...dieuKienTaiSan(actor) },
           select: { id: true },
