@@ -220,7 +220,7 @@ export default function App() {
           <Route path="kho/xuat/:id" element={<ManHinhKho che_do="xuat" />} />
           <Route path="kho/nhap/:id" element={<ManHinhKho che_do="nhap" />} />
 
-          {/* Biên bản bàn giao — bên nhận phải xác nhận thì vị trí mới đổi */}
+          {/* Biên bản bàn giao — phân bổ / luân chuyển đổi vị trí khi quản lý xác nhận */}
           <Route path="bbbg" element={<BienBanList />} />
           <Route
             path="bbbg/moi"

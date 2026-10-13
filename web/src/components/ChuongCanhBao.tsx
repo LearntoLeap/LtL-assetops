@@ -16,14 +16,25 @@ import { SU_KIEN, useRealtime } from '@/hooks/useRealtime';
  * không làm hỏng thanh đầu trang.
  */
 export function ChuongCanhBao() {
-  const [dem, datDem] = useState<{ chuaXuLy: number; xuatNhapTrucTiep: number } | null>(null);
+  const [dem, datDem] = useState<{
+    chuaXuLy: number;
+    xuatNhapTrucTiep: number;
+    choXacNhanBanGiao: number;
+  } | null>(null);
 
   const tai = useCallback(async () => {
     try {
-      const kq = await goiApi<{ ok: true; chuaXuLy: number; xuatNhapTrucTiep: number }>(
-        '/api/nhat-ky/canh-bao/dem',
-      );
-      datDem({ chuaXuLy: kq.chuaXuLy, xuatNhapTrucTiep: kq.xuatNhapTrucTiep });
+      const kq = await goiApi<{
+        ok: true;
+        chuaXuLy: number;
+        xuatNhapTrucTiep: number;
+        choXacNhanBanGiao?: number;
+      }>('/api/nhat-ky/canh-bao/dem');
+      datDem({
+        chuaXuLy: kq.chuaXuLy,
+        xuatNhapTrucTiep: kq.xuatNhapTrucTiep,
+        choXacNhanBanGiao: kq.choXacNhanBanGiao ?? 0,
+      });
     } catch {
       datDem(null);
     }
@@ -35,15 +46,27 @@ export function ChuongCanhBao() {
     const hen = setInterval(() => void tai(), 120_000);
     return () => clearInterval(hen);
   }, [tai]);
-  useRealtime([SU_KIEN.CANH_BAO_MOI, SU_KIEN.KHO_DOI], () => void tai());
+  useRealtime([SU_KIEN.CANH_BAO_MOI, SU_KIEN.KHO_DOI, SU_KIEN.YEU_CAU_DOI], () => void tai());
 
-  const so = dem?.chuaXuLy ?? 0;
+  /*
+   * Con số = cảnh báo đang mở + phiếu CHỜ CHÍNH BẠN xác nhận bàn giao. Có phiếu
+   * chờ xác nhận thì bấm chuông mở thẳng danh sách đó — việc cần làm ngay hơn.
+   */
+  const choXacNhan = dem?.choXacNhanBanGiao ?? 0;
+  const so = (dem?.chuaXuLy ?? 0) + choXacNhan;
   const duongDan =
-    dem && dem.xuatNhapTrucTiep > 0 ? '/nhat-ky?loai=XUAT_NHAP_TRUC_TIEP' : '/nhat-ky';
-  const nhan =
-    so > 0
-      ? `${so} cảnh báo đang mở${dem && dem.xuatNhapTrucTiep > 0 ? `, ${dem.xuatNhapTrucTiep} lần xuất / nhập kho không qua duyệt` : ''}`
-      : 'Không có cảnh báo đang mở';
+    choXacNhan > 0
+      ? '/yeu-cau?status=DA_XUAT'
+      : dem && dem.xuatNhapTrucTiep > 0
+        ? '/nhat-ky?loai=XUAT_NHAP_TRUC_TIEP'
+        : '/nhat-ky';
+  const phan: string[] = [];
+  if (choXacNhan > 0) phan.push(`${choXacNhan} phiếu chờ bạn xác nhận bàn giao`);
+  if (dem && dem.chuaXuLy > 0) phan.push(`${dem.chuaXuLy} cảnh báo đang mở`);
+  if (dem && dem.xuatNhapTrucTiep > 0) {
+    phan.push(`${dem.xuatNhapTrucTiep} lần xuất / nhập kho không qua duyệt`);
+  }
+  const nhan = phan.length > 0 ? phan.join(', ') : 'Không có việc nào đang chờ';
 
   return (
     <Button variant="outline" size="icon" asChild title={nhan} className="relative">

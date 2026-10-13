@@ -144,11 +144,13 @@ nhatKyRouter.get(
 nhatKyRouter.get(
   '/canh-bao/dem',
   batAsync(async (_req, res) => {
-    const [chuaXuLy, xuatNhap] = await Promise.all([
+    const [chuaXuLy, xuatNhap, choXacNhanBanGiao] = await Promise.all([
       prisma.alert.count({ where: { resolvedAt: null } }),
       prisma.alert.count({ where: { resolvedAt: null, type: 'XUAT_NHAP_TRUC_TIEP' } }),
+      // Phiếu đã xuất chờ chính nhóm này xác nhận bàn giao (bên nhận không bấm nữa).
+      prisma.request.count({ where: { deletedAt: null, status: 'DA_XUAT' } }),
     ]);
-    res.json({ ok: true, chuaXuLy, xuatNhapTrucTiep: xuatNhap });
+    res.json({ ok: true, chuaXuLy, xuatNhapTrucTiep: xuatNhap, choXacNhanBanGiao });
   }),
 );
 

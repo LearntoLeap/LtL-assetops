@@ -700,7 +700,7 @@ function DanhSachCuon({ viec, soViec }: { viec: ViecChoXuLy | null; soViec: numb
               <p className="flex flex-wrap items-center gap-2">
                 <span className="font-mono font-semibold">{b.code}</span>
                 <span className="rounded-full bg-amber-400/25 px-2 py-0.5 text-xs text-amber-100">
-                  Chờ bên nhận xác nhận
+                  Chờ quản lý xác nhận
                 </span>
               </p>
               <p className="text-sm text-white/80">

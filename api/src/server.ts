@@ -5,6 +5,7 @@ import { prisma } from './prisma.js';
 import { log, moTaLoi } from './lib/ghi-log.js';
 import { kiemTraCauHinhKhoa } from './lib/jwt.js';
 import { dongRealtime, dungRealtime } from './realtime.js';
+import { damBaoBoDemChungTu } from './lib/so-chung-tu.js';
 
 // Thiếu khoá JWT thì dừng ngay lúc khởi động, đừng để tới lúc ai đó đăng nhập.
 try {
@@ -22,6 +23,16 @@ dungRealtime(server);
 server.listen(env.PORT, () => {
   log.info('API đã khởi động', { cong: env.PORT, moiTruong: env.NODE_ENV });
 });
+
+// Tạo sẵn bộ đếm số chứng từ năm nay / năm sau (xem `damBaoBoDemChungTu`):
+// lúc khởi động và mỗi 6 giờ. Lỗi ở đây không được làm sập API.
+const taoSanBoDem = (): void => {
+  damBaoBoDemChungTu().catch((loi: unknown) =>
+    log.warn('Không tạo sẵn được bộ đếm chứng từ', moTaLoi(loi)),
+  );
+};
+taoSanBoDem();
+setInterval(taoSanBoDem, 6 * 3_600_000).unref();
 
 async function dungHan(tinHieu: string): Promise<void> {
   log.info('Nhận tín hiệu dừng, đang đóng kết nối', { tinHieu });

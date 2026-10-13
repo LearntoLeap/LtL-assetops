@@ -161,7 +161,7 @@ export function TongThe() {
   const tongDangCho = c
     ? choXuat +
       choNhap +
-      c.bienBanChoXacNhan +
+      (c.choXacNhanBanGiao ?? c.bienBanChoXacNhan) +
       c.kiemKeDangMo +
       c.baoHongDangMo +
       c.thietBiQuaHan
@@ -272,12 +272,17 @@ export function TongThe() {
                   den="/yeu-cau?status=BAN_NHAP&type=NHAP_KHO"
                 />
                 <O
-                  nhan="Biên bản chờ ký"
-                  gia={c?.bienBanChoXacNhan ?? 0}
-                  phu="biên bản bàn giao"
+                  nhan="Chờ xác nhận bàn giao"
+                  gia={c ? (c.choXacNhanBanGiao ?? c.bienBanChoXacNhan) : 0}
+                  phu="quản trị / vận hành bấm"
                   icon={FileSignature}
-                  mau={c && c.bienBanChoXacNhan > 0 ? 'text-warning-dam' : ''}
-                  den="/bbbg"
+                  mau={c && (c.choXacNhanBanGiao ?? c.bienBanChoXacNhan) > 0 ? 'text-warning-dam' : ''}
+                  // API cũ chưa có số phiếu chờ xác nhận — khi đó số là biên bản.
+                  den={
+                    c?.choXacNhanBanGiao !== undefined
+                      ? '/yeu-cau?status=DA_XUAT'
+                      : '/bbbg?status=CHO_XAC_NHAN'
+                  }
                 />
                 <O
                   nhan="Kiểm kê đang mở"
@@ -500,7 +505,7 @@ export function TongThe() {
               phu={`bộ · ${so(dl.soLieu.oTruong.le)} hàng lẻ`}
               icon={MapPin}
             />
-            {/* Đã rời kho, bên nhận chưa xác nhận — giỏ thứ ba, không gộp vào
+            {/* Đã rời kho, chưa xác nhận bàn giao — giỏ thứ ba, không gộp vào
                 hai giỏ trên. */}
             <O
               nhan="Đang chuyển"

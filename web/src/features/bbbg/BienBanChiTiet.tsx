@@ -8,7 +8,6 @@ import {
   Pencil,
   Printer,
   RefreshCw,
-  Send,
   Trash2,
   X,
 } from 'lucide-react';
@@ -214,10 +213,6 @@ export function BienBanChiTiet() {
       (bb.request?.createdById !== undefined && bb.request.createdById === nguoiDung.id)
     : false;
   const laQuanLy = nguoiDung ? VAI_TRO_QUAN_LY.includes(nguoiDung.role) : false;
-  // Bên nhận là tài khoản thuộc đúng điểm nhận; quản lý cũng xác nhận hộ được.
-  const laBenNhan =
-    laQuanLy ||
-    (bb.receiverLocation !== null && nguoiDung?.locationId === bb.receiverLocation.id);
 
   /**
    * Xoá phiếu / biên bản: quản trị hệ thống và vận hành thiết bị.
@@ -227,8 +222,22 @@ export function BienBanChiTiet() {
   // Chưa gửi bên nhận: bản nháp, bản tự lập, bản tự lập đã có người chỉnh.
   const chuaGui = bb.status === 'BAN_NHAP' || bb.status === 'TU_LAP' || bb.status === 'DA_CHINH_SUA';
   const duocSua = chuaGui && laBenGiao;
-  const duocGui = chuaGui && laBenGiao;
-  const duocXacNhan = bb.status === 'CHO_XAC_NHAN' && laBenNhan;
+  /*
+   * KHÔNG CÒN BÊN NHẬN XÁC NHẬN. Quản trị / Vận hành xác nhận bàn giao (thay bên
+   * nhận) khi phiếu phân bổ / luân chuyển đã xuất kho — hoặc đóng nốt biên bản
+   * cũ đã lỡ gửi "chờ xác nhận". Máy chủ kiểm lại y như vậy.
+   */
+  const laLuongC =
+    bb.request?.type === 'PHAN_BO_VE_TRUONG' || bb.request?.type === 'LUAN_CHUYEN_TRUONG';
+  // Hàng ĐANG TRÊN ĐƯỜNG: xác nhận mới ghi hàng về nơi nhận, huỷ thì tính lại ở nơi gửi.
+  const dangTrenDuong =
+    laLuongC && bb.request?.status === 'DA_XUAT' && (chuaGui || bb.status === 'CHO_XAC_NHAN');
+  // Biên bản cũ lỡ gửi "chờ xác nhận" của phiếu đã ghi xong tồn kho: chỉ đóng lại.
+  const bienBanCu = bb.status === 'CHO_XAC_NHAN' && !dangTrenDuong;
+  const choXacNhanBanGiao = dangTrenDuong || bienBanCu;
+  const duocXacNhan = choXacNhanBanGiao && laQuanLy;
+  // Huỷ chỉ có nghĩa khi hàng đang trên đường (hoặc biên bản lẻ không gắn phiếu).
+  const duocHuy = duocXacNhan && (dangTrenDuong || !bb.request);
 
   return (
     <div className="space-y-4">
@@ -277,20 +286,6 @@ export function BienBanChiTiet() {
               Xoá biên bản
             </Button>
           ) : null}
-          {duocGui ? (
-            <Button
-              disabled={dangChay}
-              onClick={() =>
-                void chay(
-                  () => goiApi(`/api/bbbg/${bb.id}/gui-xac-nhan`, { method: 'POST' }),
-                  'Đã gửi cho bên nhận xác nhận.',
-                )
-              }
-            >
-              <Send aria-hidden />
-              Gửi bên nhận xác nhận
-            </Button>
-          ) : null}
         </div>
       </div>
 
@@ -305,7 +300,7 @@ export function BienBanChiTiet() {
               {bb.status === 'DA_XAC_NHAN' ? (
                 <>
                   {' '}
-                  Biên bản này <strong>đã được bên nhận xác nhận</strong> — việc bàn giao đã xảy ra
+                  Biên bản này <strong>đã được xác nhận bàn giao</strong> — việc bàn giao đã xảy ra
                   thật, nên xoá biên bản <strong>không</strong> kéo thiết bị về chỗ cũ. Muốn đưa
                   thiết bị về thì lập yêu cầu trả về kho.
                 </>
@@ -362,38 +357,46 @@ export function BienBanChiTiet() {
         </CardContent>
       </Card>
 
-      {bb.status === 'CHO_XAC_NHAN' ? (
-        <Alert variant="warning" tieuDe="Đang chờ bên nhận xác nhận">
-          Thiết bị vẫn <strong>đang vận chuyển</strong> và <strong>chưa đổi vị trí</strong>. Chỉ khi
-          bên nhận bấm xác nhận, hệ thống mới ghi nhận thiết bị đã về{' '}
-          {bb.receiverLocation?.name ?? bb.receiverOrg}.
+      {dangTrenDuong ? (
+        <Alert variant="warning" tieuDe="Chờ Quản trị / Vận hành xác nhận bàn giao">
+          Bên nhận <strong>không cần bấm gì</strong>. Khi Quản trị hệ thống hoặc Vận hành thiết bị
+          xác nhận (ở đây hoặc ở trang yêu cầu), hệ thống ghi nhận thiết bị đã về{' '}
+          {bb.receiverLocation?.name ?? bb.receiverOrg} và số lượng trên Tổng quan đổi ngay.
+        </Alert>
+      ) : null}
+      {bienBanCu ? (
+        <Alert variant="info" tieuDe="Biên bản cũ đang chờ đóng">
+          Tồn kho của phiếu này đã ghi ngay lúc xuất / nhập kho. Quản trị / Vận hành bấm xác nhận
+          chỉ để đóng biên bản — không ghi thêm gì, số lượng không đổi.
         </Alert>
       ) : null}
       {bb.status === 'DA_XAC_NHAN' ? (
-        <Alert variant="success" tieuDe="Bên nhận đã xác nhận">
-          {bb.confirmedBy?.fullName ?? 'Bên nhận'} đã xác nhận lúc {ngayGio(bb.confirmedAt)}. Vị trí
-          thiết bị đã chuyển sang {bb.receiverLocation?.name ?? bb.receiverOrg}.
+        <Alert variant="success" tieuDe="Đã xác nhận bàn giao">
+          {bb.confirmedBy?.fullName ?? 'Quản lý'} đã xác nhận lúc {ngayGio(bb.confirmedAt)}.
         </Alert>
       ) : null}
       {bb.status === 'TU_CHOI' ? (
-        <Alert variant="destructive" tieuDe="Bên nhận từ chối nhận">
-          {bb.rejectionNote ?? 'Không có lý do.'} Hàng vẫn thuộc bên giao — hãy xử lý rồi lập biên
-          bản mới.
+        <Alert variant="destructive" tieuDe="Đã huỷ bàn giao">
+          {bb.rejectionNote ?? 'Không có lý do.'}
+          {laLuongC ? ' Hàng vẫn tính ở nơi gửi.' : ''}
         </Alert>
       ) : null}
 
       {duocXacNhan ? (
         <Card>
           <CardHeader>
-            <CardTitle>Bên nhận kiểm hàng</CardTitle>
+            <CardTitle>
+              {dangTrenDuong ? 'Xác nhận bàn giao (Quản trị / Vận hành)' : 'Đóng biên bản cũ'}
+            </CardTitle>
             <CardDescription>
-              Kiểm đủ số lượng và tình trạng như bảng dưới rồi mới xác nhận. Xác nhận là thao tác
-              không hoàn lại.
+              {dangTrenDuong
+                ? 'Đối chiếu số lượng và tình trạng như bảng dưới rồi xác nhận thay bên nhận. Xác nhận là thao tác không hoàn lại.'
+                : 'Tồn kho đã ghi lúc xuất / nhập kho; bấm để đóng biên bản, số lượng không đổi.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="bb-ghi-chu-xn">Ghi chú khi nhận (không bắt buộc)</Label>
+              <Label htmlFor="bb-ghi-chu-xn">Ghi chú khi xác nhận (không bắt buộc)</Label>
               <textarea
                 id="bb-ghi-chu-xn"
                 rows={2}
@@ -414,28 +417,32 @@ export function BienBanChiTiet() {
                         method: 'POST',
                         than: { ghiChu: ghiChuXacNhan.trim() },
                       }),
-                    'Đã xác nhận nhận hàng. Vị trí thiết bị đã được cập nhật.',
+                    dangTrenDuong
+                      ? 'Đã xác nhận bàn giao. Số lượng trên Tổng quan đã cập nhật.'
+                      : 'Đã đóng biên bản.',
                     () => datGhiChuXacNhan(''),
                   )
                 }
               >
                 {dangChay ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
-                Xác nhận đã nhận đủ
+                {dangTrenDuong ? 'Xác nhận đã bàn giao' : 'Đóng biên bản'}
               </Button>
-              <Button
-                variant="outline"
-                size="cham"
-                className="text-destructive-dam"
-                onClick={() => datMoTuChoi((m) => !m)}
-              >
-                <X aria-hidden />
-                Từ chối nhận
-              </Button>
+              {duocHuy ? (
+                <Button
+                  variant="outline"
+                  size="cham"
+                  className="text-destructive-dam"
+                  onClick={() => datMoTuChoi((m) => !m)}
+                >
+                  <X aria-hidden />
+                  Huỷ bàn giao
+                </Button>
+              ) : null}
             </div>
 
-            {moTuChoi ? (
+            {moTuChoi && duocHuy ? (
               <div className="space-y-2 rounded-md border border-destructive/35 p-3">
-                <Label htmlFor="bb-ly-do">Lý do từ chối (bắt buộc, ít nhất 5 ký tự)</Label>
+                <Label htmlFor="bb-ly-do">Lý do huỷ (bắt buộc, ít nhất 5 ký tự)</Label>
                 <textarea
                   id="bb-ly-do"
                   rows={2}
@@ -453,7 +460,9 @@ export function BienBanChiTiet() {
                           method: 'POST',
                           than: { rejectionNote: lyDoTuChoi.trim() },
                         }),
-                      'Đã từ chối nhận và báo lại cho bên giao.',
+                      dangTrenDuong
+                        ? 'Đã huỷ bàn giao — hàng tính lại ở nơi gửi.'
+                        : 'Đã huỷ biên bản.',
                       () => {
                         datLyDoTuChoi('');
                         datMoTuChoi(false);
@@ -461,7 +470,7 @@ export function BienBanChiTiet() {
                     )
                   }
                 >
-                  Xác nhận từ chối
+                  Xác nhận huỷ
                 </Button>
               </div>
             ) : null}

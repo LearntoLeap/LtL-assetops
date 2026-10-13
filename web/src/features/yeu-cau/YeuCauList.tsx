@@ -48,6 +48,14 @@ export function YeuCauList() {
   const [tuKhoa, datTuKhoa] = useState('');
   const [locLoai, datLocLoai] = useState(thamSo.get('type') ?? '');
   const [locTrangThai, datLocTrangThai] = useState(thamSo.get('status') ?? '');
+  // Bấm chuông / ô trên trang chủ khi danh sách đang mở: địa chỉ đổi nhưng trang
+  // không dựng lại — phải đọc lại bộ lọc từ địa chỉ, không thì vẫn lọc cũ.
+  const chuoiThamSo = thamSo.toString();
+  useEffect(() => {
+    datLocTrangThai(thamSo.get('status') ?? '');
+    datLocLoai(thamSo.get('type') ?? '');
+    datTrang(1);
+  }, [chuoiThamSo]);
   const [cuaToi, datCuaToi] = useState(false);
 
   const tai = useCallback(async () => {

@@ -16,7 +16,7 @@
  * không cấp lại mã đã xoá.
  */
 import { prisma, type PrismaTx } from '../prisma.js';
-import { tangBoDem } from './so-chung-tu.js';
+import { damBaoBoDem, tangBoDem } from './so-chung-tu.js';
 
 /** Bốn chữ số, đủ 9999 thiết bị cho mỗi tổ hợp. */
 const SO_CHU_SO = 4;
@@ -155,6 +155,14 @@ export async function maKeTiep(tienTo: string, db: PrismaTx = prisma): Promise<s
  * Lần đầu gặp một tiền tố, bộ đếm được khởi tạo bằng số lớn nhất đang dùng,
  * nên dãy nối tiếp đúng những gì đã có trong CSDL.
  */
+/**
+ * Tạo sẵn bộ đếm của một tiền tố mã — gọi NGOÀI transaction, trước `capMaThietBi`
+ * (xem `damBaoBoDem`). Lần đầu khởi tạo bằng số lớn nhất đang dùng của tiền tố.
+ */
+export async function chuanBiBoDemMa(tienTo: string): Promise<void> {
+  await damBaoBoDem(tienTo, NAM_MA_THIET_BI, () => soLonNhatDaDung(tienTo, prisma));
+}
+
 export async function capMaThietBi(tx: PrismaTx, tienTo: string): Promise<string> {
   for (let i = 0; i < 1000; i++) {
     const so = await tangBoDem(tx, tienTo, NAM_MA_THIET_BI, () => soLonNhatDaDung(tienTo, tx));

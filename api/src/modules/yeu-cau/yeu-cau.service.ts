@@ -19,6 +19,7 @@ import {
   type RequestType,
 } from '@prisma/client';
 import { prisma, type PrismaTx } from '../../prisma.js';
+import { traTrangThaiSauHuyBanGiao } from '../../lib/huy-ban-giao.js';
 import { loi400, loi403, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
@@ -115,9 +116,9 @@ const LOAI_XUAT: ReadonlySet<RequestType> = new Set<RequestType>([
 const LOAI_NHAP: ReadonlySet<RequestType> = new Set<RequestType>(['NHAP_KHO', 'TRA_VE_KHO']);
 
 /**
- * Loại phải chờ bên nhận XÁC NHẬN mới đổi vị trí sở hữu (luồng C).
- * Lúc xuất chỉ đánh dấu "Đang vận chuyển"; movement ghi khi bên nhận xác nhận
- * cùng biên bản bàn giao ở giai đoạn 5.
+ * Loại phải chờ XÁC NHẬN BÀN GIAO mới đổi vị trí sở hữu (luồng C). Lúc xuất
+ * chỉ đánh dấu "Đang vận chuyển"; movement ghi khi Quản trị / Vận hành xác nhận
+ * bàn giao ở trang yêu cầu (bên nhận không còn phải bấm xác nhận).
  */
 const LOAI_CHO_XAC_NHAN: ReadonlySet<RequestType> = new Set<RequestType>([
   'PHAN_BO_VE_TRUONG',
@@ -606,19 +607,49 @@ export async function tuChoi(
 ): Promise<YeuCauDayDu> {
   const truoc = await prisma.request.findUnique({
     where: { id },
-    select: { id: true, code: true, status: true, createdById: true },
+    select: { id: true, code: true, status: true, type: true, createdById: true, deletedAt: true },
   });
-  if (!truoc) throw loi404('Không tìm thấy yêu cầu.');
+  if (!truoc || truoc.deletedAt) throw loi404('Không tìm thấy yêu cầu.');
+  /*
+   * HUỶ BÀN GIAO phân bổ / luân chuyển đã xuất nhưng quản lý chưa xác nhận:
+   * hàng chưa được ghi rời nơi gửi (chỉ ghi lúc xác nhận), nên huỷ phiếu là số
+   * "đang chuyển" trả về nơi gửi — không phải sửa tồn gì thêm.
+   */
+  const huyBanGiao = truoc.status === 'DA_XUAT' && LOAI_CHO_XAC_NHAN.has(truoc.type);
   // Không còn bước duyệt, nhưng quản trị vẫn phải DỪNG được một phiếu chưa thực
   // hiện khi thấy không ổn — đó là lý do họ được báo ngay lúc phiếu được lập.
-  if (!TRANG_THAI_CHO_THUC_HIEN.has(truoc.status)) {
-    throw loi409('Chỉ từ chối được yêu cầu chưa xuất / nhập kho.');
+  if (!TRANG_THAI_CHO_THUC_HIEN.has(truoc.status) && !huyBanGiao) {
+    throw loi409('Chỉ từ chối được yêu cầu chưa xuất / nhập kho, hoặc phiếu đang chờ xác nhận bàn giao.');
   }
-  if (truoc.createdById === actor.id) {
+  if (!huyBanGiao && truoc.createdById === actor.id) {
     throw loi403('Không được tự xử lý yêu cầu của chính mình — tự xoá phiếu của mình thì dùng nút Xoá.');
   }
 
   const sau = await prisma.$transaction(async (tx) => {
+    const khoa = await tx.$queryRaw<Array<{ status: string }>>(
+      Prisma.sql`SELECT status FROM requests WHERE id = ${id} FOR UPDATE`,
+    );
+    if (khoa[0]?.status !== truoc.status) {
+      throw loi409('Phiếu này vừa được xử lý xong — tải lại trang để xem trạng thái mới.', {
+        maLoi: 'DA_XU_LY',
+      });
+    }
+    if (huyBanGiao) {
+      await tx.handoverNote.updateMany({
+        where: {
+          requestId: id,
+          deletedAt: null,
+          status: { in: ['BAN_NHAP', 'TU_LAP', 'DA_CHINH_SUA', 'CHO_XAC_NHAN'] },
+        },
+        data: {
+          status: 'TU_CHOI',
+          rejectionNote: `Huỷ bàn giao: ${rejectionNote}`.slice(0, 2000),
+          confirmedById: actor.id,
+          confirmedAt: new Date(),
+        },
+      });
+      await traTrangThaiSauHuyBanGiao(tx, id);
+    }
     const capNhat = await tx.request.update({
       where: { id },
       data: {
@@ -632,7 +663,7 @@ export async function tuChoi(
     await ghiAudit(
       {
         actor,
-        action: 'request.reject',
+        action: huyBanGiao ? 'request.cancel_handover' : 'request.reject',
         entityType: 'request',
         entityId: id,
         beforeValue: { status: truoc.status },
@@ -649,8 +680,12 @@ export async function tuChoi(
     id: sau.id,
     code: sau.code,
     status: sau.status,
-    thongDiep: `Yêu cầu ${sau.code} bị từ chối.`,
+    thongDiep: huyBanGiao ? `Phiếu ${sau.code} đã bị huỷ bàn giao.` : `Yêu cầu ${sau.code} bị từ chối.`,
   });
+  // Huỷ bàn giao làm số "đang chuyển" trả về nơi gửi — trang tổng quan nạp lại.
+  if (huyBanGiao) {
+    phatChoTatCa(SU_KIEN.KHO_DOI, { id: sau.id, code: sau.code, thongDiep: 'Tồn kho vừa thay đổi.' });
+  }
   return sau;
 }
 
@@ -1168,13 +1203,34 @@ export async function xuatKho(
     );
     kiemQuyenThucHien(nguoiDung, yeuCau, nguon, 'xuất');
 
-    // Luồng C chưa ghi bút toán lúc xuất — bên nhận xác nhận mới ghi — nên phải
-    // nhớ hàng ĐI TỪ ĐÂU vào phiếu. Một phiếu chỉ được lấy từ một nơi.
+    // Luồng C chưa ghi bút toán lúc xuất — quản lý xác nhận bàn giao mới ghi —
+    // nên phải nhớ hàng ĐI TỪ ĐÂU vào phiếu. Một phiếu chỉ được lấy từ một nơi.
     const cacNguon = new Set(nguon.values());
     if (choXacNhan && cacNguon.size > 1) {
       throw loi422(
         'Phân bổ / luân chuyển chỉ được lấy hàng từ MỘT nơi trong một phiếu. Chọn "Lấy từ" hoặc tách phiếu.',
         'NHIEU_NGUON',
+      );
+    }
+    /*
+     * LUÂN CHUYỂN: nơi đi là TRƯỜNG GỬI ghi trên phiếu (in lên biên bản là bên
+     * giao). Lấy hàng ở chỗ khác thì biên bản sai bên giao — chặn, phải sửa phiếu.
+     * Phân bổ thì cho chọn kho khác lúc xuất, và nơi lấy thật được GHI LẠI vào
+     * phiếu ngay dưới: kiểm tồn, "đang chuyển" và bút toán lúc xác nhận phải trừ
+     * cùng một chỗ. Trước đây phiếu giữ nơi đi cũ — kiểm tồn ở kho B, lúc xác
+     * nhận lại trừ ở kho A.
+     */
+    const nguonThat = cacNguon.size === 1 ? [...cacNguon][0] : undefined;
+    if (
+      choXacNhan &&
+      yeuCau.type === 'LUAN_CHUYEN_TRUONG' &&
+      yeuCau.fromLocation &&
+      nguonThat !== yeuCau.fromLocation.id
+    ) {
+      throw loi422(
+        `Luân chuyển phải lấy hàng từ trường gửi ghi trên phiếu (${yeuCau.fromLocation.name}). ` +
+          'Muốn đổi trường gửi thì sửa phiếu trước.',
+        'NGUON_KHAC_PHIEU',
       );
     }
 
@@ -1301,8 +1357,9 @@ export async function xuatKho(
         issuedAt: bayGio,
         ...(yeuCau.submittedAt ? {} : { submittedAt: bayGio }),
         ...(choXacNhan ? {} : { completedAt: bayGio }),
-        // Luồng C cần nơi đi để lúc bên nhận xác nhận trừ đúng chỗ.
-        ...(choXacNhan && motNguon && !yeuCau.fromLocation ? { fromLocationId: motNguon } : {}),
+        // Luồng C cần nơi đi THẬT để lúc xác nhận bàn giao trừ đúng chỗ — ghi
+        // đè cả nơi đi người lập đã chọn nếu lúc xuất kho lấy ở kho khác.
+        ...(choXacNhan && motNguon ? { fromLocationId: motNguon } : {}),
       },
       select: CHON_YEU_CAU,
     });
@@ -1340,7 +1397,7 @@ export async function xuatKho(
     code: sau.code,
     status: sau.status,
     thongDiep: choXacNhan
-      ? `Yêu cầu ${sau.code} đã xuất, đang chờ bên nhận xác nhận.`
+      ? `Yêu cầu ${sau.code} đã xuất, chờ Quản trị / Vận hành xác nhận bàn giao.`
       : `Yêu cầu ${sau.code} đã hoàn tất.`,
   });
   if (choXacNhan && noiDenId) {
@@ -1348,7 +1405,17 @@ export async function xuatKho(
       id: sau.id,
       code: sau.code,
       status: sau.status,
-      thongDiep: `Có lô thiết bị đang chuyển tới, chờ bạn xác nhận.`,
+      thongDiep: `Có lô thiết bị đang chuyển tới trường bạn.`,
+    });
+  }
+  // Phân bổ / luân chuyển: quản trị / vận hành phải biết có phiếu chờ họ xác
+  // nhận bàn giao — kể cả khi chính quản trị là người xuất.
+  if (choXacNhan) {
+    phatChoNguoiDuyet(SU_KIEN.YEU_CAU_DOI, {
+      id: sau.id,
+      code: sau.code,
+      status: sau.status,
+      thongDiep: `Phiếu ${sau.code} đã xuất, chờ bạn xác nhận bàn giao.`,
     });
   }
   if (daBaoQuanTri) {
@@ -1573,11 +1640,14 @@ export async function nhapKho(
     for (const d of dong) {
       const tuDau = nguon.get(d.assetId) ?? null;
       if (!tuDau) continue;
-      const dangCo = await tonTaiDiaDiem(d.assetId, tuDau, tx);
+      // Tồn DÙNG ĐƯỢC: hàng đã lên xe đi trường (phân bổ / luân chuyển chưa xác
+      // nhận) không còn ở nơi trả — nhận nó về kho khác thì lúc xác nhận bàn
+      // giao nơi gửi không còn hàng, phiếu kẹt mãi.
+      const dangCo = Math.max(0, await tonDungDuoc(d.assetId, tuDau, tx));
       if (d.soLuong > dangCo) {
         throw loi422(
-          `Thiết bị ${d.code}: khai nhận về ${d.soLuong} nhưng nơi trả chỉ còn ${dangCo}. ` +
-            'Kiểm lại số lượng hoặc chọn đúng nơi trả về.',
+          `Thiết bị ${d.code}: khai nhận về ${d.soLuong} nhưng nơi trả chỉ còn ${dangCo} ` +
+            '(đã trừ hàng đang trên đường đi). Kiểm lại số lượng hoặc chọn đúng nơi trả về.',
           'KHONG_DU_TON_NOI_TRA',
           { ma: d.code, khai: d.soLuong, conLai: dangCo },
         );
@@ -1941,20 +2011,32 @@ export async function xoaMem(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi): 
   if (truoc.deletedAt) throw loi409('Yêu cầu này đã nằm trong thùng rác.');
   /*
    * HÀNG ĐANG TRÊN ĐƯỜNG thì không xoá được phiếu. Phân bổ / luân chuyển chỉ ghi
-   * di chuyển lúc bên nhận xác nhận biên bản; xoá phiếu giữa chừng thì số "đang
+   * di chuyển lúc quản lý xác nhận bàn giao; xoá phiếu giữa chừng thì số "đang
    * chuyển" biến mất khỏi tổng quan, còn biên bản xác nhận sau đó không biết ghi
-   * hàng vào đâu — hàng mất khỏi sổ. Bên nhận xác nhận hoặc từ chối biên bản
+   * hàng vào đâu — hàng mất khỏi sổ. Quản lý xác nhận hoặc huỷ bàn giao
    * trước (từ chối thì phiếu tự huỷ, hàng tính lại ở nơi gửi), rồi mới xoá.
    */
   if (truoc.status === 'DA_XUAT') {
     throw loi409(
-      `Phiếu ${truoc.code} đang chờ bên nhận xác nhận biên bản — hàng đang trên đường. ` +
-        'Bên nhận xác nhận hoặc từ chối biên bản trước rồi mới xoá được phiếu.',
+      `Phiếu ${truoc.code} đang chờ xác nhận bàn giao — hàng đang trên đường. ` +
+        'Quản trị / Vận hành xác nhận bàn giao hoặc huỷ phiếu trước rồi mới xoá được.',
       { maLoi: 'DANG_TREN_DUONG' },
     );
   }
 
   await prisma.$transaction(async (tx) => {
+    // Kiểm lại SAU KHI KHOÁ dòng phiếu: xuất kho chạy song song có thể vừa đưa
+    // phiếu sang "Đã xuất" — xoá lúc đó là hàng trên xe biến khỏi sổ.
+    const khoa = await tx.$queryRaw<Array<{ status: string; deleted_at: Date | null }>>(
+      Prisma.sql`SELECT status, deleted_at FROM requests WHERE id = ${id} FOR UPDATE`,
+    );
+    if (khoa[0]?.deleted_at) throw loi409('Yêu cầu này đã nằm trong thùng rác.');
+    if (khoa[0]?.status === 'DA_XUAT') {
+      throw loi409(
+        `Phiếu ${truoc.code} vừa xuất kho, đang chờ xác nhận bàn giao — không xoá được.`,
+        { maLoi: 'DANG_TREN_DUONG' },
+      );
+    }
     await tx.request.update({
       where: { id },
       data: { deletedAt: new Date(), deletedById: actor.id },

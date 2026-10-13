@@ -23,9 +23,10 @@ import { MAU_TRANG_THAI_BBBG } from './tien-ich';
 /**
  * THÙNG RÁC BIÊN BẢN BÀN GIAO — Quản trị và Vận hành thiết bị.
  *
- * XOÁ BIÊN BẢN KHÔNG HOÀN TÁC VIỆC BÀN GIAO. Với biên bản đã được bên nhận xác
- * nhận, chính cú bấm xác nhận đó đã ghi bút toán di chuyển và đổi vị trí thiết
- * bị — bỏ tờ giấy đi thì thiết bị vẫn nằm ở nơi đã nhận.
+ * XOÁ BIÊN BẢN KHÔNG HOÀN TÁC VIỆC BÀN GIAO. Với biên bản đã được xác nhận bàn
+ * giao (Quản trị / Vận hành xác nhận; biên bản cũ có thể do bên nhận xác nhận),
+ * chính cú bấm xác nhận đó đã ghi bút toán di chuyển và đổi vị trí thiết bị —
+ * bỏ tờ giấy đi thì thiết bị vẫn nằm ở nơi đã nhận.
  *
  * "Xoá hẳn" xoá luôn cả FILE MỀM .docx trên ổ đĩa, nên bản Word đã tải về máy
  * trước đó là bản duy nhất còn lại.
@@ -98,8 +99,8 @@ export function ThungRacBienBan() {
       {thongBao ? <Alert variant="success">{thongBao}</Alert> : null}
 
       <Alert variant="info" tieuDe="Xoá biên bản không hoàn tác việc bàn giao">
-        Biên bản đã được bên nhận xác nhận thì việc bàn giao đã xảy ra thật: thiết bị vẫn ở nơi đã
-        nhận, tồn kho giữ nguyên. Muốn đưa thiết bị về thì lập yêu cầu trả về kho.
+        Biên bản đã được xác nhận bàn giao thì việc bàn giao đã xảy ra thật: thiết bị vẫn ở nơi đã
+        nhận, tồn kho giữ nguyên. Muốn đưa thiết bị về thì lập phiếu nhập kho.
         <span className="mt-1 block">
           &quot;Xoá hẳn&quot; xoá luôn file Word trên máy chủ — bản đã tải về máy là bản duy nhất
           còn lại.

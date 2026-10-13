@@ -17,7 +17,7 @@ import { prisma } from '../../prisma.js';
 import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
-import { tonTheoDiaDiem } from '../../lib/ton-kho.js';
+import { hangDangTrenDuong, tonTheoDiaDiem } from '../../lib/ton-kho.js';
 import { phamViCua } from '../../lib/pham-vi.js';
 import { phatChoNguoiDuyet, phatChoTatCa, SU_KIEN } from '../../realtime.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
@@ -203,8 +203,24 @@ export async function tao(
     });
   }
 
-  // Tồn suy ra từ movements — đây chính là "số liệu hệ thống" đem đi đối chiếu.
-  const ton = await tonTheoDiaDiem(diaDiem.id);
+  /*
+   * "Số liệu hệ thống" đem đi đối chiếu = tồn suy ra từ movements TRỪ hàng phân
+   * bổ / luân chuyển đã xuất khỏi điểm này mà chưa xác nhận bàn giao (đã lên xe,
+   * không còn trên kệ). Không trừ thì người kiểm đếm thiếu đúng số đó, chốt điều
+   * chỉnh ghi −N, rồi lúc xác nhận bàn giao lại ghi −N lần nữa — trừ hai lần.
+   */
+  const tonSo = await tonTheoDiaDiem(diaDiem.id);
+  const dangDi = await hangDangTrenDuong(tonSo.map((t) => t.assetId));
+  const ton = tonSo
+    .map((t) => ({
+      assetId: t.assetId,
+      ton:
+        t.ton -
+        (dangDi.get(t.assetId) ?? [])
+          .filter((x) => x.locationId === diaDiem.id)
+          .reduce((a, x) => a + x.soLuong, 0),
+    }))
+    .filter((t) => t.ton > 0);
   const idTaiSan = ton.map((t) => t.assetId);
   if (idTaiSan.length === 0) {
     throw loi422(`Địa điểm "${diaDiem.name}" chưa có thiết bị nào để kiểm kê.`, 'KHONG_CO_THIET_BI');

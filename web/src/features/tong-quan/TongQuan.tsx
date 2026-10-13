@@ -239,7 +239,7 @@ export function TongQuan() {
             bienDong={dongBienDong('oTruong')}
             den="/ton-kho?loaiDiem=DIEM_TRUONG"
           />
-          {/* Hàng đã rời kho nhưng bên nhận chưa xác nhận. Phải có ô riêng:
+          {/* Hàng đã rời kho nhưng chưa được xác nhận bàn giao. Phải có ô riêng:
               không hiện ở đâu thì bấm "xuất kho" xong dashboard đứng im, người
               dùng tưởng máy không ghi nhận. */}
           <O
@@ -319,14 +319,31 @@ export function TongQuan() {
             phu="hàng về kho, nhân sự trả lại"
             den="/yeu-cau?status=BAN_NHAP&type=NHAP_KHO"
           />
-          <O
-            nhan="Biên bản chờ xác nhận"
-            gia={s.bienBanChoXacNhan}
-            icon={FileSignature}
-            mau={s.bienBanChoXacNhan > 0 ? 'text-warning-dam' : ''}
-            phu="bên nhận chưa bấm xác nhận"
-            den="/bbbg"
-          />
+          {/* Bên nhận không xác nhận nữa: việc còn chờ là Quản trị / Vận hành
+              xác nhận bàn giao các phiếu phân bổ / luân chuyển đã xuất. */}
+          {s.choXacNhanBanGiao !== undefined ? (
+            <O
+              nhan="Chờ xác nhận bàn giao"
+              gia={s.choXacNhanBanGiao}
+              icon={FileSignature}
+              mau={s.choXacNhanBanGiao > 0 ? 'text-warning-dam' : ''}
+              phu={
+                (s.bienBanCuKet ?? 0) > 0
+                  ? `Quản trị / Vận hành bấm xác nhận · ${so(s.bienBanCuKet ?? 0)} biên bản cũ chờ đóng`
+                  : 'Quản trị / Vận hành bấm xác nhận'
+              }
+              den="/yeu-cau?status=DA_XUAT"
+            />
+          ) : (
+            // API cũ chưa có số này — giữ ô biên bản chờ xác nhận như trước.
+            <O
+              nhan="Biên bản chờ xác nhận"
+              gia={s.bienBanChoXacNhan}
+              icon={FileSignature}
+              mau={s.bienBanChoXacNhan > 0 ? 'text-warning-dam' : ''}
+              den="/bbbg?status=CHO_XAC_NHAN"
+            />
+          )}
         </div>
       ) : null}
 

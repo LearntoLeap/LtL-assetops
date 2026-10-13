@@ -23,7 +23,7 @@ export const MAU_TRANG_THAI_KIEM_KE: Record<TrangThaiKiemKe, MauBadge> = {
 };
 
 /**
- * Loại yêu cầu bàn giao về trường — chỉ hai loại này mới chờ bên nhận xác nhận
- * rồi mới đổi vị trí thiết bị (luồng C).
+ * Loại yêu cầu bàn giao về trường — chỉ hai loại này mới chờ Quản trị / Vận hành
+ * xác nhận bàn giao rồi mới đổi vị trí thiết bị (luồng C).
  */
 export const LOAI_CAN_BBBG = new Set(['PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG']);

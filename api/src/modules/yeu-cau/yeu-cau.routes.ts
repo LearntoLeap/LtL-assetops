@@ -19,6 +19,7 @@ import {
   luocDoXuatKho,
 } from './yeu-cau.schema.js';
 import * as dv from './yeu-cau.service.js';
+import { xacNhanTheoYeuCau } from '../bbbg/bbbg.service.js';
 
 export const yeuCauRouter = Router();
 yeuCauRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
@@ -162,6 +163,24 @@ yeuCauRouter.post(
       ok: true,
       yeuCau: await dv.tuChoi(String(req.params['id']), rejectionNote, actor, boiCanh(req)),
     });
+  }),
+);
+
+/**
+ * XÁC NHẬN BÀN GIAO — Quản trị / Vận hành làm trung gian thay bên nhận.
+ *
+ * Phân bổ / luân chuyển đã xuất: ghi hàng về nơi nhận, phiếu hoàn tất, biên bản
+ * "Đã xác nhận" — số lượng trên Tổng quan đổi ngay. Bên nhận không phải bấm gì.
+ */
+yeuCauRouter.post(
+  '/:id/xac-nhan-ban-giao',
+  yeuCauNguoiDuyet,
+  batAsync(async (req, res) => {
+    const actor = nguoiDungHienTai(req);
+    const id = String(req.params['id']);
+    const { ghiChu } = luocDoDuyet.parse(req.body ?? {});
+    await xacNhanTheoYeuCau(id, ghiChu, actor, boiCanh(req));
+    res.json({ ok: true, yeuCau: await dv.xemMot(actor, id) });
   }),
 );
 

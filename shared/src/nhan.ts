@@ -99,7 +99,8 @@ export const NHAN_TRANG_THAI_YEU_CAU = {
   CHO_DUYET: 'Chờ duyệt',
   DA_DUYET: 'Đã duyệt',
   TU_CHOI: 'Từ chối',
-  DA_XUAT: 'Đã xuất',
+  // Phân bổ / luân chuyển đã xuất kho, chờ Quản trị / Vận hành xác nhận bàn giao.
+  DA_XUAT: 'Đã xuất — chờ xác nhận bàn giao',
   DA_HOAN_TAT: 'Đã hoàn tất',
 } satisfies Record<TrangThaiYeuCau, string>;
 
@@ -173,9 +174,10 @@ export const NHAN_ANH_NEN_KIOSK = {
 
 export const NHAN_TRANG_THAI_BBBG = {
   BAN_NHAP: 'Nháp',
-  CHO_XAC_NHAN: 'Chờ bên nhận xác nhận',
+  // Bên nhận không còn bấm xác nhận — quản trị / vận hành xác nhận thay.
+  CHO_XAC_NHAN: 'Chờ quản lý xác nhận',
   DA_XAC_NHAN: 'Đã xác nhận',
-  TU_CHOI: 'Bên nhận từ chối',
+  TU_CHOI: 'Đã huỷ bàn giao',
   // Biên bản hệ thống tự lập phải nhìn ra được là TỰ LẬP, và đã có ai sửa chưa:
   // trước đây biên bản tự lập mang nhãn "Nháp" mãi kể cả khi hàng đã bàn giao
   // xong, nên không ai biết tờ nào đã chốt, tờ nào còn phải xem lại.

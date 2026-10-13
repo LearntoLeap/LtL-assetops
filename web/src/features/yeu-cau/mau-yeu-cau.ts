@@ -117,7 +117,7 @@ export const MAU_YEU_CAU: Record<Exclude<LoaiYeuCau, 'BAO_HONG'>, MauYeuCau> = {
     loaiNoiDi: TRUONG,
     noiDen: 'bat-buoc',
     nhanNoiDen: 'Trường nhận',
-    giaiThichNoiDen: 'Trường nhận thiết bị — bên nhận trên biên bản, xác nhận khi hàng tới.',
+    giaiThichNoiDen: 'Trường nhận thiết bị — bên nhận trên biên bản. Quản trị / Vận hành xác nhận bàn giao.',
     loaiNoiDen: TRUONG,
     hanTra: 'tuy-chon',
     giaiThichHanTra: 'Điền nếu đây là mượn tạm giữa hai trường.',

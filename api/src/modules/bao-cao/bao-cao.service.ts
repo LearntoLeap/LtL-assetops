@@ -189,6 +189,13 @@ export interface SoLieuNhanh {
   /** Phiếu đang chờ XUẤT kho / chờ NHẬP kho — không còn bước duyệt. Theo phạm vi. */
   choXuatKho: number;
   choNhapKho: number;
+  /**
+   * Phiếu đã xuất chờ QUẢN TRỊ / VẬN HÀNH xác nhận bàn giao (phân bổ, luân
+   * chuyển) — đúng bằng số phiếu ở danh sách "Đã xuất". Bên nhận không xác nhận nữa.
+   */
+  choXacNhanBanGiao: number;
+  /** Biên bản cũ đã lỡ gửi "chờ xác nhận" mà phiếu đã ghi xong — chờ quản lý đóng. */
+  bienBanCuKet: number;
   /** Hàng nhân sự đang mượn (đã ra khỏi kho, chưa trả): bộ đếm số bộ, lẻ cộng số lượng. */
   nhanSuGiu: DemTachLoai;
   /** Số MÃ theo kiểu quản lý. */
@@ -242,7 +249,7 @@ async function tonTrongPhamVi(nguoiDung: NguoiDungDaXacThuc): Promise<{
   tongTheoTaiSan: Map<string, number>;
   /** Cùng dữ liệu nhưng tách bộ / lẻ theo từng điểm. */
   tachTheoDiem: Map<string, DemTachLoai>;
-  /** Hàng đã rời điểm này nhưng bên nhận chưa xác nhận, tách bộ / lẻ. */
+  /** Hàng đã rời điểm này nhưng chưa được xác nhận bàn giao, tách bộ / lẻ. */
   tachDangDiTheoDiem: Map<string, DemTachLoai>;
   /** Tổng hàng đang trên đường theo từng điểm xuất đi. */
   dangDiTheoDiem: Map<string, number>;
@@ -333,6 +340,8 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
     choXacNhan,
     choXuatKho,
     choNhapKho,
+    phieuChoXacNhan,
+    bienBanCuKet,
     soMaBo,
     boNhanSuGiu,
     leNhanSu,
@@ -377,6 +386,18 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
           AND: [
             pvYeuCau,
             { status: { in: [...TRANG_THAI_CHO_THUC_HIEN] }, type: { in: [...LOAI_PHIEU_NHAP] } },
+          ],
+        },
+      }),
+      prisma.request.count({ where: { AND: [pvYeuCau, { status: 'DA_XUAT' }] } }),
+      // Biên bản cũ đã gửi "chờ bên nhận xác nhận" mà phiếu không còn ở "Đã xuất"
+      // (xuất kho thường, cho mượn…) — quản lý đóng nốt.
+      prisma.handoverNote.count({
+        where: {
+          AND: [
+            bienBanSoLieu(nguoiDung),
+            { status: 'CHO_XAC_NHAN' },
+            { OR: [{ requestId: null }, { request: { status: { not: 'DA_XUAT' } } }] },
           ],
         },
       }),
@@ -483,6 +504,8 @@ export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieu
     bienBanChoXacNhan: choXacNhan,
     choXuatKho,
     choNhapKho,
+    choXacNhanBanGiao: phieuChoXacNhan,
+    bienBanCuKet,
     nhanSuGiu,
     soMaBo,
     soMaLe: soMa - soMaBo,
@@ -633,7 +656,7 @@ export async function dashboard(
       },
     }),
     // Hàng phân bổ / luân chuyển XUẤT trong kỳ: rời nơi gửi, sang "đang chuyển"
-    // (bút toán chỉ ghi lúc bên nhận xác nhận). Phiếu bị huỷ không tính — coi
+    // (bút toán chỉ ghi lúc quản lý xác nhận bàn giao). Phiếu bị huỷ không tính — coi
     // như chưa từng đi.
     prisma.requestItem.findMany({
       where: {
@@ -1117,6 +1140,8 @@ export interface DuLieuTongThe {
     /** Phiếu chờ xuất / nhập kho — không còn bước duyệt. */
     choXuatKho: number;
     choNhapKho: number;
+    /** Chờ quản trị / vận hành xác nhận bàn giao. */
+    choXacNhanBanGiao: number;
     bienBanChoXacNhan: number;
     kiemKeDangMo: number;
     baoHongDangMo: number;
@@ -1293,6 +1318,7 @@ export async function tongThe(
       yeuCauChoXuat: soLieu.yeuCauChoXuat,
       choXuatKho: soLieu.choXuatKho,
       choNhapKho: soLieu.choNhapKho,
+      choXacNhanBanGiao: soLieu.choXacNhanBanGiao,
       bienBanChoXacNhan: soLieu.bienBanChoXacNhan,
       kiemKeDangMo: kiemKeDangMo,
       baoHongDangMo: baoHongDangMo,

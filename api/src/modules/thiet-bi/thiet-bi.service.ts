@@ -15,7 +15,12 @@ import { dieuKienTaiSan, phamViCua } from '../../lib/pham-vi.js';
 import { hangDangTrenDuong, tonCuaTaiSan, tonNhomTheoDiem, tonTheoDiaDiem } from '../../lib/ton-kho.js';
 import { xoaFileAnh } from '../../lib/luu-anh.js';
 import { idMucDichHoacDauTien, idNguonGocHoacDauTien } from '../../lib/tra-ma-tai-san.js';
-import { capMaThietBi, dayBoDemQuaMa, tienToTheoId } from '../../lib/sinh-ma-thiet-bi.js';
+import {
+  capMaThietBi,
+  chuanBiBoDemMa,
+  dayBoDemQuaMa,
+  tienToTheoId,
+} from '../../lib/sinh-ma-thiet-bi.js';
 import { phatChoNguoiDuyet, phatChoTatCa, SU_KIEN } from '../../realtime.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
 import type { BoiCanhGoi } from '../auth/auth.service.js';
@@ -442,6 +447,8 @@ export async function tao(
    * xem `capMaThietBi`. Vẫn thử lại khi va khoá (P2002 hiếm gặp, P2034 deadlock)
    * vì khoá duy nhất trên `assets.code` là chốt cuối cùng.
    */
+  // Tạo sẵn dòng bộ đếm NGOÀI transaction — xem `damBaoBoDem`.
+  if (!duLieu.code && tienTo) await chuanBiBoDemMa(tienTo);
   for (let lan = 0; lan < 3; lan += 1) {
     try {
       return await ghiThietBi();
@@ -524,7 +531,9 @@ export async function tao(
     );
 
     return donDong(thietBi);
-  });
+  // Nhiều người cùng lưu một tiền tố thì xếp hàng trên dòng bộ đếm — cho
+  // transaction đủ thời gian chờ lượt thay vì hỏng sau 5 giây mặc định.
+  }, { maxWait: 10_000, timeout: 20_000 });
   }
 }
 

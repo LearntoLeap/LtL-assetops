@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
+  Check,
   FileDown,
   FileSignature,
   Loader2,
@@ -168,6 +169,58 @@ export function YeuCauChiTiet() {
   const duocHuyNhap = yeuCau.status === 'BAN_NHAP' && (laNguoiTao || nguoiDung?.role === 'ADMIN');
   // Quản trị / vận hành huỷ được phiếu chưa thực hiện, kèm lý do.
   const duocTuChoi = choThucHien && laQuanLy;
+  /*
+   * XÁC NHẬN BÀN GIAO — Quản trị / Vận hành làm trung gian, bên nhận không bấm.
+   * Phân bổ / luân chuyển đã xuất kho; hoặc biên bản cũ lỡ gửi "chờ xác nhận".
+   */
+  const laLuongC = yeuCau.type === 'PHAN_BO_VE_TRUONG' || yeuCau.type === 'LUAN_CHUYEN_TRUONG';
+  // Hàng đang trên đường: xác nhận mới ghi hàng về nơi nhận.
+  const dangTrenDuong = yeuCau.status === 'DA_XUAT' && laLuongC;
+  // Biên bản cũ lỡ gửi "chờ xác nhận" của phiếu đã ghi xong tồn kho — chỉ đóng.
+  const bienBanCu =
+    !dangTrenDuong && yeuCau.handoverNotes.some((b) => b.status === 'CHO_XAC_NHAN');
+  const choXacNhanBanGiao = dangTrenDuong || bienBanCu;
+  const duocXacNhanBanGiao = choXacNhanBanGiao && laQuanLy;
+  const duocHuyBanGiao = dangTrenDuong && laQuanLy;
+  // Phiếu cũ: approvedBy là người DUYỆT. API mới ghi người xác nhận bàn giao cùng
+  // một thời điểm với lúc hoàn tất — dùng đúng dấu đó để gọi đúng tên.
+  const laNguoiXacNhan =
+    yeuCau.status === 'DA_HOAN_TAT' &&
+    laLuongC &&
+    yeuCau.approvedAt !== null &&
+    yeuCau.approvedAt === yeuCau.completedAt;
+
+  async function xacNhanBanGiao(): Promise<void> {
+    if (
+      !(await hoi(
+        dangTrenDuong
+          ? {
+              tieuDe: `Xác nhận đã bàn giao phiếu ${yeuCau?.code ?? ''}?`,
+              noiDung:
+                'Hệ thống ghi thiết bị đã về ' +
+                (yeuCau?.toLocation?.name ?? 'nơi nhận') +
+                ', trừ ở nơi gửi và cập nhật số lượng trên Tổng quan ngay. Thao tác không hoàn lại.',
+              nutCo: 'Có, xác nhận',
+              nguyHiem: false,
+            }
+          : {
+              tieuDe: 'Đóng biên bản cũ của phiếu này?',
+              noiDung: 'Tồn kho đã ghi lúc xuất / nhập kho — đóng biên bản không đổi số lượng.',
+              nutCo: 'Có, đóng biên bản',
+              nguyHiem: false,
+            },
+      ))
+    ) {
+      return;
+    }
+    await hanhDong(
+      '/xac-nhan-ban-giao',
+      {},
+      dangTrenDuong
+        ? 'Đã xác nhận bàn giao. Số lượng trên Tổng quan đã cập nhật.'
+        : 'Đã đóng biên bản.',
+    );
+  }
   const duocXuat = duocThucHien && LOAI_XUAT.has(yeuCau.type);
   const duocNhap = duocThucHien && LOAI_NHAP.has(yeuCau.type);
   /*
@@ -431,10 +484,63 @@ export function YeuCauChiTiet() {
           {yeuCau.rejectionNote}
         </Alert>
       ) : null}
-      {yeuCau.status === 'DA_XUAT' ? (
-        <Alert variant="warning" tieuDe="Đã xuất, đang chờ bên nhận xác nhận">
-          Thiết bị đang ở trạng thái “Đang vận chuyển”. Vị trí sở hữu chỉ đổi khi bên nhận xác nhận
-          biên bản bàn giao.
+      {choXacNhanBanGiao ? (
+        <Alert
+          variant="warning"
+          tieuDe={
+            bienBanCu
+              ? 'Biên bản cũ đang chờ đóng'
+              : duocXacNhanBanGiao
+                ? 'Đã xuất kho — chờ bạn xác nhận bàn giao'
+                : 'Đã xuất kho — chờ Quản trị / Vận hành xác nhận bàn giao'
+          }
+        >
+          <div className="space-y-3">
+            {bienBanCu ? (
+              <p className="text-sm">
+                Tồn kho của phiếu này đã ghi ngay lúc xuất / nhập kho. Quản trị / Vận hành bấm xác
+                nhận chỉ để đóng biên bản — không ghi thêm gì, số lượng không đổi.
+              </p>
+            ) : (
+              <p className="text-sm">
+                Hàng đang ở ô &ldquo;Đang chuyển&rdquo;. Bên nhận <strong>không cần bấm gì</strong>:
+                khi Quản trị hệ thống hoặc Vận hành thiết bị xác nhận, thiết bị được ghi về{' '}
+                <strong>{yeuCau.toLocation?.name ?? 'nơi nhận'}</strong> và số lượng trên Tổng quan
+                đổi ngay.
+              </p>
+            )}
+            {duocXacNhanBanGiao ? (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" disabled={dangChay} onClick={() => void xacNhanBanGiao()}>
+                  {dangChay ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
+                  {bienBanCu ? 'Đóng biên bản cũ' : 'Xác nhận đã bàn giao'}
+                </Button>
+                {duocHuyBanGiao ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive-dam"
+                    disabled={dangChay}
+                    onClick={() => {
+                      const lyDo = window.prompt(
+                        'Lý do huỷ bàn giao (ít nhất 5 ký tự) — hàng sẽ tính lại ở nơi gửi:',
+                      );
+                      if (lyDo && lyDo.trim().length >= 5) {
+                        void hanhDong(
+                          '/tu-choi',
+                          { rejectionNote: lyDo.trim() },
+                          'Đã huỷ bàn giao — hàng tính lại ở nơi gửi.',
+                        );
+                      }
+                    }}
+                  >
+                    <X aria-hidden />
+                    Huỷ bàn giao
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </Alert>
       ) : null}
 
@@ -463,7 +569,7 @@ export function YeuCauChiTiet() {
             <Muc nhan="Lập lúc">{ngayGio(yeuCau.createdAt)}</Muc>
             {/* Phiếu cũ còn người duyệt thì hiện; phiếu mới không qua bước duyệt. */}
             {yeuCau.approvedBy ? (
-              <Muc nhan="Người duyệt">
+              <Muc nhan={laNguoiXacNhan ? 'Người xác nhận bàn giao' : 'Người duyệt'}>
                 {yeuCau.approvedBy.fullName}
                 {yeuCau.approvedAt ? (
                   <span className="block text-xs font-normal text-muted-foreground">

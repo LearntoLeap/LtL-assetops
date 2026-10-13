@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { FileDown, FileSignature, Loader2, Plus, RefreshCw, Search, Wifi, WifiOff, Trash2} from 'lucide-react';
 import {
   DS_MAU_BBBG,
@@ -46,7 +46,15 @@ export function BienBanList() {
   const [dangXoaLo, datDangXoaLo] = useState(false);
   const [ghiChuXoa, datGhiChuXoa] = useState<string | null>(null);
   const [tuKhoa, datTuKhoa] = useState('');
-  const [locTrangThai, datLocTrangThai] = useState('');
+  // Ô trên trang chủ mở thẳng /bbbg?status=CHO_XAC_NHAN — đọc bộ lọc từ địa chỉ,
+  // và đọc lại khi địa chỉ đổi (bấm sang từ trang khác mà trang này đang mở).
+  const [thamSo] = useSearchParams();
+  const [locTrangThai, datLocTrangThai] = useState(thamSo.get('status') ?? '');
+  const chuoiThamSo = thamSo.toString();
+  useEffect(() => {
+    datLocTrangThai(thamSo.get('status') ?? '');
+    datTrang(1);
+  }, [chuoiThamSo]);
   const [locMau, datLocMau] = useState('');
   /** id biên bản đang tải file — để chỉ nút đó quay, không quay cả bảng. */
   const [dangTaiTep, datDangTaiTep] = useState<string | null>(null);
@@ -162,7 +170,7 @@ export function BienBanList() {
         <div>
           <h1 className="text-xl font-semibold sm:text-2xl">Biên bản bàn giao</h1>
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            Thiết bị chỉ đổi vị trí sang trường sau khi bên nhận xác nhận biên bản.
+            Phân bổ / luân chuyển đổi vị trí khi Quản trị / Vận hành xác nhận bàn giao — bên nhận không cần bấm.
             <span
               className={dangNoi ? 'text-success-dam' : 'text-muted-foreground'}
               title={dangNoi ? 'Đang đồng bộ realtime' : 'Mất kết nối realtime'}
@@ -189,9 +197,9 @@ export function BienBanList() {
       {ghiChuXoa ? <Alert variant="success">{ghiChuXoa}</Alert> : null}
 
       {choToiXacNhan > 0 ? (
-        <Alert variant="warning" tieuDe="Có biên bản đang chờ xác nhận">
-          {choToiXacNhan} biên bản đang chờ bên nhận kiểm hàng và xác nhận. Chỉ khi xác nhận, thiết
-          bị mới được ghi nhận là đã về đơn vị nhận.
+        <Alert variant="warning" tieuDe="Có biên bản cũ đang chờ xác nhận">
+          {choToiXacNhan} biên bản đã gửi theo cách cũ. Quản trị / Vận hành mở từng biên bản và bấm
+          &ldquo;Xác nhận đã bàn giao&rdquo; — bên nhận không cần làm gì.
         </Alert>
       ) : null}
 

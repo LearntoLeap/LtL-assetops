@@ -44,6 +44,45 @@ export function namViet(luc: Date = new Date()): number {
  * theo cùng thứ tự nên xếp hàng, không khoá chéo, không ai nhận trùng số. SQL
  * viết theo chuẩn chung (không backtick) để đổi sang PostgreSQL không phải sửa.
  */
+/**
+ * TẠO SẴN DÒNG BỘ ĐẾM — gọi NGOÀI transaction, trước khi mở transaction cấp số.
+ *
+ * Nhánh tạo dòng trong `tangBoDem` phải dùng một kết nối riêng (ngoài
+ * transaction). Khi nhiều lượt cùng mở transaction trên một tiền tố MỚI, cả bể
+ * kết nối bị các transaction đó giữ hết, lệnh tạo dòng không còn kết nối nào để
+ * chạy — mọi lượt chờ nhau tới hết 5 giây rồi cùng lỗi 500 (đã dựng lại: 9/20
+ * lượt hỏng). Tạo sẵn dòng trước khi mở transaction thì bên trong chỉ còn
+ * UPDATE trên dòng có sẵn.
+ */
+export async function damBaoBoDem(
+  prefix: string,
+  year: number,
+  giaTriKhoiTao: () => Promise<number> = async () => 0,
+): Promise<void> {
+  const coSan = await prisma.documentSequence.findUnique({
+    where: { prefix_year: { prefix, year } },
+    select: { id: true },
+  });
+  if (coSan) return;
+  await prisma.documentSequence.createMany({
+    data: [{ prefix, year, lastNumber: await giaTriKhoiTao() }],
+    skipDuplicates: true,
+  });
+}
+
+/**
+ * Tạo sẵn bộ đếm chứng từ của năm nay và năm sau cho mọi tiền tố — chạy lúc API
+ * khởi động và định kỳ, để số chứng từ đầu tiên của một năm không rơi vào nhánh
+ * tạo dòng giữa lúc nhiều người cùng lập phiếu.
+ */
+export async function damBaoBoDemChungTu(): Promise<void> {
+  const nam = namViet();
+  for (const tienTo of Object.values(TIEN_TO)) {
+    await damBaoBoDem(tienTo, nam);
+    await damBaoBoDem(tienTo, nam + 1);
+  }
+}
+
 export async function tangBoDem(
   db: PrismaTx,
   prefix: string,

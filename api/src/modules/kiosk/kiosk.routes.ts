@@ -25,6 +25,7 @@ import {
   yeuCauDangNhap,
 } from '../../middleware/xac-thuc.js';
 import { soLieuNhanh } from '../bao-cao/bao-cao.service.js';
+import { dieuKienPhamVi as dieuKienPhamViBienBan } from '../bbbg/bbbg.service.js';
 
 export const kioskRouter = Router();
 kioskRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
@@ -37,7 +38,7 @@ kioskRouter.get(
   }),
 );
 
-/** Việc đang chờ tay người ở kho: chờ duyệt, đã duyệt chờ xuất, biên bản chờ xác nhận. */
+/** Việc đang chờ tay người ở kho: phiếu chờ xuất / nhập kho, biên bản cũ chờ xác nhận. */
 kioskRouter.get(
   '/cho-xu-ly',
   batAsync(async (req, res) => {
@@ -47,7 +48,8 @@ kioskRouter.get(
         where: {
           ...dieuKienYeuCau(nguoiDung),
           type: { not: 'BAO_HONG' },
-          status: { in: ['CHO_DUYET', 'DA_DUYET'] },
+          // Không còn bước duyệt: phiếu mới ở BAN_NHAP là "chờ xuất / nhập kho".
+          status: { in: ['BAN_NHAP', 'CHO_DUYET', 'DA_DUYET'] },
         },
         select: {
           id: true,
@@ -63,7 +65,8 @@ kioskRouter.get(
         take: 30,
       }),
       prisma.handoverNote.findMany({
-        where: { deletedAt: null, status: 'CHO_XAC_NHAN' },
+        // Lọc theo phạm vi như phần yêu cầu — trước đây trả biên bản của mọi đơn vị.
+        where: { AND: [dieuKienPhamViBienBan(nguoiDung), { status: 'CHO_XAC_NHAN' }] },
         select: {
           id: true,
           code: true,

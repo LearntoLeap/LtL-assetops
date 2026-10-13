@@ -525,6 +525,10 @@ export interface SoLieuNhanh {
   /** Phiếu đang chờ XUẤT / NHẬP kho (không còn bước duyệt), theo phạm vi. */
   choXuatKho?: number;
   choNhapKho?: number;
+  /** Chờ Quản trị / Vận hành xác nhận bàn giao (bên nhận không xác nhận nữa). */
+  choXacNhanBanGiao?: number;
+  /** Biên bản cũ lỡ gửi "chờ xác nhận" của phiếu đã ghi xong — chờ quản lý đóng. */
+  bienBanCuKet?: number;
   /** Hàng nhân sự đang mượn: bộ đếm số bộ, lẻ cộng số lượng. */
   nhanSuGiu?: DemTachLoai;
   soMaBo?: number;
@@ -680,6 +684,7 @@ export interface DuLieuTongThe {
     /** Phiếu chờ xuất / nhập kho — API cũ chưa có. */
     choXuatKho?: number;
     choNhapKho?: number;
+    choXacNhanBanGiao?: number;
     bienBanChoXacNhan: number;
     kiemKeDangMo: number;
     baoHongDangMo: number;
