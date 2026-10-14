@@ -289,11 +289,12 @@ export async function ghiDem(
   kiemKeId: string,
   itemId: string,
   duLieu: DuLieuGhiDem,
-  actor: NguoiThaoTac,
+  actor: NguoiDungDaXacThuc,
   ctx: BoiCanhGoi,
 ): Promise<KiemKeDayDu> {
-  const phieu = await prisma.inventoryCount.findUnique({
-    where: { id: kiemKeId },
+  // Theo phạm vi: tài khoản trường chỉ đếm được đợt kiểm tại trường mình.
+  const phieu = await prisma.inventoryCount.findFirst({
+    where: { AND: [{ id: kiemKeId }, dieuKienPhamVi(actor)] },
     select: { id: true, code: true, status: true },
   });
   if (!phieu) throw loi404('Không tìm thấy phiếu kiểm kê.');
@@ -319,8 +320,10 @@ export async function ghiDem(
       },
     });
     if (duLieu.anhIds && duLieu.anhIds.length > 0) {
+      // Chỉ gắn ảnh do chính người đếm tải lên — không kéo được ảnh của người
+      // khác (vd ảnh kiểm kê của trường khác) sang dòng của mình.
       await tx.photo.updateMany({
-        where: { id: { in: duLieu.anhIds } },
+        where: { id: { in: duLieu.anhIds }, uploadedById: actor.id },
         data: { countItemId: itemId },
       });
     }
@@ -349,11 +352,12 @@ export async function ghiDem(
 
 export async function guiChot(
   id: string,
-  actor: NguoiThaoTac,
+  actor: NguoiDungDaXacThuc,
   ctx: BoiCanhGoi,
 ): Promise<KiemKeDayDu> {
-  const phieu = await prisma.inventoryCount.findUnique({
-    where: { id },
+  // Theo phạm vi: tài khoản trường chỉ gửi chốt được đợt kiểm tại trường mình.
+  const phieu = await prisma.inventoryCount.findFirst({
+    where: { AND: [{ id }, dieuKienPhamVi(actor)] },
     select: { id: true, code: true, status: true, items: { select: { countedQuantity: true } } },
   });
   if (!phieu) throw loi404('Không tìm thấy phiếu kiểm kê.');

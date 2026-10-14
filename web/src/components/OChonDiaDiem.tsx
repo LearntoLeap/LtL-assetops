@@ -33,6 +33,12 @@ interface Props {
   /** Lựa chọn đặc biệt ngoài danh sách điểm (vd "Hàng mới / từ bên ngoài"). */
   luaChonThem?: ReadonlyArray<LuaChonThem> | undefined;
   goiY?: string | undefined;
+  /**
+   * Khoá vào ĐÚNG MỘT điểm: chỉ hiện điểm này, không có lựa chọn đặc biệt và
+   * không thêm điểm mới. Tài khoản trường lập phiếu thì nơi đi luôn là trường
+   * mình (máy chủ cũng chặn nơi đi khác).
+   */
+  chiDiem?: string | undefined;
 }
 
 /**
@@ -57,6 +63,7 @@ export function OChonDiaDiem({
   nhanTrong = '— Chưa chọn —',
   luaChonThem,
   goiY,
+  chiDiem,
 }: Props) {
   const { nguoiDung } = useAuth();
   const [muc, datMuc] = useState<NoiDen[]>([]);
@@ -93,11 +100,14 @@ export function OChonDiaDiem({
     ? loai
     : (['DIEM_TRUONG', 'DOI_TAC_MUON', 'KHO_SU_KIEN', 'KHO_VAN_PHONG'] as const)
   ).filter((l) => l !== 'KHO_VAN_PHONG' || vaiTro === 'ADMIN' || vaiTro === 'VAN_HANH');
-  const duocThem = vaiTro !== undefined && vaiTro !== 'TRUONG' && loaiThemDuoc.length > 0;
+  const duocThem =
+    vaiTro !== undefined && vaiTro !== 'TRUONG' && !chiDiem && loaiThemDuoc.length > 0;
 
-  const hien = muc.filter(
-    (d) => (!loai || loai.length === 0 || loai.includes(d.type)) && d.id !== boDiem,
-  );
+  const hien = chiDiem
+    ? muc.filter((d) => d.id === chiDiem)
+    : muc.filter(
+        (d) => (!loai || loai.length === 0 || loai.includes(d.type)) && d.id !== boDiem,
+      );
 
   async function luu(): Promise<void> {
     const ten = tenMoi.trim();
@@ -138,8 +148,9 @@ export function OChonDiaDiem({
           onDoi(su.target.value);
         }}
       >
-        <option value="">{nhanTrong}</option>
-        {luaChonThem?.map((l) => (
+        {/* Khoá vào một điểm thì không có lựa chọn "để trống". */}
+        {chiDiem && hien.length > 0 ? null : <option value="">{nhanTrong}</option>}
+        {(chiDiem ? undefined : luaChonThem)?.map((l) => (
           <option key={l.giaTri} value={l.giaTri}>
             {l.nhan}
           </option>

@@ -5,6 +5,7 @@
  */
 import type { RequestHandler } from 'express';
 import type { UserRole } from '@prisma/client';
+import { VAI_TRO_KIOSK, VAI_TRO_NGHIEP_VU_KHO, VAI_TRO_NHAP_LIEU } from '@ltl/taisan-shared';
 import { prisma } from '../prisma.js';
 import { docAccessToken } from '../lib/jwt.js';
 import { loi401, loi403 } from '../lib/loi-http.js';
@@ -91,3 +92,15 @@ export const chanKhiChuaDoiMatKhau: RequestHandler = (req, _res, next) => {
 export const yeuCauNguoiDuyet = yeuCauVaiTro('ADMIN', 'VAN_HANH');
 /** Tạo/xoá tài khoản: chỉ ADMIN (VAN_HANH bị loại trừ theo đặc tả). */
 export const yeuCauAdmin = yeuCauVaiTro('ADMIN');
+
+/*
+ * Nhóm vai trò dùng chung với web (`@ltl/taisan-shared`). Cổng ở đây chỉ chặn
+ * theo VAI TRÒ; giới hạn "Trường chỉ trong trường mình" kiểm tiếp ở service
+ * của từng việc, vì cổng không biết bản ghi thuộc điểm nào.
+ */
+/** Nghiệp vụ kho: Quản trị, Vận hành, Kho, Nhân sự phòng ban, Trường (trong trường mình). */
+export const yeuCauNghiepVuKho = yeuCauVaiTro(...(VAI_TRO_NGHIEP_VU_KHO as readonly UserRole[]));
+/** Tạo mới dữ liệu dùng chung (thiết bị, hàng lẻ, Excel, Wiki, danh mục): không có Trường. */
+export const yeuCauNhapLieu = yeuCauVaiTro(...(VAI_TRO_NHAP_LIEU as readonly UserRole[]));
+/** Giao diện Kiosk tại kho: Nhân sự phòng ban và Trường không có. */
+export const yeuCauKiosk = yeuCauVaiTro(...(VAI_TRO_KIOSK as readonly UserRole[]));

@@ -7,8 +7,8 @@ import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
   yeuCauDangNhap,
+  yeuCauNghiepVuKho,
   yeuCauNguoiDuyet,
-  yeuCauVaiTro,
 } from '../../middleware/xac-thuc.js';
 import {
   luocDoChot,
@@ -21,8 +21,12 @@ import * as dv from './kiem-ke.service.js';
 export const kiemKeRouter = Router();
 kiemKeRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
-/** Người đi kiểm: kho và nhóm quản lý. */
-const nguoiKiem = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
+/**
+ * Người đi kiểm (nhập thực đếm, gửi chốt): mọi vai trò làm nghiệp vụ kho. Tài
+ * khoản trường chỉ đếm đợt kiểm tại trường mình — service đọc phiếu theo phạm vi.
+ * Mở / chốt / huỷ đợt kiểm vẫn là việc của Quản trị / Vận hành.
+ */
+const nguoiKiem = yeuCauNghiepVuKho;
 
 kiemKeRouter.get(
   '/',

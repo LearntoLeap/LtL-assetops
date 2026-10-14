@@ -5,7 +5,13 @@ import type { VaiTro } from '@ltl/taisan-shared';
 import { Alert } from '@/components/ui/alert';
 import { BoCucApp } from '@/layouts/BoCucApp';
 import { DangNhap } from '@/features/auth/DangNhap';
-import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
+import {
+  useAuth,
+  VAI_TRO_KIOSK,
+  VAI_TRO_NGHIEP_VU_KHO,
+  VAI_TRO_NHAP_LIEU,
+  VAI_TRO_QUAN_LY,
+} from '@/lib/auth';
 
 /**
  * Tách gói theo màn hình: mở trang đăng nhập chỉ tải phần đăng nhập, không kéo
@@ -123,11 +129,15 @@ export default function App() {
           }
         />
 
-        {/* Màn hình kho dùng hết màn hình, không có thanh menu chen ngang. */}
+        {/*
+          Màn hình kho dùng hết màn hình, không có thanh menu chen ngang. Chỉ Kho
+          (và Quản trị / Vận hành): Nhân sự và Trường làm mọi việc của kho ở giao
+          diện thường, không có giao diện Kiosk.
+        */}
         <Route
           path="/kiosk"
           element={
-            <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+            <CanDangNhap vaiTro={VAI_TRO_KIOSK}>
               <ManHinhKiosk />
             </CanDangNhap>
           }
@@ -185,7 +195,7 @@ export default function App() {
           <Route
             path="thiet-bi/in-nhan"
             element={
-              <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+              <CanDangNhap vaiTro={VAI_TRO_NGHIEP_VU_KHO}>
                 <InNhanQR />
               </CanDangNhap>
             }
@@ -225,7 +235,7 @@ export default function App() {
           <Route
             path="bbbg/moi"
             element={
-              <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
+              <CanDangNhap vaiTro={VAI_TRO_NGHIEP_VU_KHO}>
                 <FormBienBan />
               </CanDangNhap>
             }
@@ -271,7 +281,7 @@ export default function App() {
           <Route
             path="linh-kien"
             element={
-              <CanDangNhap vaiTro={['ADMIN', 'VAN_HANH', 'KHO']}>
+              <CanDangNhap vaiTro={VAI_TRO_NGHIEP_VU_KHO}>
                 <LayLinhKien />
               </CanDangNhap>
             }
@@ -292,13 +302,13 @@ export default function App() {
           {/*
             Thư viện wiki: ĐỌC không giới hạn vai trò — wiki là tri thức hướng
             dẫn, và trong đó không có thông tin giá nào để cần che. VIẾT thì
-            giới hạn ba vai trò; máy chủ kiểm lại bằng middleware.
+            giới hạn nhóm nhập liệu; máy chủ kiểm lại bằng middleware.
           */}
           <Route path="wiki" element={<ThuVienWiki />} />
           <Route
             path="wiki/moi"
             element={
-              <CanDangNhap vaiTro={['ADMIN', 'VAN_HANH', 'KHO']}>
+              <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
                 <SuaBaiWiki />
               </CanDangNhap>
             }
@@ -306,7 +316,7 @@ export default function App() {
           <Route
             path="wiki/:slug/sua"
             element={
-              <CanDangNhap vaiTro={['ADMIN', 'VAN_HANH', 'KHO']}>
+              <CanDangNhap vaiTro={VAI_TRO_NHAP_LIEU}>
                 <SuaBaiWiki />
               </CanDangNhap>
             }

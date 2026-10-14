@@ -23,6 +23,8 @@ import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
   yeuCauDangNhap,
+  yeuCauKiosk,
+  yeuCauNhapLieu,
 } from '../../middleware/xac-thuc.js';
 import { soLieuNhanh } from '../bao-cao/bao-cao.service.js';
 import { dieuKienPhamVi as dieuKienPhamViBienBan } from '../bbbg/bbbg.service.js';
@@ -30,8 +32,16 @@ import { dieuKienPhamVi as dieuKienPhamViBienBan } from '../bbbg/bbbg.service.js
 export const kioskRouter = Router();
 kioskRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
+/*
+ * GIAO DIỆN KIOSK chỉ dành cho Kho (và Quản trị / Vận hành). Nhân sự phòng ban
+ * và Trường làm được mọi việc của kho ở giao diện thường, nhưng không có màn hình
+ * kiosk — chặn cả ở máy chủ, không chỉ ẩn ở giao diện. Riêng `/tablet` (trang
+ * "Cố định tại kho" trong giao diện thường) mở cho nhóm nhập liệu, gồm Nhân sự.
+ */
+
 kioskRouter.get(
   '/thong-ke',
+  yeuCauKiosk,
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
     res.json({ ok: true, soLieu: await soLieuNhanh(nguoiDung) });
@@ -41,6 +51,7 @@ kioskRouter.get(
 /** Việc đang chờ tay người ở kho: phiếu chờ xuất / nhập kho, biên bản cũ chờ xác nhận. */
 kioskRouter.get(
   '/cho-xu-ly',
+  yeuCauKiosk,
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
     const [yeuCau, bienBan] = await Promise.all([
@@ -86,6 +97,9 @@ kioskRouter.get(
 /** Tablet nhóm "Cố định tại kho" — kèm người đang giữ và lần mượn gần nhất. */
 kioskRouter.get(
   '/tablet',
+  // Trang "Cố định tại kho" (giao diện thường): Quản trị, Vận hành, Kho, Nhân sự.
+  // Trường không có — đó là hàng đặt cố định ở kho, kèm lịch sử mượn nội bộ.
+  yeuCauNhapLieu,
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
     // Mục đích "Cố định tại kho" giờ là hàng trong CSDL, phải tra id. Người dùng
@@ -93,11 +107,12 @@ kioskRouter.get(
     const idCoDinhTaiKho = await idMucDichTheoMa('CO_DINH_TAI_KHO');
     const muc = idCoDinhTaiKho === null ? [] : await prisma.asset.findMany({
       where: {
-        // Thiết bị đã xoá mềm không hiện trên màn hình kho.
-        deletedAt: null,
-        ...dieuKienTaiSan(nguoiDung),
-        purposeId: idCoDinhTaiKho,
-        isActive: true,
+        // AND, không spread: phạm vi của tài khoản trường là một khối OR.
+        AND: [
+          await dieuKienTaiSan(nguoiDung),
+          // Thiết bị đã xoá mềm không hiện trên màn hình kho.
+          { deletedAt: null, purposeId: idCoDinhTaiKho, isActive: true },
+        ],
       },
       select: {
         id: true,
@@ -142,6 +157,7 @@ const luocDoCaiDat = z
 
 kioskRouter.get(
   '/cai-dat',
+  yeuCauKiosk,
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
     const caiDat = await prisma.kioskSetting.findUnique({
@@ -161,6 +177,7 @@ kioskRouter.get(
  */
 kioskRouter.put(
   '/cai-dat',
+  yeuCauKiosk,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoCaiDat.parse(req.body);

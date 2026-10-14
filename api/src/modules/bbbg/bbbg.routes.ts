@@ -8,6 +8,7 @@ import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
   yeuCauDangNhap,
+  yeuCauNghiepVuKho,
   yeuCauVaiTro,
 } from '../../middleware/xac-thuc.js';
 import {
@@ -18,36 +19,38 @@ import {
   luocDoXacNhanBBBG,
 } from './bbbg.schema.js';
 import { luocDoNhieuIdChung } from '../../lib/luoc-do-chung.js';
+import { phamViCua } from '../../lib/pham-vi.js';
 import * as dv from './bbbg.service.js';
 import { MAU_THEO_LOAI } from './mau-bbbg.js';
 
 export const bbbgRouter = Router();
 bbbgRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
-/** Lập/sửa biên bản: bên giao — ADMIN, VAN_HANH, KHO. */
-const benGiao = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
-const VAI_TRO_BEN_GIAO = new Set(['ADMIN', 'VAN_HANH', 'KHO']);
-
 /**
- * BÊN GIAO HOẶC NGƯỜI LẬP PHIẾU. Biên bản tự lập cho MỌI vai trò: nhân sự / tài
- * khoản trường tự xuất kho phiếu của mình thì cũng phải tự sửa, in và gửi được
- * biên bản của chính phiếu đó — không phải chờ kho làm hộ. Chỉ phiếu của mình;
- * biên bản của người khác vẫn chỉ kho và quản lý đụng tới.
+ * LẬP / SỬA / XUẤT FILE BIÊN BẢN — nghiệp vụ kho.
+ *
+ * Quản trị, Vận hành, Kho, Nhân sự phòng ban: mọi biên bản. Tài khoản TRƯỜNG:
+ * biên bản của phiếu thuộc trường mình (trường gửi / trường nhận / mình lập) —
+ * cùng phạm vi với danh sách biên bản trường đó thấy. Không bao giờ chỉ thêm
+ * TRUONG vào một danh sách vai trò: service lập biên bản đọc phiếu theo id, nên
+ * thiếu phép kiểm phạm vi là trường lập được biên bản cho phiếu của nơi khác.
  */
 function benGiaoHoacNguoiLap(lay: 'bbbg' | 'yeuCau') {
   return batAsync(async (req, _res, next) => {
     const nd = nguoiDungHienTai(req);
-    if (VAI_TRO_BEN_GIAO.has(nd.role)) {
+    if (phamViCua(nd).toanBoKho) {
       next();
       return;
     }
-    const laNguoiLap =
+    const duoc =
       lay === 'bbbg'
-        ? await dv.laNguoiLapPhieuCuaBBBG(String(req.params['id']), nd.id)
-        : await dv.laNguoiLapYeuCau(String(req.params['requestId']), nd.id);
-    if (!laNguoiLap) {
+        ? (await dv.bienBanTrongPhamVi(String(req.params['id']), nd)) ||
+          (await dv.laNguoiLapPhieuCuaBBBG(String(req.params['id']), nd.id))
+        : (await dv.yeuCauTrongPhamVi(String(req.params['requestId']), nd)) ||
+          (await dv.laNguoiLapYeuCau(String(req.params['requestId']), nd.id));
+    if (!duoc) {
       throw loi403(
-        'Chỉ kho, quản trị / vận hành hoặc chính người lập phiếu mới sửa / gửi được biên bản này.',
+        'Tài khoản trường chỉ lập / sửa được biên bản của phiếu thuộc trường mình.',
       );
     }
     next();
@@ -180,10 +183,14 @@ bbbgRouter.post(
 
 bbbgRouter.post(
   '/',
-  benGiao,
+  yeuCauNghiepVuKho,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const duLieu = luocDoTaoBBBG.parse(req.body);
+    // Tài khoản trường: phiếu phải thuộc trường mình (service đọc phiếu theo id).
+    if (!phamViCua(actor).toanBoKho && !(await dv.yeuCauTrongPhamVi(duLieu.requestId, actor))) {
+      throw loi404('Không tìm thấy yêu cầu để lập biên bản.');
+    }
     res.status(201).json({ ok: true, bbbg: await dv.tao(duLieu, actor, boiCanh(req)) });
   }),
 );
@@ -226,8 +233,8 @@ bbbgRouter.post(
 );
 
 /**
- * BÊN NHẬN xác nhận — không giới hạn vai trò ở middleware vì chính tài khoản
- * TRUONG phải bấm được; service kiểm tài khoản có đúng thuộc điểm nhận hay không.
+ * XÁC NHẬN BÀN GIAO — Quản trị / Vận hành (bên nhận không còn tự xác nhận).
+ * Service kiểm vai trò (`batBuocNguoiXacNhan`).
  */
 bbbgRouter.post(
   '/:id/xac-nhan',

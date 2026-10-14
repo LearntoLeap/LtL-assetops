@@ -26,7 +26,7 @@ import {
 import { NutQuetQR } from '@/components/QuetQR';
 import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, VAI_TRO_NGHIEP_VU_KHO, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import { taiTep } from '@/lib/tep';
 import type { DanhMuc, DiaDiem, ThietBi, TrangDuLieu } from '@/lib/kieu';
 
@@ -73,13 +73,18 @@ export function ThietBiList() {
   const hoi = useXacNhan();
   const { nguoiDung } = useAuth();
   const dieuHuong = useNavigate();
-  const duocSua =
-    nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH' || nguoiDung?.role === 'KHO';
+  // Thêm thiết bị / nhập hàng loạt: nhóm nhập liệu (gồm Nhân sự). In nhãn: mọi
+  // vai trò làm nghiệp vụ kho — trường in nhãn thiết bị của trường mình.
+  const duocSua = nguoiDung ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) : false;
+  const duocInNhan = nguoiDung ? VAI_TRO_NGHIEP_VU_KHO.includes(nguoiDung.role) : false;
   // Xoá hẳn chỉ ADMIN — trùng với `yeuCauAdmin` ở API. Ẩn nút chỉ là cho gọn mắt,
   // chặn thật vẫn nằm ở middleware phía server.
   const laAdmin = nguoiDung?.role === 'ADMIN';
+  const laTruong = nguoiDung?.role === 'TRUONG';
 
   const [muc, datMuc] = useState<ThietBi[]>([]);
+  // Máy chủ gửi kèm số tại điểm khi lọc theo điểm, và luôn gửi cho tài khoản trường.
+  const coSlTaiDiem = muc.some((t) => t.tonTaiDiem !== undefined);
   /**
    * Thiết bị đang tick, giữ dạng MÃ → ID.
    *
@@ -370,14 +375,16 @@ export function ThietBiList() {
         </div>
         <div className="flex flex-wrap gap-2">
           <NutQuetQR onQuetDuoc={(ma) => void quetXong(ma)} nhan="Quét mã" />
+          {duocInNhan ? (
+            <Button variant="outline" asChild>
+              <Link to="/thiet-bi/in-nhan">
+                <QrCode aria-hidden />
+                In nhãn QR
+              </Link>
+            </Button>
+          ) : null}
           {duocSua ? (
             <>
-              <Button variant="outline" asChild>
-                <Link to="/thiet-bi/in-nhan">
-                  <QrCode aria-hidden />
-                  In nhãn QR
-                </Link>
-              </Button>
               {laAdmin ? (
                 <Button variant="outline" asChild>
                   <Link to="/thiet-bi/thung-rac">
@@ -589,7 +596,11 @@ export function ThietBiList() {
                     <TableHead>Mã / Tên</TableHead>
                     <TableHead>Loại</TableHead>
                     <TableHead>Vị trí hiện tại</TableHead>
-                    {locDiem ? <TableHead className="text-right">SL tại điểm</TableHead> : null}
+                    {coSlTaiDiem ? (
+                      <TableHead className="text-right">
+                        {!locDiem && laTruong ? 'SL tại trường' : 'SL tại điểm'}
+                      </TableHead>
+                    ) : null}
                     <TableHead>Tình trạng</TableHead>
                     <TableHead>Phân bổ</TableHead>
                     <TableHead>Quản lý</TableHead>
@@ -638,14 +649,20 @@ export function ThietBiList() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">{t.category.name}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {t.currentLocation?.name ?? (t.holder ? 'Ngoài điểm lưu trữ' : '—')}
+                        {t.currentLocation?.name ??
+                          (t.holder
+                            ? 'Ngoài điểm lưu trữ'
+                            : laTruong && (t.tonTaiDiem ?? 0) > 0
+                              ? 'Tại trường'
+                              : '—')}
                         {t.holder ? (
                           <span className="block text-xs">Giữ: {t.holder.fullName}</span>
                         ) : null}
                       </TableCell>
                       {/* Lọc theo điểm thì hiện số đang ở ĐÚNG điểm đó — hàng lẻ có
-                          thể nằm rải nhiều nơi, cột vị trí chỉ là nơi chính. */}
-                      {locDiem ? (
+                          thể nằm rải nhiều nơi, cột vị trí chỉ là nơi chính. Tài
+                          khoản trường luôn thấy số tại trường mình. */}
+                      {coSlTaiDiem ? (
                         <TableCell className="text-right tabular-nums">
                           {t.tonTaiDiem ?? '—'}
                         </TableCell>

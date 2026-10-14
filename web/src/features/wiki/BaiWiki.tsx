@@ -35,12 +35,14 @@ import { AnhBaoMat } from '@/components/AnhBaoMat';
 import { VanBanMarkdown } from '@/components/VanBanMarkdown';
 import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import { ngayGio } from '@/lib/dinh-dang';
 import { coTep, moTaiLieu, nhanDinhDang } from '@/lib/tai-lieu';
 import type { ChiTietBaiWiki, MucWiki, TaiLieuWiki } from '@/lib/kieu';
 
-const VAI_TRO_BIEN_TAP = ['ADMIN', 'VAN_HANH', 'KHO'];
+/** Soạn / sửa: nhóm nhập liệu. Xoá: giữ như cũ (Quản trị, Vận hành, Kho). Máy chủ kiểm lại. */
+const VAI_TRO_BIEN_TAP = VAI_TRO_NHAP_LIEU;
+const VAI_TRO_XOA: readonly string[] = ['ADMIN', 'VAN_HANH', 'KHO'];
 
 const KIEU_LUU_Y = {
   NGUY_HIEM: { vien: 'border-destructive/40 bg-destructive/10', chu: 'text-destructive-dam', Icon: ShieldAlert },
@@ -83,11 +85,11 @@ function KhoiLuuY({ muc }: { muc: MucWiki[] }) {
 
 function HangTaiLieu({
   doc,
-  duocSua,
+  duocXoa,
   khiXoa,
 }: {
   doc: TaiLieuWiki;
-  duocSua: boolean;
+  duocXoa: boolean;
   khiXoa: (id: string) => void;
 }) {
   const [dangMo, datDangMo] = useState(false);
@@ -126,7 +128,7 @@ function HangTaiLieu({
           {doc.lienKetNgoai ? <ExternalLink aria-hidden /> : null}
           {doc.lienKetNgoai ? 'Mở link' : nhanDinhDang(doc) === 'PDF' ? 'Xem' : 'Tải về'}
         </Button>
-        {duocSua ? (
+        {duocXoa ? (
           <Button
             variant="ghost"
             size="icon"
@@ -156,6 +158,7 @@ export function BaiWiki() {
   const dieuHuong = useNavigate();
   const { nguoiDung } = useAuth();
   const duocSua = nguoiDung ? VAI_TRO_BIEN_TAP.includes(nguoiDung.role) : false;
+  const duocXoa = nguoiDung ? VAI_TRO_XOA.includes(nguoiDung.role) : false;
 
   const [dl, datDl] = useState<ChiTietBaiWiki | null>(null);
   const [loi, datLoi] = useState<string | null>(null);
@@ -239,14 +242,16 @@ export function BaiWiki() {
                 Sửa bài
               </Link>
             </Button>
-            <Button
-              variant="outline"
-              className="text-destructive-dam"
-              onClick={() => void xoaBai()}
-            >
-              <Trash2 aria-hidden />
-              Xoá
-            </Button>
+            {duocXoa ? (
+              <Button
+                variant="outline"
+                className="text-destructive-dam"
+                onClick={() => void xoaBai()}
+              >
+                <Trash2 aria-hidden />
+                Xoá
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -403,7 +408,7 @@ export function BaiWiki() {
                     <HangTaiLieu
                       key={d.id}
                       doc={d}
-                      duocSua={duocSua}
+                      duocXoa={duocXoa}
                       khiXoa={(id) => void xoaTaiLieu(id)}
                     />
                   ))}

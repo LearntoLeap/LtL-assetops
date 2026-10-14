@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/select';
 import { ChupAnh } from '@/components/ChupAnh';
 import { NutQuetQR } from '@/components/QuetQR';
 import { goiApi, LoiApi } from '@/lib/api';
+import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import type { AnhDaTai } from '@/lib/anh';
 import { ngayGio } from '@/lib/dinh-dang';
 import type { PhieuBaoHong, PhieuLinhKien, TrangDuLieu } from '@/lib/kieu';
@@ -56,6 +57,10 @@ export function LayLinhKien() {
 
   const [lyDoMoi, datLyDoMoi] = useState('');
   const [moThemLyDo, datMoThemLyDo] = useState(false);
+  // Thêm lý do mới là thêm vào danh mục dùng chung — tài khoản trường không làm
+  // (máy chủ cũng chặn), chỉ chọn trong danh sách có sẵn.
+  const { nguoiDung } = useAuth();
+  const duocThemLyDo = nguoiDung ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) : false;
 
   const [loi, datLoi] = useState<string | null>(null);
   const [thongBao, datThongBao] = useState<string | null>(null);
@@ -275,17 +280,19 @@ export function LayLinhKien() {
                     </option>
                   ))}
                 </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => datMoThemLyDo((m) => !m)}
-                  aria-expanded={moThemLyDo}
-                >
-                  <Plus aria-hidden />
-                  Lý do khác
-                </Button>
+                {duocThemLyDo ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => datMoThemLyDo((m) => !m)}
+                    aria-expanded={moThemLyDo}
+                  >
+                    <Plus aria-hidden />
+                    Lý do khác
+                  </Button>
+                ) : null}
               </div>
-              {moThemLyDo ? (
+              {duocThemLyDo && moThemLyDo ? (
                 <div className="flex flex-wrap gap-2 rounded-lg border bg-secondary/40 p-3">
                   <Input
                     className="min-w-0 flex-1"

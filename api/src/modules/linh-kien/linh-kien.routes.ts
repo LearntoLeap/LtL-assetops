@@ -21,20 +21,27 @@ import { boiCanh, ghiAudit } from '../../lib/audit.js';
 import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
 import { tonTaiDiaDiem } from '../../lib/ton-kho.js';
-import { dieuKienTaiSan } from '../../lib/pham-vi.js';
-import { phatChoNhomSuCo, SU_KIEN } from '../../realtime.js';
+import { cheNoiTrongDong, dieuKienBaoHong, dieuKienTaiSan, phamViCua } from '../../lib/pham-vi.js';
+import { phatChoDiaDiem, phatChoNhomSuCo, SU_KIEN } from '../../realtime.js';
 import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
   yeuCauDangNhap,
-  yeuCauVaiTro,
+  yeuCauNghiepVuKho,
+  yeuCauNhapLieu,
 } from '../../middleware/xac-thuc.js';
 
 export const linhKienRouter = Router();
 linhKienRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
-/** Ai được lấy linh kiện: người đứng ở kho, và cấp trên của họ. */
-const yeuCauNguoiKho = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
+/**
+ * Ai được lấy linh kiện: mọi vai trò làm nghiệp vụ kho — Quản trị, Vận hành,
+ * Kho, Nhân sự phòng ban, và Trường (chỉ cho phiếu báo hỏng thuộc trường mình,
+ * chỉ lấy linh kiện đang có tại trường mình — kiểm trong tuyến bên dưới).
+ */
+const yeuCauNguoiKho = yeuCauNghiepVuKho;
+/** Thêm lý do mới là thêm vào danh mục dùng chung: tài khoản trường không làm. */
+const yeuCauThemLyDo = yeuCauNhapLieu;
 
 const CHON = {
   id: true,
@@ -102,7 +109,7 @@ const luocDoLyDo = z.object({
  */
 linhKienRouter.post(
   '/ly-do',
-  yeuCauNguoiKho,
+  yeuCauThemLyDo,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     const { name } = luocDoLyDo.parse(req.body);
@@ -189,6 +196,16 @@ linhKienRouter.post(
       },
     });
     if (!baoHong) throw loi404('Không tìm thấy phiếu báo hỏng.');
+    // Tài khoản trường: phiếu báo hỏng phải thuộc phạm vi trường mình — cùng quy
+    // tắc với danh sách báo hỏng (`dieuKienBaoHong`).
+    const pv = phamViCua(actor);
+    if (!pv.toanBoKho) {
+      const trongPhamVi = await prisma.request.findFirst({
+        where: { AND: [{ id: baoHong.id }, dieuKienBaoHong(actor)] },
+        select: { id: true },
+      });
+      if (!trongPhamVi) throw loi404('Không tìm thấy phiếu báo hỏng.');
+    }
     if (baoHong.type !== 'BAO_HONG') {
       throw loi400('Phiếu gắn kèm phải là phiếu báo hỏng.', 'SAI_LOAI');
     }
@@ -226,7 +243,7 @@ linhKienRouter.post(
     let khoXuatId: string | null = null;
     if (duLieu.maLinhKien) {
       const ts = await prisma.asset.findFirst({
-        where: { code: duLieu.maLinhKien, ...dieuKienTaiSan(actor) },
+        where: { AND: [{ code: duLieu.maLinhKien }, await dieuKienTaiSan(actor)] },
         select: { id: true, code: true, name: true, currentLocationId: true, condition: true },
       });
       if (!ts) {
@@ -242,7 +259,9 @@ linhKienRouter.post(
         );
       }
       linhKien = { id: ts.id, code: ts.code, name: ts.name };
-      khoXuatId = ts.currentLocationId;
+      // Tài khoản trường lấy linh kiện ĐANG CÓ TẠI TRƯỜNG MÌNH — trừ tồn ở trường,
+      // không bao giờ trừ vào kho LtL hay trường khác (tồn kiểm trong transaction).
+      khoXuatId = pv.diaDiem ? (actor.locationId ?? null) : ts.currentLocationId;
     }
 
     const phieu = await prisma.$transaction(async (tx) => {
@@ -254,7 +273,7 @@ linhKienRouter.post(
         const ton = await tonTaiDiaDiem(linhKien.id, khoXuatId, tx);
         if (ton < duLieu.soLuong) {
           throw loi422(
-            `Kho chỉ còn ${ton} ${linhKien.code}, không đủ ${duLieu.soLuong}.`,
+            `${pv.diaDiem ? 'Trường' : 'Kho'} chỉ còn ${ton} ${linhKien.code}, không đủ ${duLieu.soLuong}.`,
             'KHONG_DU_TON',
             { ton, canLay: duLieu.soLuong },
           );
@@ -335,11 +354,14 @@ linhKienRouter.post(
     });
 
     const ten = linhKien ? `${linhKien.code} — ${linhKien.name}` : (duLieu.tenLinhKien ?? duLieu.maHang);
-    phatChoNhomSuCo(SU_KIEN.KHO_DOI, {
+    const thongDiepLay = {
       id: phieu.id,
       code: phieu.code,
       thongDiep: `Lấy ${duLieu.soLuong} ${ten} cho ${baoHong.code} — ${lyDo.name}.`,
-    });
+    };
+    phatChoNhomSuCo(SU_KIEN.KHO_DOI, thongDiepLay);
+    // Tài khoản trường không ở nhóm sự cố — báo riêng cho điểm bị trừ linh kiện.
+    if (khoXuatId) phatChoDiaDiem(khoXuatId, SU_KIEN.KHO_DOI, thongDiepLay);
 
     res.status(201).json({ ok: true, phieu });
   }),
@@ -361,31 +383,43 @@ linhKienRouter.get(
   batAsync(async (req, res) => {
     const nguoiDung = nguoiDungHienTai(req);
     const loc = luocDoLoc.parse(req.query);
+    const pv = phamViCua(nguoiDung);
 
+    /*
+     * Phạm vi vai trò: gọi thẳng API cũng không xem được việc của trường khác.
+     * Tài khoản trường thấy lần lấy linh kiện TẠI trường mình hoặc cho phiếu báo
+     * hỏng của trường mình — không xét theo thiết bị, vì một mã hàng lẻ dùng
+     * chung cho nhiều trường. Ghép bằng AND: spread một currentLocationId từ
+     * query sẽ ghi đè phạm vi (đo thật: trường từng xem được 9 phiếu của kho).
+     */
     const muc = await prisma.partIssue.findMany({
       where: {
-        ...(loc.baoHongId ? { requestId: loc.baoHongId } : {}),
-        // Phạm vi vai trò: gọi thẳng API cũng không xem được việc của trường khác.
-        request: {
-          items: {
-            some: {
-              asset: {
-                // AND: dieuKienTaiSan đặt `currentLocationId` cho vai trò
-                // TRUONG, nên spread một currentLocationId khác từ query sẽ
-                // ghi đè phạm vi. Đo thật: trường xem được 9 phiếu của kho.
-                AND: [
-                  dieuKienTaiSan(nguoiDung),
-                  ...(loc.diaDiemId ? [{ currentLocationId: loc.diaDiemId }] : []),
+        AND: [
+          loc.baoHongId ? { requestId: loc.baoHongId } : {},
+          pv.toanBoKho
+            ? { request: { items: { some: { asset: { deletedAt: null } } } } }
+            : {
+                OR: [
+                  ...(pv.diaDiem ? [{ fromLocationId: { in: [...pv.diaDiem] } }] : []),
+                  { request: dieuKienBaoHong(nguoiDung) },
                 ],
               },
-            },
-          },
-        },
+          loc.diaDiemId
+            ? { request: { items: { some: { asset: { currentLocationId: loc.diaDiemId } } } } }
+            : {},
+        ],
       },
       select: CHON,
       orderBy: { issuedAt: 'desc' },
       take: loc.moiTrang,
     });
-    res.json({ ok: true, muc });
+    // Hàng lẻ dùng chung: che nơi đặt ngoài trường với tài khoản trường.
+    res.json({
+      ok: true,
+      muc: muc.map((p) => ({
+        ...p,
+        request: { ...p.request, items: cheNoiTrongDong(nguoiDung, p.request.items) },
+      })),
+    });
   }),
 );

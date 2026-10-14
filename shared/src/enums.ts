@@ -11,6 +11,30 @@
 export const VAI_TRO = ['ADMIN', 'VAN_HANH', 'KHO', 'NHAN_SU', 'TRUONG'] as const;
 export type VaiTro = (typeof VAI_TRO)[number];
 
+/*
+ * NHÓM VAI TRÒ THEO VIỆC ĐƯỢC LÀM — khai báo một chỗ cho cả api lẫn web, để
+ * nút hiện ở giao diện và cổng chặn ở máy chủ không lệch nhau. Máy chủ vẫn là
+ * nơi kiểm thật (middleware + service); giao diện chỉ ẩn / hiện cho gọn.
+ *
+ *  - VAI_TRO_KIOSK: được mở GIAO DIỆN KIOSK tại kho. Nhân sự phòng ban và
+ *    Trường làm được mọi việc của Kho nhưng KHÔNG có giao diện này.
+ *  - VAI_TRO_NHAP_LIEU: TẠO MỚI dữ liệu dùng chung — thiết bị, hàng lẻ, nhập
+ *    Excel, Wiki, danh mục nguồn gốc / mục đích. Trường không có: hàng chỉ về
+ *    trường qua cấp phát của Quản trị / Vận hành / Kho.
+ *  - VAI_TRO_NGHIEP_VU_KHO: nghiệp vụ kho — xuất / nhập kho mọi phiếu, lập và
+ *    sửa biên bản, đếm kiểm kê, lấy linh kiện, in nhãn, tìm kiếm có gợi ý.
+ *    Trường chỉ làm trong phạm vi trường mình; máy chủ kiểm từng việc.
+ */
+export const VAI_TRO_KIOSK: readonly VaiTro[] = ['ADMIN', 'VAN_HANH', 'KHO'];
+export const VAI_TRO_NHAP_LIEU: readonly VaiTro[] = ['ADMIN', 'VAN_HANH', 'KHO', 'NHAN_SU'];
+export const VAI_TRO_NGHIEP_VU_KHO: readonly VaiTro[] = [
+  'ADMIN',
+  'VAN_HANH',
+  'KHO',
+  'NHAN_SU',
+  'TRUONG',
+];
+
 export const LOAI_DIEM_LUU_TRU = [
   'KHO_VAN_PHONG',
   'DIEM_TRUONG',

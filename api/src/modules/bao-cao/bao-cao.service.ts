@@ -16,13 +16,15 @@ import {
   TRANG_THAI_PHAN_BO,
 } from '@ltl/taisan-shared';
 import { prisma } from '../../prisma.js';
+import { dieuKienPhamVi as dieuKienPhamViBienBan } from '../bbbg/bbbg.service.js';
 import { hangDangDiTatCa, tonTatCa } from '../../lib/ton-kho.js';
 import {
+  dieuKienBaoHong,
   dieuKienDiaDiem,
   dieuKienTaiSan,
   dieuKienYeuCau,
+  noiTrongPhamVi,
   phamViCua,
-  BIEN_BAN_CON_SONG,
 } from '../../lib/pham-vi.js';
 import type { NguoiDungDaXacThuc } from '../../types/express.js';
 
@@ -58,33 +60,27 @@ const TRANG_THAI_CHO_THUC_HIEN = ['BAN_NHAP', 'CHO_DUYET', 'DA_DUYET'] as const;
  * bao nhiêu cũng không đổi. Giờ nhân sự tự lập phiếu và tự xuất kho, cần thấy
  * kho còn bao nhiêu như mọi người.
  */
-function taiSanSoLieu(nguoiDung: NguoiDungDaXacThuc): Prisma.AssetWhereInput {
+async function taiSanSoLieu(nguoiDung: NguoiDungDaXacThuc): Promise<Prisma.AssetWhereInput> {
   return nguoiDung.role === 'NHAN_SU' ? { deletedAt: null } : dieuKienTaiSan(nguoiDung);
+}
+
+/** Đợt kiểm kê trong phạm vi: tài khoản trường chỉ đợt tại trường mình. */
+function dieuKienDotKiem(nguoiDung: NguoiDungDaXacThuc): Prisma.InventoryCountWhereInput {
+  const pv = phamViCua(nguoiDung);
+  return pv.diaDiem ? { locationId: { in: [...pv.diaDiem] } } : {};
 }
 
 function diemSoLieu(nguoiDung: NguoiDungDaXacThuc): Prisma.LocationWhereInput {
   return nguoiDung.role === 'NHAN_SU' ? { deletedAt: null } : dieuKienDiaDiem(nguoiDung);
 }
 
-/** Biên bản chờ xác nhận — theo phạm vi, khớp với danh sách mở ra khi bấm vào. */
+/**
+ * Biên bản chờ xác nhận — theo phạm vi, khớp với danh sách mở ra khi bấm vào:
+ * dùng ĐÚNG điều kiện của trang Biên bản, không chép lại một bản riêng (bản
+ * chép trước đây thiếu "trường nhận" và "mình lập", nên ô đếm lệch danh sách).
+ */
 function bienBanSoLieu(nguoiDung: NguoiDungDaXacThuc): Prisma.HandoverNoteWhereInput {
-  const pv = phamViCua(nguoiDung);
-  if (pv.toanBoKho) return BIEN_BAN_CON_SONG;
-  if (pv.diaDiem) {
-    const ds = [...pv.diaDiem];
-    return {
-      deletedAt: null,
-      OR: [
-        { receiverLocationId: { in: ds } },
-        { request: { fromLocationId: { in: ds } } },
-        { request: { createdById: nguoiDung.id } },
-      ],
-    };
-  }
-  return {
-    deletedAt: null,
-    OR: [{ createdById: nguoiDung.id }, { request: { createdById: nguoiDung.id } }],
-  };
+  return dieuKienPhamViBienBan(nguoiDung);
 }
 
 /** Ngày theo GIỜ VIỆT NAM dạng NĂM-THÁNG-NGÀY. */
@@ -322,7 +318,7 @@ async function hangNhanSuGiu(): Promise<Map<string, number>> {
 }
 
 export async function soLieuNhanh(nguoiDung: NguoiDungDaXacThuc): Promise<SoLieuNhanh> {
-  const dieuKien = taiSanSoLieu(nguoiDung);
+  const dieuKien = await taiSanSoLieu(nguoiDung);
   const bayGio = new Date();
   const pvYeuCau = dieuKienYeuCau(nguoiDung);
 
@@ -584,7 +580,7 @@ export async function dashboard(
   nguoiDung: NguoiDungDaXacThuc,
   soNgay: number,
 ): Promise<DuLieuDashboard> {
-  const dieuKien = taiSanSoLieu(nguoiDung);
+  const dieuKien = await taiSanSoLieu(nguoiDung);
   const bayGio = new Date();
   const tuNgay = dauKyVN(soNgay, bayGio);
 
@@ -625,7 +621,7 @@ export async function dashboard(
         code: true,
         name: true,
         dueReturnAt: true,
-        currentLocation: { select: { name: true } },
+        currentLocation: { select: { id: true, name: true } },
         holder: { select: { fullName: true } },
       },
       orderBy: { dueReturnAt: 'asc' },
@@ -638,13 +634,14 @@ export async function dashboard(
         code: true,
         name: true,
         condition: true,
-        currentLocation: { select: { name: true } },
+        currentLocation: { select: { id: true, name: true } },
       },
       orderBy: [{ condition: 'asc' }, { code: 'asc' }],
       take: 50,
     }),
     prisma.inventoryCount.findFirst({
-      where: { status: 'DA_CHOT' },
+      // Tài khoản trường chỉ thấy đợt kiểm tại trường mình.
+      where: { status: 'DA_CHOT', ...dieuKienDotKiem(nguoiDung) },
       orderBy: { closedAt: 'desc' },
       select: {
         id: true,
@@ -828,15 +825,16 @@ export async function dashboard(
         0,
         Math.floor((bayGio.getTime() - (t.dueReturnAt ?? bayGio).getTime()) / 86_400_000),
       ),
-      noiDat: t.currentLocation?.name ?? null,
-      nguoiGiu: t.holder?.fullName ?? null,
+      // Tài khoản trường: che nơi đặt ngoài trường và người mượn (hàng lẻ dùng chung).
+      noiDat: noiTrongPhamVi(nguoiDung, t.currentLocation)?.name ?? null,
+      nguoiGiu: phamViCua(nguoiDung).diaDiem ? null : (t.holder?.fullName ?? null),
     })),
     thietBiHong: hongTho.map((t) => ({
       id: t.id,
       code: t.code,
       name: t.name,
       condition: t.condition,
-      noiDat: t.currentLocation?.name ?? null,
+      noiDat: noiTrongPhamVi(nguoiDung, t.currentLocation)?.name ?? null,
     })),
     kiemKeGanNhat: kiemKe
       ? {
@@ -908,14 +906,24 @@ export async function lichSuSuaChuaTheoDiem(
   });
   if (diem.length === 0) return [];
   const idDiem = diem.map((d) => d.id);
+  /*
+   * Tài khoản TRƯỜNG: không gom theo cột vị trí của thiết bị — một mã hàng lẻ
+   * dùng chung cho nhiều trường, cột đó có thể trỏ sang trường khác. Lấy đúng
+   * phiếu báo hỏng / linh kiện trong phạm vi trường (`dieuKienBaoHong`) và gom
+   * hết vào dòng của trường mình.
+   */
+  const truongCuaToi = phamViCua(nguoiDung).diaDiem?.[0] ?? null;
+  const lienQuanTaiSan = { items: { some: { asset: { deletedAt: null } } } };
 
   // Báo hỏng: gom theo điểm của thiết bị trong phiếu.
   const baoHong = await prisma.request.findMany({
-    where: {
-      type: 'BAO_HONG',
-      // Thiết bị đã xoá thì lịch sử sửa chữa của nó cũng không còn nghĩa gì.
-      items: { some: { asset: { deletedAt: null, currentLocationId: { in: idDiem } } } },
-    },
+    where: truongCuaToi
+      ? { AND: [{ type: 'BAO_HONG' }, lienQuanTaiSan, dieuKienBaoHong(nguoiDung)] }
+      : {
+          type: 'BAO_HONG',
+          // Thiết bị đã xoá thì lịch sử sửa chữa của nó cũng không còn nghĩa gì.
+          items: { some: { asset: { deletedAt: null, currentLocationId: { in: idDiem } } } },
+        },
     select: {
       id: true,
       status: true,
@@ -925,11 +933,23 @@ export async function lichSuSuaChuaTheoDiem(
   });
 
   const phieuLK = await prisma.partIssue.findMany({
-    where: {
-      request: {
-        items: { some: { asset: { deletedAt: null, currentLocationId: { in: idDiem } } } },
-      },
-    },
+    where: truongCuaToi
+      ? {
+          AND: [
+            { request: lienQuanTaiSan },
+            {
+              OR: [
+                { fromLocationId: { in: idDiem } },
+                { request: dieuKienBaoHong(nguoiDung) },
+              ],
+            },
+          ],
+        }
+      : {
+          request: {
+            items: { some: { asset: { deletedAt: null, currentLocationId: { in: idDiem } } } },
+          },
+        },
     select: {
       quantity: true,
       issuedAt: true,
@@ -956,7 +976,7 @@ export async function lichSuSuaChuaTheoDiem(
   const moiNhat = (cu: Date | null, moi: Date): Date => (cu === null || moi > cu ? moi : cu);
 
   for (const p of baoHong) {
-    const diaDiemId = p.items[0]?.asset.currentLocationId;
+    const diaDiemId = truongCuaToi ?? p.items[0]?.asset.currentLocationId;
     const o = diaDiemId ? bang.get(diaDiemId) : undefined;
     if (!o) continue;
     o.soBaoHong += 1;
@@ -964,7 +984,7 @@ export async function lichSuSuaChuaTheoDiem(
     o.lanCuoi = moiNhat(o.lanCuoi, p.createdAt);
   }
   for (const p of phieuLK) {
-    const diaDiemId = p.request.items[0]?.asset.currentLocationId;
+    const diaDiemId = truongCuaToi ?? p.request.items[0]?.asset.currentLocationId;
     const o = diaDiemId ? bang.get(diaDiemId) : undefined;
     if (!o) continue;
     o.soPhieuLinhKien += 1;
@@ -989,13 +1009,19 @@ export async function lichSuMotDiem(
     select: { id: true },
   });
   if (!trongPhamVi) return [];
+  // Tài khoản trường: theo phạm vi báo hỏng của trường, không theo cột vị trí
+  // của thiết bị (xem `lichSuSuaChuaTheoDiem`).
+  const laTruong = phamViCua(nguoiDung).diaDiem !== null;
+  const lienQuanTaiSan = { items: { some: { asset: { deletedAt: null } } } };
 
   const [baoHong, phieuLK] = await Promise.all([
     prisma.request.findMany({
-      where: {
-        type: 'BAO_HONG',
-        items: { some: { asset: { deletedAt: null, currentLocationId: diaDiemId } } },
-      },
+      where: laTruong
+        ? { AND: [{ type: 'BAO_HONG' }, lienQuanTaiSan, dieuKienBaoHong(nguoiDung)] }
+        : {
+            type: 'BAO_HONG',
+            items: { some: { asset: { deletedAt: null, currentLocationId: diaDiemId } } },
+          },
       select: {
         id: true,
         code: true,
@@ -1010,11 +1036,18 @@ export async function lichSuMotDiem(
       take: gioiHan,
     }),
     prisma.partIssue.findMany({
-      where: {
-        request: {
-          items: { some: { asset: { deletedAt: null, currentLocationId: diaDiemId } } },
-        },
-      },
+      where: laTruong
+        ? {
+            AND: [
+              { request: lienQuanTaiSan },
+              { OR: [{ fromLocationId: diaDiemId }, { request: dieuKienBaoHong(nguoiDung) }] },
+            ],
+          }
+        : {
+            request: {
+              items: { some: { asset: { deletedAt: null, currentLocationId: diaDiemId } } },
+            },
+          },
       select: {
         id: true,
         code: true,
@@ -1164,6 +1197,17 @@ export async function tongThe(
   soNgay: number,
 ): Promise<DuLieuTongThe> {
   const pvYeuCau = dieuKienYeuCau(nguoiDung);
+  /*
+   * Báo hỏng / linh kiện theo ĐÚNG phạm vi của trang Báo hỏng và Lấy linh kiện:
+   * phiếu báo hỏng không có điểm đi / đến, nên phạm vi yêu cầu chỉ khớp phiếu do
+   * chính tài khoản đó báo — ô đếm sẽ lệch danh sách (trường thấy 3 phiếu mở mà
+   * ô báo 0). Với các vai trò xem toàn kho thì hai điều kiện như nhau.
+   */
+  const pvBaoHong = dieuKienBaoHong(nguoiDung);
+  const diemCuaToi = phamViCua(nguoiDung).diaDiem;
+  const pvLinhKien: Prisma.PartIssueWhereInput = diemCuaToi
+    ? { OR: [{ fromLocationId: { in: [...diemCuaToi] } }, { request: pvBaoHong }] }
+    : { request: pvYeuCau };
   const bayGio = new Date();
   const tuNgay = dauKyVN(soNgay, bayGio);
 
@@ -1200,18 +1244,18 @@ export async function tongThe(
       select: { submittedAt: true, createdAt: true, approvedAt: true },
     }),
     prisma.request.count({
-      where: { AND: [pvYeuCau, { type: 'BAO_HONG', status: { in: ['CHO_DUYET', 'DA_DUYET'] } }] },
+      where: { AND: [pvBaoHong, { type: 'BAO_HONG', status: { in: ['CHO_DUYET', 'DA_DUYET'] } }] },
     }),
     prisma.request.findMany({
-      where: { AND: [pvYeuCau, { type: 'BAO_HONG', createdAt: { gte: tuNgay } }] },
+      where: { AND: [pvBaoHong, { type: 'BAO_HONG', createdAt: { gte: tuNgay } }] },
       select: { createdAt: true },
     }),
     prisma.request.findMany({
-      where: { AND: [pvYeuCau, { type: 'BAO_HONG', completedAt: { gte: tuNgay } }] },
+      where: { AND: [pvBaoHong, { type: 'BAO_HONG', completedAt: { gte: tuNgay } }] },
       select: { createdAt: true, completedAt: true },
     }),
     prisma.partIssue.findMany({
-      where: { AND: [{ issuedAt: { gte: tuNgay } }, { request: pvYeuCau }] },
+      where: { AND: [{ issuedAt: { gte: tuNgay } }, pvLinhKien] },
       select: {
         assetId: true,
         quantity: true,
@@ -1220,7 +1264,7 @@ export async function tongThe(
     }),
     lichSuSuaChuaTheoDiem(nguoiDung),
     prisma.inventoryCount.count({
-      where: { status: { in: ['BAN_NHAP', 'DANG_KIEM', 'CHO_CHOT'] } },
+      where: { status: { in: ['BAN_NHAP', 'DANG_KIEM', 'CHO_CHOT'] }, ...dieuKienDotKiem(nguoiDung) },
     }),
   ]);
 
@@ -1352,6 +1396,7 @@ export interface LocTonTheoDiem {
  * thấy mọi điểm (chỉ con số).
  */
 export async function tonTheoDiem(nguoiDung: NguoiDungDaXacThuc, loc: LocTonTheoDiem) {
+  const laTruong = phamViCua(nguoiDung).diaDiem !== null;
   const [ton, dangDi, diem, taiSan] = await Promise.all([
     tonTatCa(),
     hangDangDiTatCa(),
@@ -1451,7 +1496,9 @@ export async function tonTheoDiem(nguoiDung: NguoiDungDaXacThuc, loc: LocTonTheo
         theoDiem: cac,
       };
     })
-    .filter((d) => !loc.chiConHang || d.tong > 0 || d.dangDi > 0)
+    // Tài khoản trường luôn chỉ thấy sản phẩm trường mình đang có — bỏ chọn "chỉ
+    // dòng còn hàng" không được biến thành danh mục toàn bộ hàng của LtL.
+    .filter((d) => (!loc.chiConHang && !laTruong) || d.tong > 0 || d.dangDi > 0)
     .sort((a, b) => a.code.localeCompare(b.code));
 
   const dsDiem = diem

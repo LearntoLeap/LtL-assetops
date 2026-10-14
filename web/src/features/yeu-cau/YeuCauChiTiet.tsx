@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/table';
 import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, VAI_TRO_NGHIEP_VU_KHO } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
 import { taiTep } from '@/lib/tep';
 import type { BienBan, YeuCau } from '@/lib/kieu';
@@ -159,13 +159,18 @@ export function YeuCauChiTiet() {
    * Trùng với `duocXoaPhieu` ở máy chủ — nơi thật sự chặn.
    */
   const duocXoaPhieu = nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
-  const laKho =
-    nguoiDung?.role === 'KHO' || nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH';
+  /*
+   * NGHIỆP VỤ KHO: Quản trị, Vận hành, Kho và Nhân sự phòng ban làm được mọi
+   * phiếu. Tài khoản trường làm được phiếu có NƠI ĐI là trường mình (kể cả phiếu
+   * kho lập) — máy chủ kiểm lại y như vậy.
+   */
+  const laTruong = nguoiDung?.role === 'TRUONG';
+  const laKho = Boolean(nguoiDung && !laTruong && VAI_TRO_NGHIEP_VU_KHO.includes(nguoiDung.role));
+  const truongLamDuoc =
+    laTruong && Boolean(nguoiDung?.locationId) && yeuCau.fromLocation?.id === nguoiDung?.locationId;
 
   const choThucHien = CHO_THUC_HIEN.has(yeuCau.status);
-  // Người lập tự xuất / nhập phiếu của mình, kho làm được mọi phiếu. Máy chủ
-  // kiểm lại (tài khoản trường chỉ với hàng của trường mình).
-  const duocThucHien = choThucHien && (laKho || laNguoiTao);
+  const duocThucHien = choThucHien && (laKho || truongLamDuoc || (laNguoiTao && !laTruong));
   const duocHuyNhap = yeuCau.status === 'BAN_NHAP' && (laNguoiTao || nguoiDung?.role === 'ADMIN');
   // Quản trị / vận hành huỷ được phiếu chưa thực hiện, kèm lý do.
   const duocTuChoi = choThucHien && laQuanLy;
@@ -232,8 +237,11 @@ export function YeuCauChiTiet() {
    * gửi bên nhận bấm xác nhận trên hệ thống được sau khi hàng thật sự xuất kho
    * (server chặn, xem `guiXacNhan`).
    */
+  // Trường chỉ mở được phiếu thuộc trường mình (máy chủ lọc), nên phiếu nào trường
+  // thấy thì trường lập được biên bản; người lập phiếu cũng tự lập được.
   const duocLapBienBan =
-    laKho && (choThucHien || yeuCau.status === 'DA_XUAT' || yeuCau.status === 'DA_HOAN_TAT');
+    (laKho || laTruong || laNguoiTao) &&
+    (choThucHien || yeuCau.status === 'DA_XUAT' || yeuCau.status === 'DA_HOAN_TAT');
 
   /*
    * BIÊN BẢN ĐÃ XUẤT MÀ TỒN KHO CHƯA ĐỔI — trạng thái nửa vời phải nhìn thấy.
@@ -245,7 +253,7 @@ export function YeuCauChiTiet() {
    */
   const bienBanDaCoFile = Boolean(yeuCau.handoverNotes[0]?.fileName);
   const duocGhiNhanTheoBienBan =
-    laKho && choThucHien && bienBanDaCoFile && (duocXuat || duocNhap);
+    (laKho || truongLamDuoc) && choThucHien && bienBanDaCoFile && (duocXuat || duocNhap);
 
   /**
    * XUẤT BIÊN BẢN WORD THẲNG TỪ ĐÂY — không phải sang trang Biên bản chọn lại.

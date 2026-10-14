@@ -23,7 +23,7 @@ import { traTrangThaiSauHuyBanGiao } from '../../lib/huy-ban-giao.js';
 import { loi400, loi403, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
-import { dieuKienYeuCau, phamViCua } from '../../lib/pham-vi.js';
+import { dieuKienTaiSan, dieuKienYeuCau, phamViCua } from '../../lib/pham-vi.js';
 import { hangDangTrenDuong, tonCuaTaiSan, tonTaiDiaDiem } from '../../lib/ton-kho.js';
 import {
   phatChoDiaDiem,
@@ -235,9 +235,10 @@ async function doiMaThanhTaiSan(
 
 export async function tao(
   duLieu: DuLieuTaoYeuCau,
-  actor: NguoiThaoTac,
+  actor: NguoiDungDaXacThuc,
   ctx: BoiCanhGoi,
 ): Promise<YeuCauDayDu> {
+  kiemPhieuCuaTruong(actor, duLieu.type, duLieu.fromLocationId ?? null);
   // Không còn bước duyệt nên lập xong là sang ngay màn hình chụp ảnh. Bắt thiếu
   // nơi đến / trường gửi NGAY LÚC LẬP — đừng để người dùng chụp ảnh từng thiết bị
   // xong mới bị chặn ở nút "Hoàn tất".
@@ -245,6 +246,7 @@ export async function tao(
   kiemTruongGuiNhan(duLieu.type, duLieu.fromLocationId ?? null, duLieu.toLocationId ?? null);
   await kiemDiemHopLe(duLieu.type, duLieu.fromLocationId ?? null, duLieu.toLocationId ?? null);
   const dong = await doiMaThanhTaiSan(duLieu.muc);
+  await kiemHangCuaTruong(actor, dong);
 
   const yeuCau = await prisma.$transaction(async (tx) => {
     const code = await capSoChungTu(tx, TIEN_TO.YEU_CAU);
@@ -295,6 +297,10 @@ export async function tao(
   };
   phatChoNguoiDuyet(SU_KIEN.YEU_CAU_MOI, thongTin);
   phatChoKho(SU_KIEN.YEU_CAU_MOI, thongTin);
+  // Trường đi / trường đến cũng biết ngay — tài khoản trường không ở phòng kho.
+  for (const diem of new Set([yeuCau.fromLocation?.id, yeuCau.toLocation?.id])) {
+    if (diem) phatChoDiaDiem(diem, SU_KIEN.YEU_CAU_MOI, thongTin);
+  }
   return yeuCau;
 }
 
@@ -302,7 +308,7 @@ export async function tao(
 export async function sua(
   id: string,
   duLieu: DuLieuSuaYeuCau,
-  actor: NguoiThaoTac,
+  actor: NguoiDungDaXacThuc,
   ctx: BoiCanhGoi,
 ): Promise<YeuCauDayDu> {
   const truoc = await prisma.request.findFirst({
@@ -318,21 +324,25 @@ export async function sua(
     },
   });
   if (!truoc) throw loi404('Không tìm thấy yêu cầu.');
+  // Kiểm quyền TRƯỚC mọi phép soát khác: lời báo của các phép soát nói ra trạng
+  // thái và điểm đi / đến của phiếu — người không có quyền không được đọc thấy.
+  if (truoc.createdById !== actor.id && actor.role !== 'ADMIN') {
+    throw loi403('Chỉ người tạo yêu cầu (hoặc quản trị viên) mới sửa được.');
+  }
   if (truoc.status !== 'BAN_NHAP') {
     throw loi409('Chỉ sửa được phiếu chưa xuất / nhập kho.');
   }
   {
     const tu = duLieu.fromLocationId === undefined ? truoc.fromLocationId : duLieu.fromLocationId;
     const den = duLieu.toLocationId === undefined ? truoc.toLocationId : duLieu.toLocationId;
+    kiemPhieuCuaTruong(actor, truoc.type, tu);
     kiemNoiDen(truoc.type, den);
     kiemTruongGuiNhan(truoc.type, tu, den);
     await kiemDiemHopLe(truoc.type, tu, den);
   }
-  if (truoc.createdById !== actor.id && actor.role !== 'ADMIN') {
-    throw loi403('Chỉ người tạo yêu cầu (hoặc quản trị viên) mới sửa được.');
-  }
 
   const dong = duLieu.muc ? await doiMaThanhTaiSan(duLieu.muc) : null;
+  if (dong) await kiemHangCuaTruong(actor, dong);
 
   return prisma.$transaction(async (tx) => {
     if (dong) {
@@ -454,6 +464,60 @@ const CAN_NOI_DEN: ReadonlySet<RequestType> = new Set<RequestType>([
   'PHAN_BO_VE_TRUONG',
   'LUAN_CHUYEN_TRUONG',
 ]);
+
+/**
+ * TÀI KHOẢN TRƯỜNG LẬP / SỬA PHIẾU: hàng phải đi TỪ CHÍNH TRƯỜNG MÌNH.
+ *
+ * Trường làm được việc của kho nhưng chỉ với hàng của trường: trả hàng về kho
+ * (Nhập kho), luân chuyển sang trường khác, xuất hoặc cho mượn từ trường. Phân
+ * bổ về trường do Quản trị / Vận hành / Kho lập — trường là bên NHẬN, chỉ xem
+ * được thiết bị của trường mình nên không chọn hàng trong kho để tự xin. Trước
+ * đây trường lập được cả phiếu luân chuyển từ một trường KHÁC, và phiếu đó hiện
+ * sang danh sách của trường kia.
+ */
+function kiemPhieuCuaTruong(
+  nguoiDung: NguoiDungDaXacThuc,
+  type: RequestType,
+  fromLocationId: string | null,
+): void {
+  if (nguoiDung.role !== 'TRUONG') return;
+  const truong = nguoiDung.locationId;
+  if (!truong) {
+    throw loi403('Tài khoản điểm trường chưa được gán trường phụ trách. Liên hệ quản trị viên.');
+  }
+  if (type === 'PHAN_BO_VE_TRUONG') {
+    throw loi403(
+      'Phân bổ về trường do Quản trị, Vận hành hoặc Kho lập — tài khoản trường là bên nhận hàng.',
+    );
+  }
+  if (fromLocationId !== truong) {
+    throw loi403(
+      'Tài khoản trường chỉ lập phiếu cho hàng đi từ chính trường mình. Chọn trường mình ở ô nơi đi.',
+    );
+  }
+}
+
+/**
+ * Tài khoản trường chỉ đưa vào phiếu HÀNG CỦA TRƯỜNG MÌNH. Không kiểm thì gõ mã
+ * bất kỳ vào một phiếu nháp là đọc được thiết bị đó đang nằm ở đâu, tình trạng
+ * ra sao (chi tiết phiếu trả kèm vị trí) — lách đúng chỗ tra mã đã che đi. Báo
+ * lỗi KHÔNG kèm vị trí của mã ngoài trường.
+ */
+async function kiemHangCuaTruong(
+  nguoiDung: NguoiDungDaXacThuc,
+  dong: ReadonlyArray<{ assetId: string; code: string }>,
+): Promise<void> {
+  if (nguoiDung.role !== 'TRUONG' || dong.length === 0) return;
+  const trong = await prisma.asset.findMany({
+    where: { AND: [{ id: { in: dong.map((d) => d.assetId) } }, await dieuKienTaiSan(nguoiDung)] },
+    select: { id: true },
+  });
+  const coTrong = new Set(trong.map((t) => t.id));
+  const ngoai = dong.filter((d) => !coTrong.has(d.assetId)).map((d) => d.code);
+  if (ngoai.length > 0) {
+    throw loi403(`Mã ${ngoai.slice(0, 5).join(', ')} không phải hàng của trường bạn.`);
+  }
+}
 
 function kiemNoiDen(type: RequestType, toLocationId: string | null): void {
   if (CAN_NOI_DEN.has(type) && !toLocationId) {
@@ -1080,11 +1144,13 @@ async function nguonXuatTheoDong(
 /**
  * AI ĐƯỢC TỰ THỰC HIỆN PHIẾU (không còn bước duyệt).
  *
- *   - ADMIN, VAN_HANH, KHO: mọi phiếu.
- *   - Người lập phiếu: phiếu của chính mình.
- *   - Tài khoản TRƯỜNG thì thêm điều kiện nơi chốn: chỉ xác nhận được hàng rời đi
- *     từ chính trường mình, hoặc hàng trả về từ chính trường mình. Trường không
- *     đứng ở kho LtL nên không thể chụp ảnh "xuất kho" cho kho LtL.
+ *   - ADMIN, VAN_HANH, KHO, NHÂN SỰ PHÒNG BAN: mọi phiếu (nhân sự làm được mọi
+ *     việc của kho).
+ *   - Tài khoản TRƯỜNG: mọi phiếu có NƠI ĐI là chính trường mình — không cần là
+ *     người lập (kho lập phiếu thu hồi về thì trường vẫn tự xuất được), nhưng
+ *     hàng phải thật sự rời đi từ trường mình: trường không đứng ở kho LtL nên
+ *     không chụp ảnh "xuất kho" cho kho LtL, và không nhận hộ hàng của nơi khác.
+ *   - Vai trò khác (nếu sau này thêm mà quên khai phạm vi): phiếu của chính mình.
  *
  * Kiểm ở SERVER — ẩn nút ở giao diện chỉ là phụ.
  */
@@ -1095,20 +1161,25 @@ function kiemQuyenThucHien(
   chieu: 'xuất' | 'nhập',
 ): void {
   if (phamViCua(nguoiDung).toanBoKho) return;
+  if (nguoiDung.role === 'TRUONG') {
+    const truong = nguoiDung.locationId;
+    const sai =
+      !truong ||
+      yeuCau.fromLocation?.id !== truong ||
+      [...nguon.values()].some((n) => n !== truong);
+    if (sai) {
+      throw loi403(
+        chieu === 'xuất'
+          ? 'Tài khoản trường chỉ xuất kho được phiếu có nơi đi là chính trường mình.'
+          : 'Tài khoản trường chỉ nhập kho được hàng trả về từ chính trường mình.',
+      );
+    }
+    return;
+  }
   if (yeuCau.createdBy.id !== nguoiDung.id) {
     throw loi403(
       `Chỉ người lập phiếu, tài khoản kho hoặc quản trị mới ${chieu} kho cho phiếu này.`,
     );
-  }
-  if (nguoiDung.role === 'TRUONG') {
-    const sai = [...nguon.values()].some((n) => n !== nguoiDung.locationId);
-    if (sai || !nguoiDung.locationId) {
-      throw loi403(
-        chieu === 'xuất'
-          ? 'Tài khoản trường chỉ xác nhận được hàng rời đi từ chính trường mình.'
-          : 'Tài khoản trường chỉ xác nhận được hàng trả về từ chính trường mình.',
-      );
-    }
   }
 }
 
@@ -1980,10 +2051,14 @@ export async function xoaNhap(id: string, actor: NguoiThaoTac, ctx: BoiCanhGoi):
   });
 }
 
-/** Dùng cho màn hình kho: phạm vi vai trò có cho người này xuất/nhập kho không. */
+/**
+ * Ghi nhận theo biên bản: vai trò nào được làm nghiệp vụ kho. Tài khoản trường
+ * được vào — giới hạn "chỉ phiếu đi từ trường mình" kiểm tiếp ở
+ * `kiemQuyenThucHien` bên trong xuất / nhập kho.
+ */
 export function batBuocQuyenThucHien(nguoiDung: NguoiDungDaXacThuc): void {
-  if (!phamViCua(nguoiDung).toanBoKho) {
-    throw loi403('Chỉ tài khoản kho và quản trị mới thực hiện xuất/nhập kho.');
+  if (!phamViCua(nguoiDung).toanBoKho && nguoiDung.role !== 'TRUONG') {
+    throw loi403('Vai trò của bạn không thực hiện xuất / nhập kho được.');
   }
 }
 

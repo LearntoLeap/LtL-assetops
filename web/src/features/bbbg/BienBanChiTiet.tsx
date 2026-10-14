@@ -32,7 +32,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
+import { useAuth, VAI_TRO_NGHIEP_VU_KHO, VAI_TRO_QUAN_LY } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
 import { taiTep } from '@/lib/tep';
 import type { BienBan } from '@/lib/kieu';
@@ -206,10 +206,10 @@ export function BienBanChiTiet() {
   }
   if (!bb) return <p className="text-sm text-muted-foreground">Đang tải…</p>;
 
-  // Bên giao: kho / quản lý, hoặc chính người lập phiếu (biên bản tự lập cho mọi
-  // vai trò — nhân sự tự xuất kho thì tự sửa, gửi biên bản của phiếu mình).
+  // Bên giao: mọi vai trò làm nghiệp vụ kho (Trường chỉ mở được biên bản thuộc
+  // trường mình — máy chủ lọc), hoặc chính người lập phiếu.
   const laBenGiao = nguoiDung
-    ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) ||
+    ? VAI_TRO_NGHIEP_VU_KHO.includes(nguoiDung.role) ||
       (bb.request?.createdById !== undefined && bb.request.createdById === nguoiDung.id)
     : false;
   const laQuanLy = nguoiDung ? VAI_TRO_QUAN_LY.includes(nguoiDung.role) : false;

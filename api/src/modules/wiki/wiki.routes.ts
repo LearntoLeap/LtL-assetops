@@ -21,16 +21,27 @@ import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
   yeuCauDangNhap,
+  yeuCauNhapLieu,
   yeuCauVaiTro,
 } from '../../middleware/xac-thuc.js';
+import { dieuKienTaiSan } from '../../lib/pham-vi.js';
 import * as dv from './wiki.service.js';
 import { luocDoLocBai, luocDoSuaBai, luocDoTaiLieu, luocDoTaoBai } from './wiki.schema.js';
 
 export const wikiRouter = Router();
 wikiRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
-/** Người kho cầm máy nhiều nhất nên họ được sửa wiki — lưới an toàn là lịch sử. */
-const chiNguoiBienTap = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
+/**
+ * Người kho cầm máy nhiều nhất nên họ được sửa wiki — lưới an toàn là lịch sử.
+ * Nhân sự phòng ban làm được mọi việc của kho nên cũng soạn / sửa / tải tài liệu
+ * được. Tài khoản trường không sửa thư viện dùng chung.
+ */
+const chiNguoiBienTap = yeuCauNhapLieu;
+/**
+ * XOÁ bài / tài liệu: giữ đúng như trước (Quản trị, Vận hành, Kho). Không mở
+ * thêm cho nhân sự — quyền xoá không đi theo quyền soạn.
+ */
+const chiNguoiXoa = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
 
 const nhanTep = multer({
   storage: multer.memoryStorage(),
@@ -150,7 +161,7 @@ wikiRouter.patch(
 
 wikiRouter.delete(
   '/bai/:id',
-  chiNguoiBienTap,
+  chiNguoiXoa,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoa(String(req.params['id']), actor, boiCanh(req));
@@ -179,7 +190,7 @@ wikiRouter.post(
 
 wikiRouter.delete(
   '/tai-lieu/:id',
-  chiNguoiBienTap,
+  chiNguoiXoa,
   batAsync(async (req, res) => {
     const actor = nguoiDungHienTai(req);
     await dv.xoaTaiLieu(String(req.params['id']), actor, boiCanh(req));
@@ -194,8 +205,11 @@ wikiRouter.get(
     const { tuKhoa } = z.object({ tuKhoa: z.string().trim().min(1).max(64) }).parse(req.query);
     const muc = await prisma.asset.findMany({
       where: {
-        deletedAt: null,
-        OR: [{ code: { contains: tuKhoa } }, { name: { contains: tuKhoa } }],
+        // Theo phạm vi: tài khoản trường chỉ được gợi ý thiết bị của trường mình.
+        AND: [
+          await dieuKienTaiSan(nguoiDungHienTai(req)),
+          { OR: [{ code: { contains: tuKhoa } }, { name: { contains: tuKhoa } }] },
+        ],
       },
       // Không lấy `value`: wiki không hiển thị thông tin giá ở bất kỳ đâu.
       select: { id: true, code: true, name: true },

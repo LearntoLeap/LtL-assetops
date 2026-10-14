@@ -55,7 +55,11 @@ export function FormYeuCau() {
   const truongCuaToi = laTruong ? (nguoiDung?.locationId ?? '') : '';
 
   const loaiTuUrl = thamSo.get('loai');
-  const [type, datType] = useState<LoaiLapMoi>(laLoaiLapMoi(loaiTuUrl) ? loaiTuUrl : 'CHO_MUON');
+  const [type, datType] = useState<LoaiLapMoi>(
+    laLoaiLapMoi(loaiTuUrl) && !(laTruong && loaiTuUrl === 'PHAN_BO_VE_TRUONG')
+      ? loaiTuUrl
+      : 'CHO_MUON',
+  );
   /** Dòng đang mở bảng tạo nhanh thiết bị; null = không mở. */
   const [dongTaoNhanh, datDongTaoNhanh] = useState<number | null>(null);
   const [moThemHangLe, datMoThemHangLe] = useState(false);
@@ -71,12 +75,18 @@ export function FormYeuCau() {
   const mau: MauYeuCau = MAU_YEU_CAU[type];
   const laNhap = mau.chieu === 'nhap';
 
-  // Tài khoản trường: luân chuyển / trả hàng thì nơi đi mặc định là trường mình.
+  /*
+   * Tài khoản trường: NƠI ĐI LUÔN LÀ TRƯỜNG MÌNH (trả về kho, luân chuyển, xuất
+   * hay cho mượn từ trường) — trường chỉ làm việc với hàng của trường. Máy chủ
+   * chặn nơi đi khác; ở đây khoá ô cho khỏi chọn nhầm.
+   */
   useEffect(() => {
-    if (laTruong && truongCuaToi && (type === 'LUAN_CHUYEN_TRUONG' || type === 'NHAP_KHO')) {
-      datFromLocationId(truongCuaToi);
-    }
+    if (laTruong && truongCuaToi) datFromLocationId(truongCuaToi);
   }, [type, laTruong, truongCuaToi]);
+  /** Phân bổ về trường do Quản trị / Vận hành / Kho lập — trường là bên nhận. */
+  const loaiDuocLap = laTruong
+    ? LOAI_LAP_MOI.filter((l) => l !== 'PHAN_BO_VE_TRUONG')
+    : LOAI_LAP_MOI;
 
   /** Tra mã ngay khi nhập xong để báo sai sớm, không đợi bấm Lưu. */
   async function traMa(i: number, code: string): Promise<void> {
@@ -226,7 +236,7 @@ export function FormYeuCau() {
                     datMoThemHangLe(false);
                   }}
                 >
-                  {LOAI_LAP_MOI.map((l) => (
+                  {loaiDuocLap.map((l) => (
                     <option key={l} value={l}>
                       {NHAN_LOAI_YEU_CAU[l]}
                     </option>
@@ -260,7 +270,8 @@ export function FormYeuCau() {
                         ]
                       : undefined
                   }
-                  goiY={mau.giaiThichNoiDi}
+                  goiY={laTruong ? 'Tài khoản trường lập phiếu cho hàng đi từ chính trường mình.' : mau.giaiThichNoiDi}
+                  chiDiem={laTruong ? truongCuaToi : undefined}
                 />
               ) : null}
 

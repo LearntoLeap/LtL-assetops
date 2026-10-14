@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { AnhBaoMat } from '@/components/AnhBaoMat';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import type { BaiWikiTomTat, DanhMuc } from '@/lib/kieu';
 
 interface TrangWiki {
@@ -21,8 +21,8 @@ interface TrangWiki {
   moiTrang: number;
 }
 
-/** Vai trò được thêm và sửa bài. Máy chủ kiểm lại; ẩn nút chỉ cho gọn mắt. */
-const VAI_TRO_BIEN_TAP = ['ADMIN', 'VAN_HANH', 'KHO'];
+/** Vai trò được thêm và sửa bài (nhóm nhập liệu). Máy chủ kiểm lại; ẩn nút chỉ cho gọn mắt. */
+const VAI_TRO_BIEN_TAP = VAI_TRO_NHAP_LIEU;
 
 /**
  * THƯ VIỆN WIKI — trang tra cứu thiết bị.

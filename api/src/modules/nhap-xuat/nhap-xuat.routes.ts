@@ -27,7 +27,7 @@ import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
   yeuCauDangNhap,
-  yeuCauVaiTro,
+  yeuCauNhapLieu,
 } from '../../middleware/xac-thuc.js';
 import {
   COT_DIA_DIEM,
@@ -39,7 +39,9 @@ import {
 } from './nhap-xuat.service.js';
 
 export const nhapXuatRouter = Router();
-nhapXuatRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau, yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO'));
+// Nhập / xuất Excel: Quản trị, Vận hành, Kho, Nhân sự phòng ban. Tài khoản trường
+// không nhập Excel — hàng chỉ về trường qua cấp phát.
+nhapXuatRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau, yeuCauNhapLieu);
 
 const GIOI_HAN_BYTE = 8 * 1024 * 1024;
 
@@ -280,7 +282,12 @@ nhapXuatRouter.post(
   batAsync(async (req, res) => {
     const tep = layTep(req);
     const doc = await docFileBang(tep.buffer, tep.ten);
-    const { loi, hopLe } = await soatDiaDiem(doc.dong, doc.dongDauTien);
+    const vaiTro = nguoiDungHienTai(req).role;
+    const { loi, hopLe } = await soatDiaDiem(
+      doc.dong,
+      doc.dongDauTien,
+      vaiTro === 'ADMIN' || vaiTro === 'VAN_HANH',
+    );
     res.json({
       ok: true,
       tenTep: tep.ten,

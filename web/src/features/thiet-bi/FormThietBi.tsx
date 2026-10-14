@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { OChonThemNhanh } from '@/components/OChonThemNhanh';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import type { ChiTietThietBi, DanhMuc, DiaDiem, TrangDuLieu } from '@/lib/kieu';
 
 interface Bieu {
@@ -61,10 +61,9 @@ export function FormThietBi() {
   const dieuHuong = useNavigate();
   const { nguoiDung } = useAuth();
   // Ai vào được form này thì cũng thêm được nguồn gốc / mục đích ngay tại chỗ —
-  // khớp với `yeuCauVaiTro('ADMIN','VAN_HANH','KHO')` ở tuyến POST của API.
+  // khớp với `yeuCauNhapLieu` ở tuyến POST của API.
   // Ẩn nút chỉ cho gọn mắt, chặn thật vẫn nằm ở server.
-  const duocThemDanhMuc =
-    nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH' || nguoiDung?.role === 'KHO';
+  const duocThemDanhMuc = nguoiDung ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) : false;
 
   const [bieu, datBieu] = useState<Bieu>(BIEU_RONG);
   const [loaiTaiSan, datLoaiTaiSan] = useState<DanhMuc[]>([]);

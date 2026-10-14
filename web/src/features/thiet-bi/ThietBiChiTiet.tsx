@@ -23,7 +23,7 @@ import {
 import { HoSoThietBi } from '@/features/wiki/HoSoThietBi';
 import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
 import type { ChiTietThietBi } from '@/lib/kieu';
 import { MAU_PHAN_BO, MAU_TINH_TRANG, tienVN } from './ThietBiList';
@@ -42,8 +42,8 @@ export function ThietBiChiTiet() {
   const { id } = useParams<{ id: string }>();
   const { nguoiDung } = useAuth();
   const dieuHuong = useNavigate();
-  const duocSua =
-    nguoiDung?.role === 'ADMIN' || nguoiDung?.role === 'VAN_HANH' || nguoiDung?.role === 'KHO';
+  // Sửa thông tin thiết bị: nhóm nhập liệu (Quản trị, Vận hành, Kho, Nhân sự).
+  const duocSua = nguoiDung ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) : false;
 
   const [duLieu, datDuLieu] = useState<ChiTietThietBi | null>(null);
   const [loi, datLoi] = useState<string | null>(null);

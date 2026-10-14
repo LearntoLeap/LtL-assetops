@@ -144,5 +144,12 @@ export function useAuth(): GiaTriAuth {
 /** Vai trò được vào trang quản lý tài khoản (server vẫn kiểm lại). */
 export const VAI_TRO_QUAN_LY: readonly VaiTro[] = ['ADMIN', 'VAN_HANH'];
 
-/** Vai trò được nhập liệu thiết bị: gồm cả KHO — máy đặt tại kho là nơi nhập. */
-export const VAI_TRO_NHAP_LIEU: readonly VaiTro[] = ['ADMIN', 'VAN_HANH', 'KHO'];
+/*
+ * Nhóm vai trò theo việc được làm — khai một chỗ ở `@ltl/taisan-shared`, dùng
+ * chung với máy chủ để nút hiện ở đây và cổng chặn ở API không lệch nhau:
+ *  - VAI_TRO_KIOSK: giao diện Kiosk tại kho (Nhân sự, Trường không có);
+ *  - VAI_TRO_NHAP_LIEU: tạo mới thiết bị / hàng lẻ, Excel, Wiki — gồm Nhân sự;
+ *  - VAI_TRO_NGHIEP_VU_KHO: xuất / nhập, biên bản, kiểm kê, linh kiện, in nhãn
+ *    — gồm cả Trường (máy chủ giới hạn trong trường mình).
+ */
+export { VAI_TRO_KIOSK, VAI_TRO_NGHIEP_VU_KHO, VAI_TRO_NHAP_LIEU } from '@ltl/taisan-shared';

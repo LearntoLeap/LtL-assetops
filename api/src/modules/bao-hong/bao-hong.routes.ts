@@ -16,7 +16,7 @@ import { batAsync } from '../../lib/bat-async.js';
 import { boiCanh, ghiAudit } from '../../lib/audit.js';
 import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { capSoChungTu, TIEN_TO } from '../../lib/so-chung-tu.js';
-import { dieuKienTaiSan } from '../../lib/pham-vi.js';
+import { cheNoiTrongDong, dieuKienBaoHong, dieuKienTaiSan } from '../../lib/pham-vi.js';
 import {
   phatChoDiaDiem,
   phatChoNguoiDung,
@@ -85,6 +85,24 @@ const CHON = {
 } as const;
 
 /** Tạo phiếu báo hỏng: mọi vai trò đều báo được thiết bị trong phạm vi của mình. */
+/**
+ * Điểm nhận tin realtime của một phiếu báo hỏng — khớp đúng ai được XEM phiếu
+ * (`dieuKienBaoHong`): điểm đang đặt thiết bị quản lý TỪNG ĐƠN VỊ, và trường của
+ * người báo nếu người báo là tài khoản trường. Không phát theo cột vị trí của
+ * hàng lẻ: mã đó dùng chung, cột có thể trỏ sang một trường không xem được phiếu.
+ */
+function diemNhanTinBaoHong(
+  thietBi: { trackingType: string; currentLocationId: string | null },
+  nguoiBao: { role: string; locationId: string | null },
+): string[] {
+  const diem = new Set<string>();
+  if (thietBi.trackingType === 'DON_VI' && thietBi.currentLocationId) {
+    diem.add(thietBi.currentLocationId);
+  }
+  if (nguoiBao.role === 'TRUONG' && nguoiBao.locationId) diem.add(nguoiBao.locationId);
+  return [...diem];
+}
+
 baoHongRouter.post(
   '/',
   batAsync(async (req, res) => {
@@ -94,8 +112,15 @@ baoHongRouter.post(
     // Chỉ báo hỏng được thiết bị thuộc phạm vi của mình — điểm trường không báo
     // hộ thiết bị của trường khác.
     const thietBi = await prisma.asset.findFirst({
-      where: { code: duLieu.code, ...dieuKienTaiSan(actor) },
-      select: { id: true, code: true, name: true, condition: true, currentLocationId: true },
+      where: { AND: [{ code: duLieu.code }, await dieuKienTaiSan(actor)] },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        condition: true,
+        currentLocationId: true,
+        trackingType: true,
+      },
     });
     if (!thietBi) {
       throw loi404(
@@ -189,11 +214,11 @@ baoHongRouter.post(
       thongDiep: `Báo hỏng mới: ${thietBi.code} — ${thietBi.name}.`,
     };
     phatChoNhomSuCo(SU_KIEN.CANH_BAO_MOI, tin);
-    // Và cho chính điểm đang giữ thiết bị, để trường thấy phiếu của mình.
-    if (thietBi.currentLocationId) {
-      phatChoDiaDiem(thietBi.currentLocationId, SU_KIEN.CANH_BAO_MOI, tin);
+    // Và cho các điểm được thấy phiếu này (cùng quy tắc `dieuKienBaoHong`).
+    for (const diem of diemNhanTinBaoHong(thietBi, actor)) {
+      phatChoDiaDiem(diem, SU_KIEN.CANH_BAO_MOI, tin);
     }
-    res.status(201).json({ ok: true, phieu });
+    res.status(201).json({ ok: true, phieu: { ...phieu, items: cheNoiTrongDong(actor, phieu.items) } });
   }),
 );
 
@@ -204,21 +229,27 @@ baoHongRouter.get(
     const loc = luocDoLoc.parse(req.query);
     const muc = await prisma.request.findMany({
       where: {
-        type: 'BAO_HONG',
-        ...(loc.dangMo === 'true'
-          ? { status: { in: ['CHO_DUYET', 'DA_DUYET'] } }
-          : { status: { in: ['DA_HOAN_TAT', 'TU_CHOI'] } }),
-        // Người báo luôn thấy phiếu của mình; ngoài ra lọc theo phạm vi thiết bị.
-        OR: [
-          { createdById: nguoiDung.id },
-          { items: { some: { asset: dieuKienTaiSan(nguoiDung) } } },
+        AND: [
+          {
+            type: 'BAO_HONG',
+            ...(loc.dangMo === 'true'
+              ? { status: { in: ['CHO_DUYET', 'DA_DUYET'] } }
+              : { status: { in: ['DA_HOAN_TAT', 'TU_CHOI'] } }),
+          },
+          // Người báo luôn thấy phiếu của mình; trường thấy phiếu của trường mình.
+          dieuKienBaoHong(nguoiDung),
         ],
       },
       select: CHON,
       orderBy: { createdAt: 'desc' },
       take: loc.moiTrang,
     });
-    res.json({ ok: true, muc, tong: muc.length });
+    // Hàng lẻ dùng chung: che nơi đặt ngoài trường với tài khoản trường.
+    res.json({
+      ok: true,
+      muc: muc.map((p) => ({ ...p, items: cheNoiTrongDong(nguoiDung, p.items) })),
+      tong: muc.length,
+    });
   }),
 );
 
@@ -228,17 +259,12 @@ baoHongRouter.get(
     const nguoiDung = nguoiDungHienTai(req);
     const phieu = await prisma.request.findFirst({
       where: {
-        id: String(req.params['id']),
-        type: 'BAO_HONG',
-        OR: [
-          { createdById: nguoiDung.id },
-          { items: { some: { asset: dieuKienTaiSan(nguoiDung) } } },
-        ],
+        AND: [{ id: String(req.params['id']), type: 'BAO_HONG' }, dieuKienBaoHong(nguoiDung)],
       },
       select: CHON,
     });
     if (!phieu) throw loi404('Không tìm thấy phiếu báo hỏng, hoặc phiếu ngoài phạm vi của bạn.');
-    res.json({ ok: true, phieu });
+    res.json({ ok: true, phieu: { ...phieu, items: cheNoiTrongDong(nguoiDung, phieu.items) } });
   }),
 );
 
@@ -259,7 +285,7 @@ baoHongRouter.post(
         type: true,
         status: true,
         createdById: true,
-        createdBy: { select: { locationId: true } },
+        createdBy: { select: { locationId: true, role: true } },
         items: {
           select: {
             asset: {
@@ -269,6 +295,7 @@ baoHongRouter.post(
                 name: true,
                 condition: true,
                 currentLocationId: true,
+                trackingType: true,
               },
             },
           },
@@ -333,15 +360,13 @@ baoHongRouter.post(
         : `Cập nhật báo hỏng ${thietBi.code}: ${duLieu.ketLuan.slice(0, 120)}`,
     };
     phatChoNhomSuCo(SU_KIEN.CANH_BAO_MOI, tin);
-    if (thietBi.currentLocationId) {
-      phatChoDiaDiem(thietBi.currentLocationId, SU_KIEN.CANH_BAO_MOI, tin);
-    }
+    const diemNhan = diemNhanTinBaoHong(thietBi, phieu.createdBy);
+    for (const diem of diemNhan) phatChoDiaDiem(diem, SU_KIEN.CANH_BAO_MOI, tin);
     // Người báo cũng phải biết. Nhưng nếu họ đã nằm trong chính điểm vừa phát ở
     // trên (trường tự báo thiết bị của mình — trường hợp phổ biến nhất) thì bỏ
     // qua, không thì họ nhận hai tin giống nhau. Đã đo thấy đúng 2 tin khi thử.
     const daNhanTheoDiem =
-      thietBi.currentLocationId !== null &&
-      phieu.createdBy.locationId === thietBi.currentLocationId;
+      phieu.createdBy.locationId !== null && diemNhan.includes(phieu.createdBy.locationId);
     if (!daNhanTheoDiem) {
       phatChoNguoiDung(phieu.createdById, SU_KIEN.CANH_BAO_MOI, tin);
     }

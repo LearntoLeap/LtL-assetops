@@ -492,6 +492,12 @@ export interface DongDiaDiemHopLe {
 export async function soatDiaDiem(
   dongFile: OMotDong[],
   dongDauTien: number,
+  /**
+   * Được thêm KHO VĂN PHÒNG không — chỉ Quản trị / Vận hành, cùng quy tắc với
+   * nút "Thêm điểm" (kho văn phòng gắn tài khoản kho và khoá GPS). Trước đây nhập
+   * Excel lách được quy tắc này.
+   */
+  duocThemKhoVanPhong = false,
 ): Promise<{ loi: LoiDong[]; hopLe: DongDiaDiemHopLe[] }> {
   const daCo = new Set(
     (await prisma.location.findMany({ select: { code: true } })).map((x) => x.code.toUpperCase()),
@@ -538,6 +544,8 @@ export async function soatDiaDiem(
         'Loại điểm *',
         `"${loaiChu}" không hợp lệ. Chọn: ${nhanHopLe(LOAI_DIEM_LUU_TRU, NHAN_LOAI_DIEM_LUU_TRU)}.`,
       );
+    } else if (type === 'KHO_VAN_PHONG' && !duocThemKhoVanPhong) {
+      them('Loại điểm *', 'Chỉ Quản trị và Vận hành thiết bị mới thêm được kho văn phòng.');
     }
 
     const sdt = lay(d, 'Số điện thoại');
@@ -604,7 +612,11 @@ export async function ghiDiaDiem(
   actor: NguoiThaoTac,
   ctx: BoiCanhGoi,
 ): Promise<{ soDaGhi: number }> {
-  const { loi, hopLe } = await soatDiaDiem(dongFile, dongDauTien);
+  const { loi, hopLe } = await soatDiaDiem(
+    dongFile,
+    dongDauTien,
+    actor.role === 'ADMIN' || actor.role === 'VAN_HANH',
+  );
 
   if (loi.length > 0) {
     throw loi422(

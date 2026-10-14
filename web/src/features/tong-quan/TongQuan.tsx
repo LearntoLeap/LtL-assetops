@@ -41,7 +41,7 @@ import { MAU_TINH_TRANG } from '@/lib/bieu-do';
 import { dem, moTaBienDong } from '@/lib/so-lieu';
 import { BangTonTheoDiem } from './BangTonTheoDiem';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
+import { useAuth, VAI_TRO_KIOSK } from '@/lib/auth';
 import { so } from '@/lib/bieu-do';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
 import type { DuLieuDashboard, DongRaVao } from '@/lib/kieu';
@@ -132,7 +132,8 @@ export function TongQuan() {
     },
   );
 
-  const laKho = nguoiDung ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) : false;
+  // Nút mở Kiosk: chỉ vai trò có giao diện Kiosk (Nhân sự, Trường không có).
+  const laKho = nguoiDung ? VAI_TRO_KIOSK.includes(nguoiDung.role) : false;
   const s = dl?.soLieu;
   const bd = dl?.bienDong;
   const nhanKy = `${soNgay} ngày`;

@@ -7,7 +7,9 @@
  */
 import type { Prisma } from '@prisma/client';
 import type { NguoiDungDaXacThuc } from '../types/express.js';
+import { prisma, type PrismaTx } from '../prisma.js';
 import { loi403 } from './loi-http.js';
+import { idTaiSanThuocCacDiem } from './ton-kho.js';
 
 export interface PhamVi {
   /** Xem được toàn bộ kho hay không. */
@@ -19,14 +21,20 @@ export interface PhamVi {
 }
 
 /**
- * ADMIN / VAN_HANH / KHO xem toàn bộ kho (KHO cần tra cứu mọi mã thiết bị tại
- * quầy). TRUONG chỉ xem điểm trường của mình. NHAN_SU chỉ xem thứ mình đang giữ.
+ * ADMIN / VAN_HANH / KHO / NHAN_SU xem toàn bộ kho. TRUONG chỉ xem điểm trường
+ * của mình.
+ *
+ * NHÂN SỰ PHÒNG BAN làm được mọi việc của Kho — xuất / nhập kho, tìm kiếm có
+ * gợi ý, lập biên bản, kiểm kê… — nên xem CÙNG dữ liệu như Kho. Chỗ khác duy
+ * nhất là không có giao diện Kiosk, mà đó là chuyện giao diện chứ không phải
+ * phạm vi dữ liệu. (Trước đây nhân sự chỉ thấy thứ mình đang giữ.)
  */
 export function phamViCua(nguoiDung: NguoiDungDaXacThuc): PhamVi {
   switch (nguoiDung.role) {
     case 'ADMIN':
     case 'VAN_HANH':
     case 'KHO':
+    case 'NHAN_SU':
       return { toanBoKho: true, diaDiem: null, chiCuaMinh: false };
     case 'TRUONG': {
       if (!nguoiDung.locationId) {
@@ -36,9 +44,41 @@ export function phamViCua(nguoiDung: NguoiDungDaXacThuc): PhamVi {
       }
       return { toanBoKho: false, diaDiem: [nguoiDung.locationId], chiCuaMinh: false };
     }
-    case 'NHAN_SU':
-      return { toanBoKho: false, diaDiem: null, chiCuaMinh: true };
   }
+}
+
+/**
+ * Nơi đặt của một thiết bị, CHE ĐI nếu nằm ngoài phạm vi điểm của người xem.
+ * Tài khoản trường thấy hàng lẻ dùng chung với nơi khác — cột vị trí của mã đó
+ * có thể trỏ về kho hay một trường khác, mà trường chỉ được biết trường mình.
+ */
+export function noiTrongPhamVi<T extends { id: string }>(
+  nguoiDung: NguoiDungDaXacThuc,
+  noi: T | null,
+): T | null {
+  if (!noi) return null;
+  return diemTrongPhamVi(nguoiDung, noi.id) ? noi : null;
+}
+
+/**
+ * Che nơi đặt ngoài phạm vi trên các dòng thiết bị lồng trong một phiếu (báo
+ * hỏng, linh kiện…). Vai trò xem toàn kho giữ nguyên.
+ */
+export function cheNoiTrongDong<
+  T extends { asset: { currentLocation: { id: string; name: string } | null } },
+>(nguoiDung: NguoiDungDaXacThuc, dong: readonly T[]): T[] {
+  if (phamViCua(nguoiDung).toanBoKho) return [...dong];
+  return dong.map((d) => ({
+    ...d,
+    asset: { ...d.asset, currentLocation: noiTrongPhamVi(nguoiDung, d.asset.currentLocation) },
+  }));
+}
+
+/** Điểm này có nằm trong phạm vi dữ liệu của người dùng không. */
+export function diemTrongPhamVi(nguoiDung: NguoiDungDaXacThuc, locationId: string): boolean {
+  const pv = phamViCua(nguoiDung);
+  if (pv.toanBoKho) return true;
+  return pv.diaDiem?.includes(locationId) ?? false;
 }
 
 /**
@@ -49,12 +89,38 @@ export function phamViCua(nguoiDung: NguoiDungDaXacThuc): PhamVi {
  * sách thiết bị dùng rồi (nguyên tắc bất biến #6), nên bỏ sót một chỗ là thiết bị
  * "đã xoá" lại hiện ra ở đúng chỗ đó — loại lỗi rất khó thấy.
  *
+ * TÀI KHOẢN TRƯỜNG thấy thiết bị CỦA TRƯỜNG MÌNH theo TỒN THẬT, không chỉ theo
+ * cột vị trí: hàng lẻ (sách, cờ…) nằm rải nhiều nơi, kho cấp 30 trong 100 quyển
+ * về trường thì cột vị trí vẫn trỏ kho — lọc theo cột đó là trường không tìm,
+ * không quét, không báo hỏng được 30 quyển mình đang có. Nên trường thấy:
+ *   - thiết bị có cột vị trí là trường mình;
+ *   - mọi thiết bị còn tồn tại trường (Σ movements > 0);
+ *   - hàng đang trên đường về trường (đã xuất phân bổ / luân chuyển, chờ xác
+ *     nhận bàn giao) — trường là nơi NHẬN, phải thấy thứ sắp về.
+ * Hàm phải chạy truy vấn tồn nên là async.
+ *
+ * Kết quả có thể chứa khoá `OR` — nơi gọi PHẢI ghép bằng `AND: [phamVi, ...]`,
+ * không spread: spread thêm `OR` của ô tìm kiếm sẽ GHI ĐÈ phạm vi và lộ toàn kho.
+ *
  * Trang Thùng rác cố ý KHÔNG dùng hàm này; nó lọc `deletedAt != null` riêng.
  */
-export function dieuKienTaiSan(nguoiDung: NguoiDungDaXacThuc): Prisma.AssetWhereInput {
+export async function dieuKienTaiSan(
+  nguoiDung: NguoiDungDaXacThuc,
+  db: PrismaTx = prisma,
+): Promise<Prisma.AssetWhereInput> {
   const pv = phamViCua(nguoiDung);
   if (pv.toanBoKho) return { deletedAt: null };
-  if (pv.diaDiem) return { deletedAt: null, currentLocationId: { in: [...pv.diaDiem] } };
+  if (pv.diaDiem) {
+    const diaDiem = [...pv.diaDiem];
+    const ids = await idTaiSanThuocCacDiem(diaDiem, db);
+    return {
+      deletedAt: null,
+      OR: [
+        { currentLocationId: { in: diaDiem } },
+        ...(ids.length > 0 ? [{ id: { in: ids } }] : []),
+      ],
+    };
+  }
   return { deletedAt: null, holderUserId: nguoiDung.id };
 }
 
@@ -67,7 +133,8 @@ export function dieuKienDiaDiem(nguoiDung: NguoiDungDaXacThuc): Prisma.LocationW
   // thì chỉ cần quên một chỗ là điểm đã xoá lại hiện ra.
   if (pv.toanBoKho) return { deletedAt: null };
   if (pv.diaDiem) return { deletedAt: null, id: { in: [...pv.diaDiem] } };
-  // NHAN_SU không cần duyệt kho: chỉ thấy điểm đang giữ thiết bị của mình.
+  // Không vai trò nào còn rơi vào nhánh này (nhân sự đã xem toàn kho); giữ lại
+  // phòng khi thêm vai trò mới mà quên khai phạm vi — thà thấy ít còn hơn lộ.
   return { deletedAt: null, assets: { some: { holderUserId: nguoiDung.id } } };
 }
 
@@ -90,6 +157,41 @@ export function dieuKienYeuCau(nguoiDung: NguoiDungDaXacThuc): Prisma.RequestWhe
         { createdById: nguoiDung.id },
         { fromLocationId: { in: diaDiem } },
         { toLocationId: { in: diaDiem } },
+      ],
+    };
+  }
+  return { deletedAt: null, createdById: nguoiDung.id };
+}
+
+/**
+ * PHIẾU BÁO HỎNG trong phạm vi — dùng chung cho danh sách / chi tiết báo hỏng,
+ * lấy linh kiện và ảnh của phiếu báo hỏng.
+ *
+ * Tài khoản trường KHÔNG xét theo phạm vi thiết bị: một mã hàng lẻ dùng chung
+ * cho nhiều trường, xét theo thiết bị thì trường A thấy (và lấy linh kiện vào)
+ * phiếu báo hỏng của trường B chỉ vì cả hai cùng có sách mã đó. Trường thấy:
+ * phiếu mình báo, phiếu do tài khoản của trường mình báo, và phiếu về thiết bị
+ * quản lý TỪNG ĐƠN VỊ đang nằm ở trường (cái đó chắc chắn là của trường).
+ */
+export function dieuKienBaoHong(nguoiDung: NguoiDungDaXacThuc): Prisma.RequestWhereInput {
+  const pv = phamViCua(nguoiDung);
+  if (pv.toanBoKho) return { deletedAt: null };
+  if (pv.diaDiem) {
+    const ds = [...pv.diaDiem];
+    return {
+      deletedAt: null,
+      OR: [
+        { createdById: nguoiDung.id },
+        // Chỉ tài khoản TRƯỜNG mới là "người của trường" — tài khoản đổi vai trò
+        // có thể còn giữ locationId cũ.
+        { createdBy: { role: 'TRUONG', locationId: { in: ds } } },
+        {
+          items: {
+            some: {
+              asset: { deletedAt: null, trackingType: 'DON_VI', currentLocationId: { in: ds } },
+            },
+          },
+        },
       ],
     };
   }

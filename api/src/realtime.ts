@@ -33,7 +33,12 @@ export interface ThongTinSuKien {
 
 /** Phòng cho nhóm duyệt (ADMIN + VAN_HANH) — nơi nhận yêu cầu chờ duyệt. */
 const PHONG_DUYET = 'vai-tro:duyet';
-/** Phòng cho tài khoản kho — nơi nhận yêu cầu đã duyệt cần xuất. */
+/**
+ * Phòng cho người làm nghiệp vụ kho trên toàn hệ thống — Kho và Nhân sự phòng
+ * ban (nhân sự làm được mọi việc của kho, xem cùng dữ liệu). Trường KHÔNG vào
+ * phòng này: thông điệp mang mã phiếu và tên người lập của mọi đơn vị; việc của
+ * trường đã phát riêng qua phòng `dia-diem:<id>`.
+ */
 const PHONG_KHO = 'vai-tro:kho';
 /**
  * Phòng cho mọi nhóm cần biết sự cố thiết bị: ADMIN, VAN_HANH, KHO, NHAN_SU.
@@ -49,7 +54,7 @@ const PHONG_SU_CO = 'vai-tro:su-co';
 function phongCuaVaiTro(vaiTro: UserRole): string[] {
   const phong = [`vai-tro:${vaiTro}`];
   if (vaiTro === 'ADMIN' || vaiTro === 'VAN_HANH') phong.push(PHONG_DUYET);
-  if (vaiTro === 'KHO') phong.push(PHONG_KHO);
+  if (vaiTro === 'KHO' || vaiTro === 'NHAN_SU') phong.push(PHONG_KHO);
   if (vaiTro === 'ADMIN' || vaiTro === 'VAN_HANH' || vaiTro === 'KHO' || vaiTro === 'NHAN_SU') {
     phong.push(PHONG_SU_CO);
   }
@@ -126,7 +131,7 @@ export function phatChoNhomSuCo(suKien: string, duLieu: ThongTinSuKien): void {
   io?.to(PHONG_SU_CO).emit(suKien, duLieu);
 }
 
-/** Phát cho tài khoản kho. */
+/** Phát cho người làm nghiệp vụ kho toàn hệ thống (Kho, Nhân sự phòng ban). */
 export function phatChoKho(suKien: string, duLieu: ThongTinSuKien): void {
   io?.to(PHONG_KHO).emit(suKien, duLieu);
 }

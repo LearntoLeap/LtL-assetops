@@ -6,7 +6,7 @@ import {
   nguoiDungHienTai,
   yeuCauAdmin,
   yeuCauDangNhap,
-  yeuCauVaiTro,
+  yeuCauNhapLieu,
 } from '../../middleware/xac-thuc.js';
 import {
   luocDoLocThietBi,
@@ -33,8 +33,11 @@ const baoKhoDoi = (): void =>
 export const thietBiRouter = Router();
 thietBiRouter.use(yeuCauDangNhap, chanKhiChuaDoiMatKhau);
 
-/** Tạo/sửa thiết bị: ADMIN, VAN_HANH và KHO (KHO là nơi nhập liệu tại kho). */
-const chiNguoiNhapLieu = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO');
+/**
+ * Tạo/sửa thiết bị: ADMIN, VAN_HANH, KHO và NHÂN SỰ PHÒNG BAN (làm được mọi việc
+ * của kho). Tài khoản trường không: hàng chỉ về trường qua cấp phát.
+ */
+const chiNguoiNhapLieu = yeuCauNhapLieu;
 
 /** Danh sách — đã lọc theo phạm vi vai trò trong service. */
 thietBiRouter.get(
@@ -59,15 +62,15 @@ thietBiRouter.get(
 );
 
 /**
- * Tra cứu rút gọn theo mã — dùng khi LẬP YÊU CẦU: người lập phải gõ được mã
- * thiết bị mình muốn mượn, dù thiết bị đó chưa thuộc phạm vi dữ liệu của họ.
- * Chỉ trả thông tin nhận dạng, không trả giá trị/tồn kho/lịch sử.
+ * Tra cứu rút gọn theo mã — dùng khi LẬP YÊU CẦU. Chỉ trả thông tin nhận dạng,
+ * không trả giá trị/tồn kho/lịch sử. Tài khoản trường chỉ tra được thiết bị của
+ * trường mình (xem `traCuuNhanh`).
  */
 thietBiRouter.get(
   '/tra-cuu/:code',
   batAsync(async (req, res) => {
     const code = maThietBi.parse(req.params['code']);
-    res.json({ ok: true, thietBi: await dv.traCuuNhanh(code) });
+    res.json({ ok: true, thietBi: await dv.traCuuNhanh(nguoiDungHienTai(req), code) });
   }),
 );
 
@@ -148,7 +151,7 @@ thietBiRouter.post(
  * nên khi thiếu một món hàng lẻ trong danh mục họ phải thêm được ngay tại chỗ.
  * Tài khoản trường thì không — trường không nhập hàng vào kho LtL.
  */
-const chiNguoiTaoNhanh = yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO', 'NHAN_SU');
+const chiNguoiTaoNhanh = yeuCauNhapLieu;
 thietBiRouter.post(
   '/nhanh',
   chiNguoiTaoNhanh,

@@ -18,7 +18,13 @@ import { batAsync } from '../../lib/bat-async.js';
 import { boiCanh, ghiAudit } from '../../lib/audit.js';
 import { loi400, loi403, loi404 } from '../../lib/loi-http.js';
 import { duongDanTuyetDoi, luuAnh, xoaFileAnh } from '../../lib/luu-anh.js';
-import { dieuKienTaiSan, dieuKienYeuCau, phamViCua } from '../../lib/pham-vi.js';
+import {
+  diemTrongPhamVi,
+  dieuKienBaoHong,
+  dieuKienTaiSan,
+  dieuKienYeuCau,
+  phamViCua,
+} from '../../lib/pham-vi.js';
 import {
   chanKhiChuaDoiMatKhau,
   nguoiDungHienTai,
@@ -79,6 +85,32 @@ anhRouter.post(
 
     const gan = luocDoGanAnh.parse(req.body);
 
+    // Ảnh gắn vào một PHIẾU thì phiếu đó phải nằm trong phạm vi người tải: tài
+    // khoản trường không gắn được ảnh vào phiếu của trường khác (ảnh gắn phiếu
+    // thì ai thấy phiếu là thấy ảnh).
+    if (gan.requestId) {
+      const phieu = await prisma.request.findFirst({
+        where: {
+          AND: [
+            { id: gan.requestId },
+            { OR: [dieuKienYeuCau(actor), { AND: [{ type: 'BAO_HONG' }, dieuKienBaoHong(actor)] }] },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!phieu) throw loi404('Yêu cầu không tồn tại hoặc ngoài phạm vi của bạn.');
+    }
+    // Ảnh kiểm kê: dòng kiểm kê phải thuộc đợt kiểm tại điểm trong phạm vi.
+    if (gan.countItemId) {
+      const dongKiem = await prisma.inventoryCountItem.findUnique({
+        where: { id: gan.countItemId },
+        select: { inventoryCount: { select: { locationId: true } } },
+      });
+      if (!dongKiem || !diemTrongPhamVi(actor, dongKiem.inventoryCount.locationId)) {
+        throw loi404('Dòng kiểm kê không tồn tại hoặc ngoài phạm vi của bạn.');
+      }
+    }
+
     // Ảnh gắn vào thiết bị nào thì thiết bị đó phải nằm trong phạm vi của người tải.
     //
     // NGOẠI LỆ: ảnh chụp cho chính PHIẾU của mình. Không còn bước duyệt, nhân sự
@@ -87,7 +119,7 @@ anhRouter.post(
     // nằm trong phạm vi người tải VÀ phiếu có đúng thiết bị đó.
     if (gan.assetId) {
       const trongPhamVi = await prisma.asset.findFirst({
-        where: { id: gan.assetId, ...dieuKienTaiSan(actor) },
+        where: { AND: [{ id: gan.assetId }, await dieuKienTaiSan(actor)] },
         select: { id: true },
       });
       const quaPhieu =
@@ -165,6 +197,7 @@ anhRouter.get(
         mimeType: true,
         byteSize: true,
         assetId: true,
+        requestId: true,
         uploadedById: true,
         onsiteVisit: { select: { locationId: true, deletedAt: true } },
       },
@@ -180,9 +213,28 @@ anhRouter.get(
         if (pv.diaDiem && !pv.diaDiem.includes(anh.onsiteVisit.locationId)) {
           throw loi403('Ảnh này không thuộc phạm vi dữ liệu của bạn.');
         }
+      } else if (anh.requestId) {
+        /*
+         * Ảnh chụp cho một PHIẾU: theo phạm vi của phiếu, không theo thiết bị.
+         * Trường xem được ảnh kho chụp lúc xuất hàng về trường mình. Không xét
+         * theo thiết bị: một mã hàng lẻ dùng chung cho nhiều trường, xét theo
+         * thiết bị là trường này xem được ảnh bằng chứng của trường khác.
+         */
+        // Phiếu báo hỏng (kể cả ảnh linh kiện lấy cho phiếu đó) theo phạm vi báo
+        // hỏng; phiếu xuất / nhập theo phạm vi yêu cầu.
+        const phieu = await prisma.request.findFirst({
+          where: {
+            AND: [
+              { id: anh.requestId },
+              { OR: [dieuKienYeuCau(actor), { AND: [{ type: 'BAO_HONG' }, dieuKienBaoHong(actor)] }] },
+            ],
+          },
+          select: { id: true },
+        });
+        if (!phieu) throw loi403('Ảnh này không thuộc phạm vi dữ liệu của bạn.');
       } else if (anh.assetId) {
         const trongPhamVi = await prisma.asset.findFirst({
-          where: { id: anh.assetId, ...dieuKienTaiSan(actor) },
+          where: { AND: [{ id: anh.assetId }, await dieuKienTaiSan(actor)] },
           select: { id: true },
         });
         if (!trongPhamVi) throw loi403('Ảnh này không thuộc phạm vi dữ liệu của bạn.');

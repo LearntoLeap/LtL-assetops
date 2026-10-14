@@ -26,7 +26,7 @@ import { log, moTaLoi } from '../../lib/ghi-log.js';
 import { chayTungCai, type KetQuaHangLoatChung } from '../../lib/hang-loat.js';
 import { taoFileBBBG, tenFileBBBG, type DongInBBBG, type DuLieuInBBBG } from './bbbg.docx.js';
 import { mauCuaLoai, vViecCuThe } from './mau-bbbg.js';
-import { phamViCua } from '../../lib/pham-vi.js';
+import { dieuKienYeuCau, phamViCua } from '../../lib/pham-vi.js';
 import { hangDangTrenDuong, tonTaiDiaDiem } from '../../lib/ton-kho.js';
 import { traTrangThaiSauHuyBanGiao } from '../../lib/huy-ban-giao.js';
 import { phatChoDiaDiem, phatChoNguoiDuyet, phatChoNguoiDung, phatChoTatCa, SU_KIEN } from '../../realtime.js';
@@ -763,6 +763,30 @@ export async function layFile(
     fileName: ban?.fileName ?? `${bbbg.code}.docx`,
     byteSize: ban?.fileSize ?? 0,
   };
+}
+
+/** Biên bản có nằm trong phạm vi xem của người dùng không (dùng cho quyền sửa của trường). */
+export async function bienBanTrongPhamVi(
+  bbbgId: string,
+  nguoiDung: NguoiDungDaXacThuc,
+): Promise<boolean> {
+  const bb = await prisma.handoverNote.findFirst({
+    where: { AND: [{ id: bbbgId }, dieuKienPhamVi(nguoiDung)] },
+    select: { id: true },
+  });
+  return Boolean(bb);
+}
+
+/** Phiếu yêu cầu có nằm trong phạm vi của người dùng không. */
+export async function yeuCauTrongPhamVi(
+  requestId: string,
+  nguoiDung: NguoiDungDaXacThuc,
+): Promise<boolean> {
+  const yc = await prisma.request.findFirst({
+    where: { AND: [{ id: requestId }, dieuKienYeuCau(nguoiDung)] },
+    select: { id: true },
+  });
+  return Boolean(yc);
 }
 
 /** Người dùng có phải người lập phiếu gắn với biên bản này không (phiếu còn sống). */

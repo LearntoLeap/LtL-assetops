@@ -27,6 +27,7 @@ import {
   nguoiDungHienTai,
   yeuCauAdmin,
   yeuCauDangNhap,
+  yeuCauNhapLieu,
   yeuCauVaiTro,
 } from '../../middleware/xac-thuc.js';
 
@@ -520,10 +521,11 @@ function dangKyBangTraCuu(cauHinh: {
 
   danhMucRouter.post(
     duong,
-    // KHO cũng được thêm: họ là người đứng ở kho nhập thiết bị, gặp nguồn gốc
+    // KHO và NHÂN SỰ cũng được thêm: họ là người nhập thiết bị, gặp nguồn gốc
     // chưa có trong danh sách giữa lúc đang điền form. Bắt họ nhờ ADMIN thêm hộ
     // rồi quay lại điền từ đầu thì cuối cùng sẽ có người chọn bừa "Khác".
-    yeuCauVaiTro('ADMIN', 'VAN_HANH', 'KHO'),
+    // Tài khoản trường không sửa danh mục dùng chung.
+    yeuCauNhapLieu,
     batAsync(async (req, res) => {
       const actor = nguoiDungHienTai(req);
       const duLieu = luocDoBangTraCuu.parse(req.body);

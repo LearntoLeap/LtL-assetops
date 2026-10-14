@@ -158,6 +158,51 @@ export async function tonTheoDiaDiem(
 }
 
 /**
+ * TÀI SẢN THUỘC VỀ các điểm này — dùng cho phạm vi của tài khoản trường.
+ *
+ * Gồm (1) mọi tài sản còn tồn > 0 tại một trong các điểm, tính theo từng cặp
+ * (tài sản, điểm) từ `movements`; và (2) hàng ĐANG TRÊN ĐƯỜNG VỀ các điểm: phiếu
+ * phân bổ / luân chuyển đã xuất, chưa xác nhận bàn giao (luồng C chưa ghi
+ * movement nên phần (1) chưa thấy). Không dùng cột vị trí: hàng lẻ chia nhiều
+ * nơi thì cột đó chỉ ghi được một nơi.
+ */
+export async function idTaiSanThuocCacDiem(
+  locationIds: readonly string[],
+  db: PrismaTx = prisma,
+): Promise<string[]> {
+  if (locationIds.length === 0) return [];
+  const ds = Prisma.join(locationIds.map((x) => Prisma.sql`${x}`));
+  const dong = await db.$queryRaw<Array<{ asset_id: string }>>(Prisma.sql`
+    SELECT co_ton.asset_id AS asset_id
+      FROM (
+            SELECT buoc.asset_id AS asset_id
+              FROM (
+                    SELECT asset_id, to_location_id AS location_id, quantity AS delta
+                      FROM movements
+                     WHERE to_location_id IN (${ds})
+                    UNION ALL
+                    SELECT asset_id, from_location_id AS location_id, -quantity AS delta
+                      FROM movements
+                     WHERE from_location_id IN (${ds})
+                   ) AS buoc
+              JOIN assets ts ON ts.id = buoc.asset_id AND ts.deleted_at IS NULL
+             GROUP BY buoc.asset_id, buoc.location_id
+            HAVING SUM(buoc.delta) > 0
+           ) AS co_ton
+    UNION
+    SELECT dong.asset_id AS asset_id
+      FROM request_items dong
+      JOIN requests yc ON yc.id = dong.request_id
+      JOIN assets ts ON ts.id = dong.asset_id AND ts.deleted_at IS NULL
+     WHERE yc.status = 'DA_XUAT'
+       AND yc.deleted_at IS NULL
+       AND yc.type IN ('PHAN_BO_VE_TRUONG', 'LUAN_CHUYEN_TRUONG')
+       AND yc.to_location_id IN (${ds})
+  `);
+  return [...new Set(dong.map((d) => d.asset_id))];
+}
+
+/**
  * Tồn của MỘT NHÓM tài sản — dùng cho ô chọn hàng lẻ theo tên.
  *
  * Có `tonTatCa()` rồi nhưng cố ý không dùng lại ở đây: ô chọn gọi lại sau mỗi

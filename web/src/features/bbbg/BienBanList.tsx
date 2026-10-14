@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/table';
 import { useXacNhan } from '@/components/ui/hop-xac-nhan';
 import { goiApi, LoiApi } from '@/lib/api';
-import { useAuth, VAI_TRO_NHAP_LIEU } from '@/lib/auth';
+import { useAuth, VAI_TRO_NGHIEP_VU_KHO } from '@/lib/auth';
 import { ngay, ngayGio } from '@/lib/dinh-dang';
 import { taiTep } from '@/lib/tep';
 import type { BienBan, TrangDuLieu } from '@/lib/kieu';
@@ -161,7 +161,7 @@ export function BienBanList() {
   });
 
   const soTrang = Math.max(1, Math.ceil(tong / MOI_TRANG));
-  const duocLap = nguoiDung ? VAI_TRO_NHAP_LIEU.includes(nguoiDung.role) : false;
+  const duocLap = nguoiDung ? VAI_TRO_NGHIEP_VU_KHO.includes(nguoiDung.role) : false;
   const choToiXacNhan = muc.filter((b) => b.status === 'CHO_XAC_NHAN').length;
 
   return (

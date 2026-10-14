@@ -34,7 +34,7 @@ import { DauHieuAssetOps } from '@/components/DauHieuAssetOps';
 import { NutDoiGiaoDien } from '@/components/NutDoiGiaoDien';
 import { ChuongCanhBao } from '@/components/ChuongCanhBao';
 import { cn } from '@/lib/utils';
-import { useAuth, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
+import { useAuth, VAI_TRO_NGHIEP_VU_KHO, VAI_TRO_NHAP_LIEU, VAI_TRO_QUAN_LY } from '@/lib/auth';
 
 interface MucMenu {
   duongDan: string;
@@ -51,7 +51,7 @@ const MENU: readonly MucMenu[] = [
   { duongDan: '/yeu-cau', nhan: 'Yêu cầu', icon: ClipboardList },
   { duongDan: '/bbbg', nhan: 'Biên bản', icon: FileSignature },
   { duongDan: '/bao-hong', nhan: 'Báo hỏng', icon: TriangleAlert },
-  { duongDan: '/kiem-ke', nhan: 'Kiểm kê', icon: ClipboardCheck, vaiTro: VAI_TRO_NHAP_LIEU },
+  { duongDan: '/kiem-ke', nhan: 'Kiểm kê', icon: ClipboardCheck, vaiTro: VAI_TRO_NGHIEP_VU_KHO },
   { duongDan: '/tablet-kho', nhan: 'Cố định tại kho', icon: Tablet, vaiTro: VAI_TRO_NHAP_LIEU },
 ];
 
@@ -74,7 +74,7 @@ const MENU_THEM: readonly MucMenu[] = [
   // mục thứ 8 vào thanh làm mục cuối bị cắt còn trơ biểu tượng không nhãn —
   // đã thấy trong ảnh chụp ở 1280px. Đường vào chính của việc này là ô lớn
   // "Lấy linh kiện" trên màn hình kho và liên kết từ phiếu báo hỏng.
-  { duongDan: '/linh-kien', nhan: 'Lấy linh kiện', icon: Wrench, vaiTro: ['ADMIN', 'VAN_HANH', 'KHO'] },
+  { duongDan: '/linh-kien', nhan: 'Lấy linh kiện', icon: Wrench, vaiTro: VAI_TRO_NGHIEP_VU_KHO },
   // Mọi vai trò: trường chỉ thấy trường mình (máy chủ lọc), còn lại thấy mọi trường.
   { duongDan: '/onsite', nhan: 'Cập nhật onsite', icon: School },
   { duongDan: '/lich-su-sua-chua', nhan: 'Lịch sử sửa chữa', icon: History },

@@ -9,9 +9,9 @@
  */
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../prisma.js';
-import { loi400, loi404, loi409, loi422 } from '../../lib/loi-http.js';
+import { loi400, loi403, loi404, loi409, loi422 } from '../../lib/loi-http.js';
 import { ghiAudit, type NguoiThaoTac } from '../../lib/audit.js';
-import { dieuKienTaiSan, phamViCua } from '../../lib/pham-vi.js';
+import { diemTrongPhamVi, dieuKienTaiSan, noiTrongPhamVi, phamViCua } from '../../lib/pham-vi.js';
 import { hangDangTrenDuong, tonCuaTaiSan, tonNhomTheoDiem, tonTheoDiaDiem } from '../../lib/ton-kho.js';
 import { xoaFileAnh } from '../../lib/luu-anh.js';
 import { idMucDichHoacDauTien, idNguonGocHoacDauTien } from '../../lib/tra-ma-tai-san.js';
@@ -65,6 +65,25 @@ function doiNgay(iso: string): Date {
   return d;
 }
 
+/**
+ * TÀI KHOẢN TRƯỜNG: che thông tin NGOÀI TRƯỜNG trên một dòng thiết bị — vị trí
+ * không phải trường mình và người đang giữ. Một mã hàng lẻ dùng chung cho nhiều
+ * trường nên cột vị trí có thể đang trỏ về kho hay một trường khác; trường chỉ
+ * được biết hàng của trường mình. Các vai trò khác (`diaDiem` = null) giữ nguyên.
+ */
+function anNgoaiTruong<T extends { currentLocation: { id: string } | null }>(
+  dong: T,
+  diaDiem: readonly string[] | null,
+): T {
+  if (!diaDiem) return dong;
+  return {
+    ...dong,
+    currentLocation:
+      dong.currentLocation && diaDiem.includes(dong.currentLocation.id) ? dong.currentLocation : null,
+    ...('holder' in dong ? { holder: null } : {}),
+  };
+}
+
 /** Chuyển Decimal của Prisma về number để trả JSON gọn. */
 function donDong(d: DongThietBi) {
   return { ...d, value: d.value === null ? null : Number(d.value) };
@@ -83,40 +102,60 @@ export async function danhSach(
    * LỌC THEO ĐIỂM bằng TỒN THẬT, không chỉ cột vị trí. Hàng lẻ nằm rải nhiều
    * nơi: kho còn 70 quyển mà cột vị trí trỏ sang trường thì lọc "Kho văn phòng"
    * trước đây không ra mã đó. Giờ ra mọi mã còn hàng ở điểm, kèm số tại điểm.
+   *
+   * Tài khoản trường chỉ lọc được trong trường mình — chọn điểm khác là xem
+   * được số tồn của kho / trường khác. Không chọn điểm thì vẫn kèm số tại
+   * trường mình, vì với trường đó mới là con số có nghĩa.
    */
-  const tonTaiDiem = loc.locationId
+  const pv = phamViCua(nguoiDung);
+  if (loc.locationId && !diemTrongPhamVi(nguoiDung, loc.locationId)) {
+    throw loi403('Bạn chỉ xem được thiết bị tại trường của mình.');
+  }
+  const diemTinhTon = loc.locationId ?? (pv.diaDiem?.length === 1 ? pv.diaDiem[0] : undefined);
+  const tonTaiDiem = diemTinhTon
     ? new Map(
-        (await tonTheoDiaDiem(loc.locationId))
+        (await tonTheoDiaDiem(diemTinhTon))
           .filter((t) => t.ton > 0)
           .map((t) => [t.assetId, t.ton] as const),
       )
     : null;
+  // AND, không spread: phạm vi của tài khoản trường là một khối OR, ô tìm kiếm
+  // cũng là một khối OR — spread thì khối sau ghi đè khối trước và lộ toàn kho.
   const dieuKien: Prisma.AssetWhereInput = {
-    // Phạm vi vai trò kiểm ở SERVER — gọi thẳng API cũng không ra ngoài được.
-    ...dieuKienTaiSan(nguoiDung),
-    ...(loc.chiHoatDong === 'true' ? { isActive: true } : {}),
-    ...(loc.categoryId ? { categoryId: loc.categoryId } : {}),
-    ...(loc.productLineId ? { productLineId: loc.productLineId } : {}),
-    ...(loc.locationId && tonTaiDiem
-      ? {
-          AND: [
-            { OR: [{ currentLocationId: loc.locationId }, { id: { in: [...tonTaiDiem.keys()] } }] },
-          ],
-        }
-      : {}),
-    ...(loc.condition ? { condition: loc.condition } : {}),
-    ...(loc.allocationStatus ? { allocationStatus: loc.allocationStatus } : {}),
-    ...(loc.purposeId ? { purposeId: loc.purposeId } : {}),
-    ...(loc.trackingType ? { trackingType: loc.trackingType } : {}),
-    ...(loc.tuKhoa
-      ? {
-          OR: [
-            { code: { contains: loc.tuKhoa } },
-            { name: { contains: loc.tuKhoa } },
-            { serialNumber: { contains: loc.tuKhoa } },
-          ],
-        }
-      : {}),
+    AND: [
+      // Phạm vi vai trò kiểm ở SERVER — gọi thẳng API cũng không ra ngoài được.
+      await dieuKienTaiSan(nguoiDung),
+      {
+        ...(loc.chiHoatDong === 'true' ? { isActive: true } : {}),
+        ...(loc.categoryId ? { categoryId: loc.categoryId } : {}),
+        ...(loc.productLineId ? { productLineId: loc.productLineId } : {}),
+        ...(loc.condition ? { condition: loc.condition } : {}),
+        ...(loc.allocationStatus ? { allocationStatus: loc.allocationStatus } : {}),
+        ...(loc.purposeId ? { purposeId: loc.purposeId } : {}),
+        ...(loc.trackingType ? { trackingType: loc.trackingType } : {}),
+      },
+      ...(loc.locationId && tonTaiDiem
+        ? [
+            {
+              OR: [
+                { currentLocationId: loc.locationId },
+                { id: { in: [...tonTaiDiem.keys()] } },
+              ],
+            },
+          ]
+        : []),
+      ...(loc.tuKhoa
+        ? [
+            {
+              OR: [
+                { code: { contains: loc.tuKhoa } },
+                { name: { contains: loc.tuKhoa } },
+                { serialNumber: { contains: loc.tuKhoa } },
+              ],
+            },
+          ]
+        : []),
+    ],
   };
 
   const thuTu: Prisma.AssetOrderByWithRelationInput =
@@ -139,7 +178,7 @@ export async function danhSach(
 
   return {
     muc: muc.map((m) => ({
-      ...donDong(m),
+      ...anNgoaiTruong(donDong(m), pv.diaDiem),
       ...(tonTaiDiem ? { tonTaiDiem: tonTaiDiem.get(m.id) ?? 0 } : {}),
     })),
     tong,
@@ -151,15 +190,31 @@ export async function danhSach(
 /** Chi tiết: kèm tồn kho SUY RA từ movements và lịch sử di chuyển gần nhất. */
 export async function xemMot(nguoiDung: NguoiDungDaXacThuc, id: string) {
   const thietBi = await prisma.asset.findFirst({
-    where: { id, ...dieuKienTaiSan(nguoiDung) },
+    where: { AND: [{ id }, await dieuKienTaiSan(nguoiDung)] },
     select: CHON_DONG,
   });
   if (!thietBi) throw loi404('Không tìm thấy thiết bị, hoặc thiết bị không thuộc phạm vi của bạn.');
 
+  /*
+   * Tài khoản trường: chỉ số tồn và lịch sử TẠI TRƯỜNG MÌNH. Một mã hàng lẻ dùng
+   * chung cho nhiều trường — mở ra mà thấy tồn kho LtL, tồn của trường khác và
+   * mọi lượt chuyển giữa các nơi khác là lộ dữ liệu ngoài phạm vi.
+   */
+  const diaDiemXem = phamViCua(nguoiDung).diaDiem;
   const [ton, lichSu, tenDiaDiem] = await Promise.all([
     tonCuaTaiSan(thietBi.id),
     prisma.movement.findMany({
-      where: { assetId: thietBi.id },
+      where: {
+        assetId: thietBi.id,
+        ...(diaDiemXem
+          ? {
+              OR: [
+                { fromLocationId: { in: [...diaDiemXem] } },
+                { toLocationId: { in: [...diaDiemXem] } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { performedAt: 'desc' },
       take: 50,
       select: {
@@ -184,11 +239,14 @@ export async function xemMot(nguoiDung: NguoiDungDaXacThuc, id: string) {
   ]);
 
   const ten = new Map(tenDiaDiem.map((d) => [d.id, d.name]));
+  const tonXemDuoc = diaDiemXem
+    ? ton.theoDiaDiem.filter((d) => diaDiemXem.includes(d.locationId))
+    : ton.theoDiaDiem;
   return {
-    thietBi: donDong(thietBi),
+    thietBi: anNgoaiTruong(donDong(thietBi), diaDiemXem),
     tonKho: {
-      tongTon: ton.tongTon,
-      theoDiaDiem: ton.theoDiaDiem.map((d) => ({
+      tongTon: diaDiemXem ? tonXemDuoc.reduce((t, d) => t + d.ton, 0) : ton.tongTon,
+      theoDiaDiem: tonXemDuoc.map((d) => ({
         locationId: d.locationId,
         tenDiaDiem: ten.get(d.locationId) ?? '(đã xoá)',
         ton: d.ton,
@@ -202,7 +260,7 @@ export async function xemMot(nguoiDung: NguoiDungDaXacThuc, id: string) {
 export async function timTheoMa(nguoiDung: NguoiDungDaXacThuc, code: string) {
   const chuanHoa = code.trim().toUpperCase();
   const thietBi = await prisma.asset.findFirst({
-    where: { code: chuanHoa, ...dieuKienTaiSan(nguoiDung) },
+    where: { AND: [{ code: chuanHoa }, await dieuKienTaiSan(nguoiDung)] },
     select: { id: true },
   });
   if (!thietBi) {
@@ -216,13 +274,16 @@ export async function timTheoMa(nguoiDung: NguoiDungDaXacThuc, code: string) {
 /**
  * Tra cứu RÚT GỌN theo mã — mọi vai trò đã đăng nhập đều gọi được.
  *
- * Vì sao không dùng phạm vi như `timTheoMa`: nhân sự phòng ban muốn MƯỢN một
- * thiết bị thì bắt buộc phải nhập được mã của nó, mà thiết bị đó dĩ nhiên chưa
- * thuộc phạm vi của họ. Endpoint này chỉ trả đủ thông tin để người lập yêu cầu
- * biết mình gõ đúng mã (tên, loại, tình trạng, đang ở đâu) — KHÔNG trả giá trị,
- * tồn kho hay lịch sử, và KHÔNG cho duyệt danh sách toàn kho.
+ * Vì sao không dùng phạm vi như `timTheoMa`: người lập phiếu phải nhập được mã
+ * thiết bị đang nằm ở nơi khác, và trường cập nhật onsite phải báo được "thấy
+ * thiết bị này tại trường nhưng sổ ghi ở nơi khác". Endpoint này chỉ trả đủ
+ * thông tin để nhận ra mã (tên, loại, tình trạng) — KHÔNG trả giá trị, tồn kho
+ * hay lịch sử, và KHÔNG cho duyệt danh sách: phải gõ đúng cả mã.
+ *
+ * Tài khoản TRƯỜNG chỉ xem được thiết bị của trường mình: mã ngoài trường vẫn
+ * nhận ra được (để báo thấy tại trường), nhưng KHÔNG cho biết đang ghi ở đâu.
  */
-export async function traCuuNhanh(code: string) {
+export async function traCuuNhanh(nguoiDung: NguoiDungDaXacThuc, code: string) {
   const chuanHoa = code.trim().toUpperCase();
   const thietBi = await prisma.asset.findFirst({
     // `deletedAt: null`: đây là đường người lập yêu cầu dùng để đưa một mã vào
@@ -238,11 +299,13 @@ export async function traCuuNhanh(code: string) {
       allocationStatus: true,
       isActive: true,
       category: { select: { name: true } },
-      currentLocation: { select: { name: true } },
+      currentLocation: { select: { id: true, name: true } },
     },
   });
   if (!thietBi) throw loi404(`Không có thiết bị nào mang mã ${chuanHoa}.`);
-  return thietBi;
+  // Nơi đặt chỉ trả khi nằm trong phạm vi điểm của người hỏi — kể cả hàng lẻ
+  // trường đang có: cột vị trí của mã dùng chung có thể trỏ sang nơi khác.
+  return { ...thietBi, currentLocation: noiTrongPhamVi(nguoiDung, thietBi.currentLocation) };
 }
 
 /**
@@ -276,28 +339,38 @@ export async function hangLe(
   loc: { tuKhoa?: string | undefined; locationId?: string | undefined; moiTrang: number },
 ) {
   /*
-   * KHÔNG lọc theo phạm vi tài sản của người hỏi.
+   * PHẠM VI: Quản trị / Vận hành / Kho / Nhân sự thấy mọi hàng lẻ — ô này để
+   * LẬP PHIẾU, người lập phải thấy hàng đang có ở kho thì mới xin được (trước
+   * đây nhân sự chỉ thấy hàng mình giữ, mở form là "chưa có hàng lẻ nào" dù kho
+   * đầy, rồi quay sang tạo mã mới cho thứ đã có).
    *
-   * Ô này để LẬP PHIẾU: người lập phải thấy hàng đang có ở kho thì mới xin được.
-   * Trước đây lọc theo phạm vi vai trò: nhân sự chỉ thấy hàng mình đang giữ,
-   * trường chỉ thấy hàng có cột vị trí là trường mình — mở form là "chưa có hàng
-   * lẻ nào" dù kho đầy, và người dùng quay sang tạo mã mới cho thứ đã có.
-   * Tài khoản trường chỉ được thấy SỐ LƯỢNG ở chính trường mình (lọc bên dưới).
+   * Tài khoản TRƯỜNG chỉ thấy hàng lẻ CỦA TRƯỜNG MÌNH (còn tồn tại trường hoặc
+   * đang trên đường về trường) — trường chỉ nhận hàng do Quản trị / Vận hành /
+   * Kho cấp về, không duyệt hàng trong kho. Số lượng cũng chỉ tính tại trường.
    */
   const pv = phamViCua(nguoiDung);
+  if (loc.locationId && !diemTrongPhamVi(nguoiDung, loc.locationId)) {
+    throw loi403('Bạn chỉ xem được hàng lẻ tại trường của mình.');
+  }
+  // Điểm dùng để tính "tồn tại điểm": điểm được hỏi, hoặc trường của tài khoản
+  // trường (các vai trò khác không hỏi điểm thì tính ở các kho, như trước).
+  const diemHoi = loc.locationId ?? (pv.diaDiem?.length === 1 ? pv.diaDiem[0] : undefined);
   const muc = await prisma.asset.findMany({
     where: {
-      deletedAt: null,
-      trackingType: 'SO_LUONG',
-      isActive: true,
-      ...(loc.tuKhoa
-        ? {
-            OR: [
-              { name: { contains: loc.tuKhoa } },
-              { code: { contains: loc.tuKhoa } },
-            ],
-          }
-        : {}),
+      AND: [
+        await dieuKienTaiSan(nguoiDung),
+        { deletedAt: null, trackingType: 'SO_LUONG', isActive: true },
+        ...(loc.tuKhoa
+          ? [
+              {
+                OR: [
+                  { name: { contains: loc.tuKhoa } },
+                  { code: { contains: loc.tuKhoa } },
+                ],
+              },
+            ]
+          : []),
+      ],
     },
     select: {
       id: true,
@@ -333,14 +406,14 @@ export async function hangLe(
      * "Lấy được 100", rồi lúc xuất máy chủ chặn vì kho chỉ có 70.
      */
     const cacKho = cac.filter((d) => laKho(d.locationId));
-    const tonTaiDiem = loc.locationId
-      ? (cac.find((d) => d.locationId === loc.locationId)?.ton ?? 0)
+    const tonTaiDiem = diemHoi
+      ? (cac.find((d) => d.locationId === diemHoi)?.ton ?? 0)
       : cacKho.reduce((t, d) => t + d.ton, 0);
-    const diTaiDiem = loc.locationId
-      ? diTai(loc.locationId)
+    const diTaiDiem = diemHoi
+      ? diTai(diemHoi)
       : cacKho.reduce((t, d) => t + diTai(d.locationId), 0);
     return {
-      ...m,
+      ...anNgoaiTruong(m, pv.diaDiem),
       /** Tổng còn trong toàn hệ thống (theo sổ movements). */
       tongTon,
       /** Tồn sổ sách tại điểm đang hỏi. */
